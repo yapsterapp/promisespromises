@@ -89,31 +89,6 @@
   [skey-head-values]
   (keys skey-head-values))
 
-(defn head-values
-  "given a map {skey stream}
-   async fetch an initial value from each stream
-   returning a map {skey initial-value}"
-  [skey-streams]
-  ;; (info "streams" streams)
-  (ddo [ivs (->> (for [[sk s] skey-streams]
-                   (ddo [v (-take! s)]
-                     (return [sk v])))
-             (apply d/zip))]
-    (return
-     (into {} ivs))))
-
-(defn next-values
-  "given a map {skey stream} and a set of skeys, async fetch
-   next values for the streams with the given keys, returning
-   a map {skey next-value}"
-  [skey-streams next-skey-set]
-  (ddo [nvs (->> (for [sk (set next-skey-set)]
-                   (ddo [v (-take! (get skey-streams sk))]
-                     (return [sk v])))
-                 (apply d/zip))]
-    (return
-     (into {} nvs))))
-
 (defn min-key-val
   "uses the comparator to find the minimum key value from ks"
   [key-comparator-fn ks]
@@ -127,6 +102,39 @@
               :else k))
           nil
           ks))
+
+(defn head-values
+  "given a map {skey stream}
+   async fetch two initial values from each stream
+   returning a map {skey [head-value next-value]}. this sets up the
+   skey-head-values structure for next-output-value"
+  [skey-streams]
+  ;; (info "streams" streams)
+  (ddo [ivs (->> (for [[sk s] skey-streams]
+                   (ddo [hv (-take! s)
+                         nv (-take! s)]
+                     (return [sk [hv nv]])))
+                 (apply d/zip))]
+    (return
+     (into {} ivs))))
+
+(def vconj (fnil conj []))
+
+(defn next-values
+  "given a map {skey stream}, a map {skey [hv nv?]}, and a set of skeys, async fetch
+   next values for the streams with the given keys, returning
+   a map {skey next-value}"
+  [skey-streams skey-head-values next-skey-set]
+  (ddo [nvs (->> (for [sk (set next-skey-set)]
+                   (let [[ohv onv] (get skey-head-values sk)]
+                     (if (or (= ::drained ohv)
+                             (= ::drained onv))
+                       (d/success-deferred [sk [::drained]])
+                       (ddo [nv (-take! (get skey-streams sk))]
+                         (return [sk [onv nv]])))))
+                 (apply d/zip))]
+    (return
+     (into {} nvs))))
 
 (defn next-output-value
   "given skey-streams and the current head-values from those streams
@@ -143,29 +151,29 @@
    - uses -merge to join selected head-values together into an output value
    - returns [output-value next-values] or ::drained"
   [key-comparator-fn selector-fn init-output-value skey-streams skey-head-values]
-  (ddo [:let [;; _ (info "skey-streams" skey-streams)
-              ;; _ (info "skey-head-values" skey-head-values)
+  (ddo [:let [;; _ (warn "skey-streams" skey-streams)
+              ;; _ (warn "skey-head-values" skey-head-values)
 
               active-skey-head-values (->> skey-head-values
                                            (filter
-                                            (fn [[sk hv]]
+                                            (fn [[sk [hv nv]]]
                                               (not= ::drained hv)))
                                            (into {}))
 
               min-k (->> active-skey-head-values
-                         (map (fn [[sk hv]] (-key (get skey-streams sk) hv)))
+                         (map (fn [[sk [hv nv]]] (-key (get skey-streams sk) hv)))
                          (min-key-val key-comparator-fn))
 
-              ;; _ (info "min-k" min-k)
+              ;; _ (warn "min-k" min-k)
 
               min-k-skey-head-values (->> active-skey-head-values
                                           (filter
-                                           (fn [[sk hv]]
+                                           (fn [[sk [hv nv]]]
                                              (= min-k
                                                 (-key (get skey-streams sk) hv))))
                                           (into {}))
 
-              ;; _ (info "min-k-skey-head-values" min-k-skey-head-values)
+              ;; _ (warn "min-k-skey-head-values" min-k-skey-head-values)
 
               min-k-skeys (set (keys min-k-skey-head-values))
               selected-skeys (set (selector-fn min-k-skey-head-values))
@@ -181,24 +189,58 @@
                             {:selected-skeys selected-skeys
                              :min-k-skey-head-values min-k-skey-head-values})))
 
-              ;; _ (info "selected-skeys" selected-skeys)
+              ;; _ (warn "selected-skeys" selected-skeys)
 
               output-value (->> (for [sk selected-skeys]
                                   [sk (get active-skey-head-values sk)])
-                                (reduce (fn [o [sk hv]]
+                                (reduce (fn [o [sk [hv nv]]]
                                           ;; (info "o sk hv" [o sk hv])
                                           (-merge (get skey-streams sk) o [sk hv]))
                                         init-output-value))
 
-              ;; _ (info "output-value" output-value)
-              ]
+              ;; _ (warn "output-value" output-value)
 
-        next-selected-vals (next-values skey-streams selected-skeys)
+              ;; now - are there any nvs with the same key value as the hv
+              ;; if so, advance just those streams because
+              ;;    it's a 1-many or many-1 join with more outputs
+              ;; if not, advance all the streams contributing to the output value
+
+              active-skey-next-values (->> skey-head-values
+                                           (filter
+                                            (fn [[sk [_ nv]]]
+                                              (and nv (not= ::drained nv))))
+                                           (into {}))
+
+              ;; _ (warn "active-skey-next-values" active-skey-next-values)
+
+              min-k-skey-next-values (->> active-skey-next-values
+                                          (filter
+                                           (fn [[sk [_ nv]]]
+                                             (= min-k
+                                                (-key (get skey-streams sk) nv))))
+                                          (into {}))
+
+              ;; _ (warn "min-k-skey-next-values" min-k-skey-next-values)
+
+              min-k-nv-skeys (set (keys min-k-skey-next-values))
+
+              ;; _ (warn "min-k-nv-skeys" min-k-nv-skeys)
+
+              _ (when (and (> (count min-k-nv-skeys) 0)
+                           (>= (count min-k-nv-skeys) (count selected-skeys)))
+                  (throw (pr/error-ex
+                          ::many-many-join
+                          {:message "many-many join not supported"})))
+
+              advance-skeys (or (not-empty min-k-nv-skeys)
+                                selected-skeys)]
+
+        next-selected-vals (next-values skey-streams skey-head-values advance-skeys)
         :let [next-skey-head-values (merge
                                      skey-head-values
                                      next-selected-vals)]]
 
-    ;; (info "next-output-value" [output-value next-skey-head-values])
+    ;; (warn "next-output-value" [output-value next-skey-head-values])
 
     (if (not-empty selected-skeys)
       (return [output-value next-skey-head-values])

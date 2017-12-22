@@ -82,7 +82,9 @@
   (doseq [kvs (random-keyed-vecs-seq 100 100)]
     (let [ss (keyed-vecs->streams kvs)
           hvs @(sut/head-values ss)]
-      (is (= (->> kvs (map (fn [[k vs]] [k (first vs)])) (into {}))
+      (is (= (->> kvs (map (fn [[k vs]] [k [(first vs)
+                                            (or (second vs)
+                                                ::sut/drained)]])) (into {}))
              hvs)))))
 
 (deftest next-values-test
@@ -96,9 +98,19 @@
                    (map (comp keyword str)))
 
           kss (keyed-vecs->streams kvs)
-          nvs @(sut/next-values kss nks)]
+          hvs @(sut/head-values kss)
+
+          nvs @(sut/next-values kss hvs nks)]
       (is (= (->> nks
-                  (map (fn [k] [k (first (get kvs k))]))
+                  (map (fn [k]
+                         (let [[hv nv] [(or (second (get kvs k))
+                                            ::sut/drained)
+                                        (or (get (get kvs k) 2)
+                                            ::sut/drained)]]
+                           [k
+                            (if (= hv ::sut/drained)
+                              [::sut/drained]
+                              [hv nv])])))
                   (into {}))
              nvs)))))
 
@@ -137,7 +149,7 @@
             (fn [& args] nil)
             {}
             kss
-            {:0 1 :1 1})))))
+            {:0 [1 ::sut/drained] :1 [1 ::sut/drained]})))))
 
   (testing "throws if selector-fn chooses a wrong value"
     (let [s0 (s/->source [1 2 3])
@@ -151,7 +163,7 @@
             (fn [& args] [::blah])
             {}
             kss
-            {:0 1 :1 1}))))))
+            {:0 [1 ::sut/drained] :1 [1 ::sut/drained]}))))))
 
 (deftest cross-streams-test
   (testing "streams get crossed"
@@ -239,8 +251,7 @@
         (is (s/drained? ms))
         ;; (is (s/drained? cs)) ;; this is reasonable
 
-        (is (= [2 2] ovs)))))
-  )
+        (is (= [2 2] ovs))))))
 
 (deftest sort-merge-streams-test
   (doseq [kvs (random-keyed-vecs-seq 100 1000)]

@@ -302,20 +302,21 @@
              ovs))))
 
   (testing "many-many joins errors"
-    (let [s0 (s/->source [{:foo 1 :bar 10}
-                          {:foo 3 :bar 30}
-                          {:foo 3 :bar 40}
-                          {:foo 4 :bar 40}])
-          s1 (s/->source [{:foo 1 :baz 100}
-                          {:foo 3 :baz 300}
-                          {:foo 3 :baz 400}])
-          kss {:0 s0 :1 s1}
+    (with-log-level :error
+      (let [s0 (s/->source [{:foo 1 :bar 10}
+                            {:foo 3 :bar 30}
+                            {:foo 3 :bar 40}
+                            {:foo 4 :bar 40}])
+            s1 (s/->source [{:foo 1 :baz 100}
+                            {:foo 3 :baz 300}
+                            {:foo 3 :baz 400}])
+            kss {:0 s0 :1 s1}
 
-          os @(sut/full-outer-join-streams :foo kss)
-          ovs @(s/reduce conj [] os)]
+            os @(sut/full-outer-join-streams :foo kss)
+            ovs @(s/reduce conj [] os)]
 
-      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}]
-             ovs))))
+        (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}]
+               ovs)))))
 
   (testing "with passed ISortedStreams with custom key-fns"
     (let [s0 (s/->source [{:foo 1 :bar 10} {:foo 3 :bar 30} {:foo 4 :bar 40}])

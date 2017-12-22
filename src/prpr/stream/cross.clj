@@ -226,11 +226,11 @@
 
               ;; _ (warn "min-k-nv-skeys" min-k-nv-skeys)
 
-              _ (when (and (> (count min-k-nv-skeys) 0)
-                           (>= (count min-k-nv-skeys) (count selected-skeys)))
+              _ (when (> (count min-k-nv-skeys) 1)
                   (throw (pr/error-ex
                           ::many-many-join
-                          {:message "many-many join not supported"})))
+                          {:message "many-many join not supported"
+                           :skey-head-values skey-head-values})))
 
               advance-skeys (or (not-empty min-k-nv-skeys)
                                 selected-skeys)]

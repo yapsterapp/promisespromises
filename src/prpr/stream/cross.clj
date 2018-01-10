@@ -81,6 +81,7 @@
       i)))
 
 (defn coerce-linked-map
+  "coerce a map to a linked/map with reliable insertion-based ordering"
   [m]
   (cond
     (instance? LinkedMap m)
@@ -237,6 +238,9 @@
     min-k-skey-vals))
 
 (defn select-skey-values
+  "uses the selector-fn to select 1 or more values from an {skey [values...]}
+   map. errors if there are values to select and the selector-fn doesn't do
+   something sensible"
   [selector-fn
    skey-values]
   (let [skey-values (coerce-linked-map skey-values)
@@ -260,7 +264,7 @@
 
 (defn merge-stream-objects
   "given a seq of [skey val] objects, merge the vals
-   using the -merge operation define on the stream from
+   using the -merge operation defined on the stream from
    skey-streams {skey stream}"
   [init-output-value skey-streams skey-vals]
   (let [skey-streams (coerce-linked-map skey-streams)
@@ -296,19 +300,17 @@
       (merge-stream-objects init-output-value skey-streams skey-vals))))
 
 (defn next-output-values
-  "given skey-streams and the current head-values from those streams
+  "given skey-streams and the current head values from those streams
    in skey-streambufs, offers the {skey head-value}s with the lowest
-   (according to key-comparator-fn) key values to the selector-fn, which
-   returns #{skey}, the skeys selected for output
+   (according to key-comparator-fn) key values to the select-skey-values
+   which uses the selector-fn to choose the same-key head-values from
+   one or more stream
 
-   the head-values for the skeys selected for output are then reduced on
-   to the init-output-value
+   then a cartesian product of selected values for each stream are
+   merged to give the output-values and the streambufs are updated
+   accordingly
 
-  - gets head-value keys with -key,a
-   - gives the head-values with the lowest (according to comparator-fn)
-     key value to (selector-fn [[idx head-value]+]) to return [idx*]
-   - uses -merge to join selected head-values together into an output value
-   - returns [output-value next-values] or ::drained"
+   - returns [output-value next-skey-streambufs] or [::drained]"
   [key-comparator-fn selector-fn init-output-value skey-streams skey-streambufs]
   (ddo [:let [skey-streams (coerce-linked-map skey-streams)
               skey-streambufs (coerce-linked-map skey-streambufs)
@@ -348,22 +350,16 @@
 (defn cross-streams
   "join values from some sorted streams onto a new sorted stream
 
-   given keyed streams in {skey stream} values will be take from the head of
-   each stream, and the values with the lowest key value (keys being extracted with
-   -key and compared with key-comparator-fn) will be passed to selector-fn as:
+   given keyed streams in {skey stream} values with the same key
+   (as determined by -key) will be take from the head of
+   each stream, and the values from each stream with the lowest key value
+   (keys being compared with key-comparator-fn)
+   will be passed to the selector-fn which selects one or more of them,
+   as input to a cartesian product of the selected values from each stream.
+   the output tuples of the cartesian product are then merged into a
+   stream of output values
 
-   (selector-fn {skey head-value})
-
-   selector-fn returns a list of skeys to identify the values to be combined
-   into the output value by reducing with
-
-   (reduce #(-merge source-stream output-value [skey head-value])
-           init-output-value
-           selected-skey-head-values)
-
-   repeat until all streams are drained
-
-   different selector-fns and ISortedStream impls can give various
+   different selector-fns and ISortedStream impls can give different
    behaviours, such as sort-merge or join"
   ([selector-fn init-output-value skey-streams]
    (cross-streams compare selector-fn init-output-value skey-streams))
@@ -424,7 +420,9 @@
 
    given some streams each with content sorted by a key (extracted by key-fn),
    produces a new stream with all elements from the input streams, also
-   sorted by the same key"
+   sorted by the same key
+
+   for elements with the same key, skey-streams order is used"
   ([skey-streams] (sort-merge-streams compare identity skey-streams))
   ([key-fn skey-streams] (sort-merge-streams compare key-fn skey-streams))
   ([key-comparator-fn key-fn skey-streams]
@@ -441,7 +439,8 @@
 
 (defn full-outer-join-streams
   "full-outer-joins records from multiple streams, which must already
-   be sorted by key"
+   be sorted by key. 1-1, 1-many, many-1 and many-many joins are all supported.
+   all elements from all streams for each join key will be buffered in memory"
   ([skey-streams] (full-outer-join-streams compare identity skey-streams))
   ([key-fn skey-streams] (full-outer-join-streams compare key-fn skey-streams))
   ([key-comparator-fn key-fn skey-streams]

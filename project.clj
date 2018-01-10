@@ -30,7 +30,11 @@
 
                  [funcool/cats "2.1.0"]
                  [funcool/promesa "1.9.0"]
-                 [manifold "0.1.7-alpha6"]]
+                 [manifold "0.1.7-alpha6"]
+                 [potemkin "0.4.3"
+                  :exclusions [riddley]]
+                 [org.clojure/math.combinatorics "0.1.4"]
+                 [frankiesardo/linked "1.2.9"]]
 
   :profiles {:repl {:pedantic? :ranges}}
 

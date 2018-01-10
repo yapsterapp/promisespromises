@@ -1,13 +1,17 @@
 (ns prpr.stream.cross
   (:require
    [cats.core :as m :refer [return]]
+   [cats.labs.manifold :refer [deferred-context]]
    [clojure.set :as set]
+   [clojure.math.combinatorics :as combo]
+   [linked.core :as linked]
    [taoensso.timbre :refer [log trace debug info warn error]]
    [manifold
     [deferred :as d]
     [stream :as s]]
    [prpr.promise :as pr :refer [ddo]])
   (:import
+   [linked.map LinkedMap]
    [manifold.stream.core IEventSource]))
 
 (defprotocol ISortedStream
@@ -76,9 +80,25 @@
       (assoc stream-or-sorted-stream :stream i)
       i)))
 
+(defn coerce-linked-map
+  [m]
+  (cond
+    (instance? LinkedMap m)
+    m
+
+    (sequential? m)
+    (into (linked/map) m)
+
+    (map? m)
+    (into (linked/map) (sort m))
+
+    :else
+    (throw (ex-info "can't coerce to a linked-map" {:m m}))))
+
 (defn select-first
   "selector-fn which takes the first element from the offered set of elements"
   [skey-head-values]
+  ;; (info "select-first" skey-head-values)
   (let [[sk v] (first skey-head-values)]
     (if sk
       [sk]
@@ -103,42 +123,181 @@
           nil
           ks))
 
-(defn head-values
+(defn buffer-values
+  "given a stream and a [k buf] structure, retrieve values from
+   the stream matching key k into buf, until a value not matching k
+   is encountered. returns Deferred<[[k updated-buf] [nk nk-buf]]>"
+  [s [sort-key buf-v]]
+
+  (d/loop [[k buf] [sort-key buf-v]]
+
+    (d/chain'
+     (-take! s)
+     (fn [v]
+       (cond
+         ;; initialising with an empty stream
+         (and (nil? k)
+              (= ::drained v))
+         [::drained]
+
+         ;; initialising
+         (nil? k)
+         (d/recur [(-key s v) [v]])
+
+         ;; end-of-stream
+         (= ::drained v)
+         [[k buf] ::drained]
+
+         ;; another value with the key
+         (= k (-key s v))
+         (d/recur [k (conj buf v)])
+
+         ;; no more values with the key
+         :else
+         [[k buf] [(-key s v) [v]]])))))
+
+(defn init-stream-buffers
   "given a map {skey stream}
-   async fetch two initial values from each stream
-   returning a map {skey [head-value next-value]}. this sets up the
-   skey-head-values structure for next-output-value"
+   async fetch values from each stream
+   returning a map {skey [[head-key head-values]
+                          [next-key first-next-value]]}.
+   this sets up the skey-streambufs structure for next-output-values"
   [skey-streams]
   ;; (info "streams" streams)
-  (ddo [ivs (->> (for [[sk s] skey-streams]
-                   (ddo [hv (-take! s)
-                         nv (-take! s)]
-                     (return [sk [hv nv]])))
+  (ddo [:let [skey-streams (coerce-linked-map skey-streams)]
+        ivs (->> (for [[sk s] skey-streams]
+                   (ddo [bvs (buffer-values s nil)]
+                     (return [sk bvs])))
                  (apply d/zip))]
     (return
-     (into {} ivs))))
+     (into (linked/map) ivs))))
 
-(def vconj (fnil conj []))
+(defn advance-stream-buffers
+  "given a map {skey stream}, a map {skey [[hk hvs] [nk nk-buf]]},
+   and a set next-skey-set of skeys to update the stream-buffers for,
+   async fetch next values for the streams with the given keys,
+   returning an updated map {skey [[nk nvs] [nnk nnk-buf]]}"
+  [skey-streams skey-streambufs next-skey-set]
+  ;; (warn "skey-streambufs" skey-streambufs)
+  ;; (warn "next-skey-sets" (vec next-skey-set))
+  (ddo [:let [skey-streams (coerce-linked-map skey-streams)
+              skey-streambufs (coerce-linked-map skey-streambufs)]
+        next-skey-set (set next-skey-set)
+        nvs (->> (for [sk (keys skey-streambufs)]
+                   (if (next-skey-set sk)
+                     (ddo [:let [[h n] (get skey-streambufs sk)]
 
-(defn next-values
-  "given a map {skey stream}, a map {skey [hv nv?]}, and a set of skeys, async fetch
-   next values for the streams with the given keys, returning
-   a map {skey next-value}"
-  [skey-streams skey-head-values next-skey-set]
-  (ddo [nvs (->> (for [sk (set next-skey-set)]
-                   (let [[ohv onv] (get skey-head-values sk)]
-                     (if (or (= ::drained ohv)
-                             (= ::drained onv))
-                       (d/success-deferred [sk [::drained]])
-                       (ddo [nv (-take! (get skey-streams sk))]
-                         (return [sk [onv nv]])))))
+                           bvs (if (and (not= ::drained h)
+                                        (not= ::drained n))
+                                 (buffer-values
+                                  (get skey-streams sk)
+                                  n)
+                                 (return [::drained]))]
+                       (return [sk bvs]))
+                     (return
+                      [sk (get skey-streambufs sk)])))
                  (apply d/zip))]
+    ;; (warn "nvs" (into {} nvs))
     (return
-     (into {} nvs))))
+     (into (linked/map) nvs))))
 
-(defn next-output-value
+(defn min-key-skey-values
+  "returns a map {skey [val+]} with entries for
+   each stream which has a head buffer with vals matching the minimum
+   value -key across all streams. uses key-comparator-fn to compare
+   value -keys"
+  [key-comparator-fn
+   skey-streams
+   skey-streambufs]
+  ;; (warn "skey-streams" skey-streams)
+  ;; (warn "skey-streambufs" skey-streambufs)
+  (let [skey-streams (coerce-linked-map skey-streams)
+        skey-streambufs (coerce-linked-map skey-streambufs)
+        active-skey-streambufs (->> skey-streambufs
+                                    (filter
+                                     (fn [[sk [hkvs nkv]]]
+                                       (not= ::drained hkvs)))
+                                    (into (linked/map)))
+
+        min-k (->> active-skey-streambufs
+                   (map (fn [[sk [[hk hvs] nkv]]] hk))
+                   (min-key-val key-comparator-fn))
+
+        ;; _ (warn "min-k" min-k)
+
+        min-k-skey-vals (->> active-skey-streambufs
+                             (filter
+                              (fn [[sk [[hk hvs] nkv]]]
+                                (= min-k hk)))
+                             (map (fn [[sk [[hk hvs] nkv]]]
+                                    [sk hvs]))
+                             (into (linked/map)))]
+
+    ;; (warn "min-k-skey-vals" min-k-skey-vals)
+    min-k-skey-vals))
+
+(defn select-skey-values
+  [selector-fn
+   skey-values]
+  (let [skey-values (coerce-linked-map skey-values)
+        skeys (set (keys skey-values))
+        selected-skeys (set (selector-fn skey-values))
+        ;; _ (warn "selected-skeys" selected-skeys)
+
+        _ (when (and (not-empty skeys)
+                     (or (empty? selected-skeys)
+                         (not= selected-skeys
+                               (set/intersection
+                                selected-skeys
+                                skeys))))
+            (throw
+             (ex-info "selector-fn failed to choose well"
+                      {:skey-values skey-values
+                       :selected-skeys selected-skeys})))]
+    (select-keys
+     skey-values
+     selected-skeys)))
+
+(defn merge-stream-objects
+  "given a seq of [skey val] objects, merge the vals
+   using the -merge operation define on the stream from
+   skey-streams {skey stream}"
+  [init-output-value skey-streams skey-vals]
+  (let [skey-streams (coerce-linked-map skey-streams)
+        skey-vals (coerce-linked-map skey-vals)]
+    (->> skey-vals
+         (reduce (fn [o [sk v]]
+                   (-merge (get skey-streams sk) o [sk v]))
+                 init-output-value))))
+
+(defn head-values-cartesian-product-merge
+  "given a map skey-values {skey [val+]} of vectors of records
+   for the same key from different streams,
+   first produce a cartesian product and then merge each product value
+   to a single value"
+  [init-output-value skey-streams skey-values]
+  ;; do the reduce in the order of skey-streams (if it was passed
+  ;; as a seq rather than a map)
+  ;; (warn "key-values-cartesian-product" init-output-value skey-streams skey-values)
+  (let [skey-streams (coerce-linked-map skey-streams)
+
+        ordered-skeys (->> skey-streams
+                           (map (fn [[sk _]] sk))
+                           (filter (set (keys skey-values))))
+        ordered-skey-hvals (for [sk ordered-skeys]
+                             (for [hv (get skey-values sk)]
+                               [sk hv]))
+        cp (apply combo/cartesian-product ordered-skey-hvals)]
+
+    ;; (warn "ordered-skey-hvals" (vec ordered-skey-hvals))
+    ;; (warn "cartesian-product" (vec cp))
+
+    (for [skey-vals cp]
+      (merge-stream-objects init-output-value skey-streams skey-vals))))
+
+(defn next-output-values
   "given skey-streams and the current head-values from those streams
-   in skey-head-values, offers the {skey head-value}s with the lowest
+   in skey-streambufs, offers the {skey head-value}s with the lowest
    (according to key-comparator-fn) key values to the selector-fn, which
    returns #{skey}, the skeys selected for output
 
@@ -150,100 +309,40 @@
      key value to (selector-fn [[idx head-value]+]) to return [idx*]
    - uses -merge to join selected head-values together into an output value
    - returns [output-value next-values] or ::drained"
-  [key-comparator-fn selector-fn init-output-value skey-streams skey-head-values]
-  (ddo [:let [;; _ (warn "skey-streams" skey-streams)
-              ;; _ (warn "skey-head-values" skey-head-values)
+  [key-comparator-fn selector-fn init-output-value skey-streams skey-streambufs]
+  (ddo [:let [skey-streams (coerce-linked-map skey-streams)
+              skey-streambufs (coerce-linked-map skey-streambufs)
 
-              active-skey-head-values (->> skey-head-values
-                                           (filter
-                                            (fn [[sk [hv nv]]]
-                                              (not= ::drained hv)))
-                                           (into {}))
+              mkskvs (min-key-skey-values
+                      key-comparator-fn
+                      skey-streams
+                      skey-streambufs)
 
-              min-k (->> active-skey-head-values
-                         (map (fn [[sk [hv nv]]] (-key (get skey-streams sk) hv)))
-                         (min-key-val key-comparator-fn))
+              ;; _ (warn "mkskvs" mkskvs)
 
-              ;; _ (warn "min-k" min-k)
+              selected-skey-values (select-skey-values
+                                    selector-fn
+                                    mkskvs)
 
-              min-k-skey-head-values (->> active-skey-head-values
-                                          (filter
-                                           (fn [[sk [hv nv]]]
-                                             (= min-k
-                                                (-key (get skey-streams sk) hv))))
-                                          (into {}))
+              ;; _ (warn "selected-skey-values" selected-skey-values)
 
-              ;; _ (warn "min-k-skey-head-values" min-k-skey-head-values)
+              output-values (head-values-cartesian-product-merge
+                             init-output-value
+                             skey-streams
+                             selected-skey-values)
 
-              min-k-skeys (set (keys min-k-skey-head-values))
-              selected-skeys (set (selector-fn min-k-skey-head-values))
+              ;; _ (warn "output-values" (vec output-values))
+              ]
 
-              _ (when (and (not-empty min-k-skeys)
-                           (or (empty? selected-skeys)
-                               (not= selected-skeys
-                                     (set/intersection
-                                      selected-skeys
-                                      min-k-skeys))))
-                  (throw
-                   (ex-info "selector-fn failed to choose"
-                            {:selected-skeys selected-skeys
-                             :min-k-skey-head-values min-k-skey-head-values})))
+        next-skey-streambufs (advance-stream-buffers
+                              skey-streams
+                              skey-streambufs
+                              (keys selected-skey-values))]
+    ;; (warn "next-skey-streambufs" next-skey-streambufs)
+    ;; (warn "next-output-values" [output-values next-skey-streambufs])
 
-              ;; _ (warn "selected-skeys" selected-skeys)
-
-              output-value (->> (for [sk selected-skeys]
-                                  [sk (get active-skey-head-values sk)])
-                                (reduce (fn [o [sk [hv nv]]]
-                                          ;; (info "o sk hv" [o sk hv])
-                                          (-merge (get skey-streams sk) o [sk hv]))
-                                        init-output-value))
-
-              ;; _ (warn "output-value" output-value)
-
-              ;; now - are there any nvs with the same key value as the hv
-              ;; if so, advance just those streams because
-              ;;    it's a 1-many or many-1 join with more outputs
-              ;; if not, advance all the streams contributing to the output value
-
-              active-skey-next-values (->> skey-head-values
-                                           (filter
-                                            (fn [[sk [_ nv]]]
-                                              (and nv (not= ::drained nv))))
-                                           (into {}))
-
-              ;; _ (warn "active-skey-next-values" active-skey-next-values)
-
-              min-k-skey-next-values (->> active-skey-next-values
-                                          (filter
-                                           (fn [[sk [_ nv]]]
-                                             (= min-k
-                                                (-key (get skey-streams sk) nv))))
-                                          (into {}))
-
-              ;; _ (warn "min-k-skey-next-values" min-k-skey-next-values)
-
-              min-k-nv-skeys (set (keys min-k-skey-next-values))
-
-              ;; _ (warn "min-k-nv-skeys" min-k-nv-skeys)
-
-              _ (when (> (count min-k-nv-skeys) 1)
-                  (throw (pr/error-ex
-                          ::many-many-join
-                          {:message "many-many join not supported"
-                           :skey-head-values skey-head-values})))
-
-              advance-skeys (or (not-empty min-k-nv-skeys)
-                                selected-skeys)]
-
-        next-selected-vals (next-values skey-streams skey-head-values advance-skeys)
-        :let [next-skey-head-values (merge
-                                     skey-head-values
-                                     next-selected-vals)]]
-
-    ;; (warn "next-output-value" [output-value next-skey-head-values])
-
-    (if (not-empty selected-skeys)
-      (return [output-value next-skey-head-values])
+    (if (not-empty (keys selected-skey-values))
+      (return [output-values next-skey-streambufs])
       (return [::drained]))))
 
 (defn cross-streams
@@ -273,11 +372,13 @@
    ;;                        :selector-fn selector-fn
    ;;                        :init-output-value init-output-value
    ;;                        :skey-streams skey-streams})
-   (let [dst (s/stream)
+   (let [skey-streams (coerce-linked-map skey-streams)
+
+         dst (s/stream)
          skey-intermediates (->>
                              (for [[sk s] skey-streams]
                                [sk (intermediate-stream dst s)])
-                             (into {}))]
+                             (into (linked/map)))]
 
      (pr/catch
          (fn [e]
@@ -290,27 +391,28 @@
                     (warn x "error closing errored streams"))))
            (throw e))
 
-         (d/loop [skey-next-vals (head-values skey-intermediates)]
+         (d/loop [skey-streambufs (init-stream-buffers skey-intermediates)]
 
            (d/chain'
-            skey-next-vals
+            skey-streambufs
             (fn [sk-nvs]
               ;; (info "sk-nvs" sk-nvs)
-              (next-output-value
+              (next-output-values
                key-comparator-fn
                selector-fn
                init-output-value
                skey-intermediates
                sk-nvs))
-            (fn [[ov sk-nvs]]
-              ;; (info "ov sk-nvs" [ov sk-nvs])
-              (if (= ::drained ov)
+            (fn [[ovs sk-nvs]]
+              ;; (info "ovs sk-nvs" [ovs sk-nvs])
+              (if (= ::drained ovs)
                 (do
                   ;; (info "closing!")
                   (s/close! dst)
                   false)
                 (do
-                  (s/put! dst ov)
+                  (doseq [ov ovs]
+                    (s/put! dst ov))
                   (d/recur sk-nvs)))))))
 
      (d/success-deferred
@@ -326,15 +428,16 @@
   ([skey-streams] (sort-merge-streams compare identity skey-streams))
   ([key-fn skey-streams] (sort-merge-streams compare key-fn skey-streams))
   ([key-comparator-fn key-fn skey-streams]
-   (cross-streams
-    key-comparator-fn
-    select-first ;; choose only the first of the lowest-key head-items
-    nil ;; init-value gets ignored by merge-fn
-    ;; since there will only be a single chosen item, merge ignores the
-    ;; merged-value arg
-    (->> (for [[sk s] skey-streams]
-           [sk (sorted-stream key-fn (fn [_ [_ v]] v) s)])
-         (into {})))))
+   (let [skey-streams (coerce-linked-map skey-streams)]
+     (cross-streams
+      key-comparator-fn
+      select-first ;; choose only the first of the lowest-key head-items
+      nil ;; init-value gets ignored by merge-fn
+      ;; since there will only be a single chosen item, merge ignores the
+      ;; merged-value arg
+      (->> (for [[sk s] skey-streams]
+             [sk (sorted-stream key-fn (fn [_ [_ v]] v) s)])
+           (into (linked/map)))))))
 
 (defn full-outer-join-streams
   "full-outer-joins records from multiple streams, which must already
@@ -342,13 +445,14 @@
   ([skey-streams] (full-outer-join-streams compare identity skey-streams))
   ([key-fn skey-streams] (full-outer-join-streams compare key-fn skey-streams))
   ([key-comparator-fn key-fn skey-streams]
-   (cross-streams
-    key-comparator-fn
-    select-all ;; choose all offered lowest-key head-items
-    {} ;; merge the chosen items into a map with conj
-    (->> (for [[sk s] skey-streams]
-           [sk (sorted-stream key-fn conj s)])
-         (into {})))))
+   (let [skey-streams (coerce-linked-map skey-streams)]
+     (cross-streams
+      key-comparator-fn
+      select-all ;; choose all offered lowest-key head-items
+      {} ;; merge the chosen items into a map with conj
+      (->> (for [[sk s] skey-streams]
+             [sk (sorted-stream key-fn conj s)])
+           (into (linked/map)))))))
 
 ;; TODO
 ;; n-left-join - only output elements with matching keys on n leftmost streams

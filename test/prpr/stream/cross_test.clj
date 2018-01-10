@@ -584,7 +584,7 @@
               {:0 {:foo 4 :bar 40}}]
              ovs))))
 
-  (testing "many-many joins errors"
+  (testing "many-many joins"
     (with-log-level :error
       (let [s0 (s/->source [{:foo 1 :bar 10}
                             {:foo 3 :bar 30}

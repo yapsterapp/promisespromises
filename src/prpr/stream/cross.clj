@@ -159,7 +159,7 @@
          :else
          (do
            (let [nk (-key s v)]
-             (when (> (compare k nk) 0)
+             (when (> (key-comparator-fn k nk) 0)
                (throw
                 (pr/error-ex ::stream-not-sorted {:this [k buf]
                                                   :next [nk [0]]})))

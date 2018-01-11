@@ -94,7 +94,9 @@
     (into (linked/map) (sort m))
 
     :else
-    (throw (ex-info "can't coerce to a linked-map" {:m m}))))
+    (throw
+     (pr/error-ex ::coerce-to-linked-map-failed
+                  {:m m}))))
 
 (defn select-first
   "selector-fn which takes the first element from the offered set of elements"
@@ -128,7 +130,7 @@
   "given a stream and a [k buf] structure, retrieve values from
    the stream matching key k into buf, until a value not matching k
    is encountered. returns Deferred<[[k updated-buf] [nk nk-buf]]>"
-  [s [sort-key buf-v]]
+  [key-comparator-fn s [sort-key buf-v]]
 
   (d/loop [[k buf] [sort-key buf-v]]
 
@@ -155,7 +157,13 @@
 
          ;; no more values with the key
          :else
-         [[k buf] [(-key s v) [v]]])))))
+         (do
+           (let [nk (-key s v)]
+             (when (> (compare k nk) 0)
+               (throw
+                (pr/error-ex ::stream-not-sorted {:this [k buf]
+                                                  :next [nk [0]]})))
+             [[k buf] [nk [v]]])))))))
 
 (defn init-stream-buffers
   "given a map {skey stream}
@@ -163,11 +171,14 @@
    returning a map {skey [[head-key head-values]
                           [next-key first-next-value]]}.
    this sets up the skey-streambufs structure for next-output-values"
-  [skey-streams]
+  [key-comparator-fn skey-streams]
   ;; (info "streams" streams)
   (ddo [:let [skey-streams (coerce-linked-map skey-streams)]
         ivs (->> (for [[sk s] skey-streams]
-                   (ddo [bvs (buffer-values s nil)]
+                   (ddo [bvs (buffer-values
+                              key-comparator-fn
+                              s
+                              nil)]
                      (return [sk bvs])))
                  (apply d/zip))]
     (return
@@ -178,7 +189,7 @@
    and a set next-skey-set of skeys to update the stream-buffers for,
    async fetch next values for the streams with the given keys,
    returning an updated map {skey [[nk nvs] [nnk nnk-buf]]}"
-  [skey-streams skey-streambufs next-skey-set]
+  [key-comparator-fn skey-streams skey-streambufs next-skey-set]
   ;; (warn "skey-streambufs" skey-streambufs)
   ;; (warn "next-skey-sets" (vec next-skey-set))
   (ddo [:let [skey-streams (coerce-linked-map skey-streams)
@@ -191,6 +202,7 @@
                            bvs (if (and (not= ::drained h)
                                         (not= ::drained n))
                                  (buffer-values
+                                  key-comparator-fn
                                   (get skey-streams sk)
                                   n)
                                  (return [::drained]))]
@@ -255,9 +267,10 @@
                                 selected-skeys
                                 skeys))))
             (throw
-             (ex-info "selector-fn failed to choose well"
-                      {:skey-values skey-values
-                       :selected-skeys selected-skeys})))]
+             (pr/error-ex ::selector-fn-failed
+                          {:message "selector-fn failed to choose well"
+                           :skey-values skey-values
+                           :selected-skeys selected-skeys})))]
     (select-keys
      skey-values
      selected-skeys)))
@@ -337,6 +350,7 @@
               ]
 
         next-skey-streambufs (advance-stream-buffers
+                              key-comparator-fn
                               skey-streams
                               skey-streambufs
                               (keys selected-skey-values))]
@@ -387,7 +401,9 @@
                     (warn x "error closing errored streams"))))
            (throw e))
 
-         (d/loop [skey-streambufs (init-stream-buffers skey-intermediates)]
+         (d/loop [skey-streambufs (init-stream-buffers
+                                   key-comparator-fn
+                                   skey-intermediates)]
 
            (d/chain'
             skey-streambufs

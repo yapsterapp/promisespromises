@@ -131,18 +131,21 @@
 (deftest buffer-values-test
   (testing "empty stream"
     (let [[h n :as r] @(sut/buffer-values
+                        compare
                         (s/->source [])
                         nil)]
       (is (= h ::sut/drained))))
 
   (testing "initial values"
     (let [[h n :as r] @(sut/buffer-values
+                        compare
                         (s/->source [0 0 0 1])
                         nil)]
       (is (= h [0 [0 0 0]]))))
 
   (testing "end of stream"
     (let [[h n :as r] @(sut/buffer-values
+                        compare
                         (s/->source [])
                         [0 [0 0 0]])]
       (is (= r [[0 [0 0 0]]
@@ -150,6 +153,7 @@
 
   (testing "another value with the key then end-of-stream"
     (let [[h n :as r] @(sut/buffer-values
+                        compare
                         (s/->source [0])
                         [0 [0 0]])]
       (is (= r [[0 [0 0 0]]
@@ -157,10 +161,21 @@
 
   (testing "another value with the key then a different key"
     (let [[h n :as r] @(sut/buffer-values
+                        compare
                         (s/->source [0 1])
                         [0 [0 0]])]
       (is (= r [[0 [0 0 0]]
-                [1 [1]]])))))
+                [1 [1]]]))))
+
+  (testing "values out of order throw error"
+    (let [[ek err] @(pr/catch-error
+                     (sut/buffer-values
+                      compare
+                      (s/->source [0])
+                      [1 [1]]))]
+      (is (= ek ::sut/stream-not-sorted))
+      (is (= err {:this [1 [1]]
+                  :next [0 [0]]})))))
 
 (deftest init-stream-buffers-test
   ;; max-value smaller than max-sz leads to repeated sequences
@@ -170,7 +185,7 @@
                                       :max-vec-sz 10
                                       :el-val-range 3})]
     (let [ss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers ss)]
+          hvs @(sut/init-stream-buffers compare ss)]
       (is (= (->> kvs (map
                        (fn [[k vs]]
                          (let [pvs (->> vs
@@ -196,9 +211,9 @@
     (let [nks (random-keys kvs)
 
           kss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers kss)
+          hvs @(sut/init-stream-buffers compare kss)
 
-          nvs @(sut/advance-stream-buffers kss hvs nks)]
+          nvs @(sut/advance-stream-buffers compare kss hvs nks)]
       (is (= (->> (keys kvs)
                   (map (fn [k]
                          (if (nks k)
@@ -225,7 +240,7 @@
                                       :max-vec-sz 10
                                       :el-val-range 3})]
     (let [kss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers kss)
+          hvs @(sut/init-stream-buffers compare kss)
 
           mkskvs (sut/min-key-skey-values
                   compare
@@ -251,7 +266,7 @@
                                       :max-vec-sz 10
                                       :el-val-range 3})]
     (let [kss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers kss)
+          hvs @(sut/init-stream-buffers compare kss)
 
           mkskvs (sut/min-key-skey-values
                   compare
@@ -287,7 +302,7 @@
                identity
                (fn [o [sk v]] (+ o v))
                kvs)
-          hvs @(sut/init-stream-buffers kss)
+          hvs @(sut/init-stream-buffers compare kss)
 
           mkskvs (sut/min-key-skey-values
                   compare
@@ -324,7 +339,7 @@
                                       :max-vec-sz 10
                                       :el-val-range 3})]
     (let [kss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers kss)
+          hvs @(sut/init-stream-buffers compare kss)
 
           mkskvs (sut/min-key-skey-values
                   compare
@@ -366,7 +381,7 @@
                  (fn [o [sk v]] (conj o [sk v]))
                  kvs)
 
-            skey-streambufs @(sut/init-stream-buffers kss)
+            skey-streambufs @(sut/init-stream-buffers compare kss)
 
             all-drained? (->> skey-streambufs
                               (filter (fn [[sk [hv]]]
@@ -409,30 +424,28 @@
   (testing "throws if selector-fn doesn't select at least one value"
     (let [s0 (s/->source [1 2 3])
           s1 (s/->source [1 2 3])
-          kss {:0 s0 :1 s1}]
-      (is (thrown-with-msg?
-           Exception
-           #"selector-fn failed to choose"
-           (sut/next-output-values
-            compare
-            (fn [& args] nil)
-            {}
-            kss
-            {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]})))))
+          kss {:0 s0 :1 s1}
+          [ek err] @(pr/catch-error
+                     (sut/next-output-values
+                      compare
+                      (fn [& args] nil)
+                      {}
+                      kss
+                      {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
+      (is (= ::sut/selector-fn-failed ek))))
 
   (testing "throws if selector-fn chooses a wrong value"
     (let [s0 (s/->source [1 2 3])
           s1 (s/->source [1 2 3])
-          kss {:0 s0 :1 s1}]
-      (is (thrown-with-msg?
-           Exception
-           #"selector-fn failed to choose"
-           (sut/next-output-values
-            compare
-            (fn [& args] [::blah])
-            {}
-            kss
-            {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]})))))
+          kss {:0 s0 :1 s1}
+          [ek error] @(pr/catch-error
+                       (sut/next-output-values
+                        compare
+                        (fn [& args] [::blah])
+                        {}
+                        kss
+                        {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
+      (is (= ::sut/selector-fn-failed ek))))
   )
 
 (deftest cross-streams-test

@@ -159,10 +159,11 @@
          :else
          (do
            (let [nk (-key s v)]
+;;              (warn "compare" k nk)
              (when (> (key-comparator-fn k nk) 0)
                (throw
                 (pr/error-ex ::stream-not-sorted {:this [k buf]
-                                                  :next [nk [0]]})))
+                                                  :next [nk [v]]})))
              [[k buf] [nk [v]]])))))))
 
 (defn init-stream-buffers
@@ -304,7 +305,11 @@
         ordered-skey-hvals (for [sk ordered-skeys]
                              (for [hv (get skey-values sk)]
                                [sk hv]))
-        cp (apply combo/cartesian-product ordered-skey-hvals)]
+
+        ;; cartesian-product produces '(()) if empty - bug?
+        cp (if (not-empty ordered-skey-hvals)
+             (apply combo/cartesian-product ordered-skey-hvals)
+             '())]
 
     ;; (warn "ordered-skey-hvals" (vec ordered-skey-hvals))
     ;; (warn "cartesian-product" (vec cp))

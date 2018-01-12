@@ -329,37 +329,44 @@
              mos)))))
 
 (deftest head-values-cartesian-product-merge-test
-  (doseq [;; ensure no empty streams with :min-vec-sz
-          ;; also be careful - it will generate
-          ;; ~ :max-vec-sz ^ max-vec-cnt
-          ;; records
-          kvs (random-keyed-vecs-seq {:seq-cnt 1000
-                                      :max-vec-cnt 5
-                                      :min-vec-sz 1
-                                      :max-vec-sz 10
-                                      :el-val-range 3})]
-    (let [kss (keyed-vecs->streams kvs)
-          hvs @(sut/init-stream-buffers compare kss)
+  (testing "trivial cartesian product"
+    (is (= (sut/head-values-cartesian-product-merge
+            []
+            {}
+            {})
+           [])))
+  (testing "non-trivial cartesian products"
+    (doseq [;; ensure no empty streams with :min-vec-sz
+            ;; also be careful - it will generate
+            ;; ~ :max-vec-sz ^ max-vec-cnt
+            ;; records
+            kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                        :max-vec-cnt 5
+                                        :min-vec-sz 1
+                                        :max-vec-sz 10
+                                        :el-val-range 3})]
+      (let [kss (keyed-vecs->streams kvs)
+            hvs @(sut/init-stream-buffers compare kss)
 
-          mkskvs (sut/min-key-skey-values
-                  compare
+            mkskvs (sut/min-key-skey-values
+                    compare
+                    kss
+                    hvs)
+
+            kvcp (sut/head-values-cartesian-product-merge
+                  []
                   kss
-                  hvs)
+                  mkskvs)]
+        ;; (info "mkskvs" mkskvs)
+        ;; (info "kvcp" (vec kvcp))
 
-          kvcp (sut/head-values-cartesian-product-merge
-                []
-                kss
-                mkskvs)]
-      ;; (info "mkskvs" mkskvs)
-      ;; (info "kvcp" (vec kvcp))
-
-      (is (= (->> mkskvs
-                  (map (fn [[sk hvals]]
-                         (for [v hvals]
-                           [sk v])))
-                  (apply combo/cartesian-product)
-                  (map #(sut/merge-stream-objects [] kss %)))
-             kvcp)))))
+        (is (= (->> mkskvs
+                    (map (fn [[sk hvals]]
+                           (for [v hvals]
+                             [sk v])))
+                    (apply combo/cartesian-product)
+                    (map #(sut/merge-stream-objects [] kss %)))
+               kvcp))))))
 
 (deftest min-key-val-test
   (is (= 1 (sut/min-key-val compare [3 2 1])))

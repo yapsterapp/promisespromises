@@ -495,13 +495,15 @@
     (testing "errors after setup close the sources and the output"
       (let [s0 (s/stream)
             s1 (s/stream)
-            _ (doseq [v [1 2 3]] (s/put! s0 v))
-            _ (doseq [v [1 2 3]] (s/put! s1 v))
+            _ (doseq [vs [1 2 3]] (s/put! s0 vs))
+            _ (doseq [vs [1 2 3]] (s/put! s1 vs))
             kss {:0 s0 :1 s1}
             os @(sut/cross-streams
-                 (let [v (atom 0)]
+                 (let [n (atom 0)]
                    (fn [& args]
-                     (if (> (swap! v inc) 1)
+                     ;; 4 is slightly flakey... the key-comparator
+                     ;; now gets called during buffering...
+                     (if (> (swap! n inc) 4)
                        (throw (ex-info "hoo" {}))
                        (apply compare args))))
                  sut/select-first

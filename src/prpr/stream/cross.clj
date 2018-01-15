@@ -295,8 +295,9 @@
   "given a map skey-values {skey [val+]} of vectors of records
    for the same key from different streams,
    first produce a cartesian product and then merge each product value
-   to a single value"
-  [product-sort-fn init-output-value skey-streams skey-values]
+   to a single value, finishing off each merge with finish-merge-fn and
+   then sorting the merged values with product-sort-fn"
+  [finish-merge-fn product-sort-fn init-output-value skey-streams skey-values]
   ;; do the reduce in the order of skey-streams (if it was passed
   ;; as a seq rather than a map)
   ;; (warn "key-values-cartesian-product" init-output-value skey-streams skey-values)
@@ -318,7 +319,9 @@
     ;; (warn "cartesian-product" (vec cp))
 
     (->> (for [skey-vals cp]
-           (merge-stream-objects init-output-value skey-streams skey-vals))
+           ((or finish-merge-fn identity)
+            (merge-stream-objects init-output-value skey-streams skey-vals)))
+         (filter identity) ;; finish-merge-fn can remove records
          ((or product-sort-fn identity)))))
 
 (defn next-output-values
@@ -335,6 +338,7 @@
    - returns [output-value next-skey-streambufs] or [::drained]"
   [key-compare-fn
    selector-fn
+   finish-merge-fn
    product-sort-fn
    init-output-value
    skey-streams
@@ -356,6 +360,7 @@
               ;; _ (warn "selected-skey-values" selected-skey-values)
 
               output-values (head-values-cartesian-product-merge
+                             finish-merge-fn
                              product-sort-fn
                              init-output-value
                              skey-streams
@@ -393,6 +398,7 @@
    behaviours, such as sort-merge or join"
   [{key-compare-fn :key-compare-fn
     selector-fn :selector-fn
+    finish-merge-fn :finish-merge-fn
     product-sort-fn :product-sort-fn
     init-output-value :init-output-value
     skey-streams :skey-streams
@@ -428,6 +434,7 @@
              (next-output-values
               key-compare-fn
               selector-fn
+              finish-merge-fn
               product-sort-fn
               init-output-value
               skey-intermediates
@@ -487,6 +494,7 @@
    all elements from all streams for each join key will be buffered in memory"
   [{key-compare-fn :key-compare-fn
     default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
     product-sort-fn :product-sort-fn
     skey-streams :skey-streams
     :or {key-compare-fn compare

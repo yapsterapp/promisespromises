@@ -343,6 +343,7 @@
   (testing "trivial cartesian product"
     (is (= (sut/head-values-cartesian-product-merge
             identity
+            identity
             []
             {}
             {})
@@ -367,6 +368,7 @@
 
             kvcp (sut/head-values-cartesian-product-merge
                   identity
+                  identity
                   []
                   kss
                   mkskvs)]
@@ -381,13 +383,13 @@
                     (map #(sut/merge-stream-objects [] kss %)))
                kvcp)))))
 
-  (testing "product-sort-fn sorts the cartesian product output"
+  (testing "finish-merge finishes merges and product-sort-fn sorts the cartesian product output"
     (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
           s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
           kvs {:s1 s1 :s2 s2}
           kss (keyed-vecs->sorted-streams
                :foo
-               (fn [o [sk v]] (merge o v))
+               conj
                kvs)
           hvs @(sut/init-stream-buffers compare kss)
           mkskvs (sut/min-key-skey-values
@@ -395,6 +397,7 @@
                   kss
                   hvs)
           kvcp (sut/head-values-cartesian-product-merge
+                (fn [o] (->> o vals (apply merge)))
                 (partial sort-by (juxt :bar :baz))
                 {}
                 kss
@@ -403,6 +406,35 @@
            [{:foo 1, :bar 1, :baz 1}
             {:foo 1, :bar 1, :baz 2}
             {:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp))))
+
+  (testing "finish-merge-fn can remove values"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               conj
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp (sut/head-values-cartesian-product-merge
+                (fn [o] (->> o
+                             vals
+                             (apply merge)
+                             ((fn [m]
+                                (when (even? (:bar m))
+                                  m)))))
+                (partial sort-by (juxt :bar :baz))
+                {}
+                kss
+                mkskvs)]
+      (is (=
+           [{:foo 1, :bar 2, :baz 1}
             {:foo 1, :bar 2, :baz 2}]
            kvcp)))))
 
@@ -436,7 +468,8 @@
              next-skey-head-values] @(sut/next-output-values
                                       compare
                                       sut/select-first
-                                      identity
+                                      nil
+                                      nil
                                       {}
                                       kss
                                       skey-streambufs)]
@@ -471,7 +504,8 @@
                      (sut/next-output-values
                       compare
                       (fn [& args] nil)
-                      identity
+                      nil
+                      nil
                       {}
                       kss
                       {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
@@ -485,7 +519,8 @@
                        (sut/next-output-values
                         compare
                         (fn [& args] [::blah])
-                        identity
+                        nil
+                        nil
                         {}
                         kss
                         {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]

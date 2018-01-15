@@ -132,6 +132,7 @@
   (testing "empty stream"
     (let [[h n :as r] @(sut/buffer-values
                         compare
+                        :foo
                         (s/->source [])
                         nil)]
       (is (= h ::sut/drained))))
@@ -139,6 +140,7 @@
   (testing "initial values"
     (let [[h n :as r] @(sut/buffer-values
                         compare
+                        :foo
                         (s/->source [0 0 0 1])
                         nil)]
       (is (= h [0 [0 0 0]]))))
@@ -146,6 +148,7 @@
   (testing "end of stream"
     (let [[h n :as r] @(sut/buffer-values
                         compare
+                        :foo
                         (s/->source [])
                         [0 [0 0 0]])]
       (is (= r [[0 [0 0 0]]
@@ -154,6 +157,7 @@
   (testing "another value with the key then end-of-stream"
     (let [[h n :as r] @(sut/buffer-values
                         compare
+                        :foo
                         (s/->source [0])
                         [0 [0 0]])]
       (is (= r [[0 [0 0 0]]
@@ -162,6 +166,7 @@
   (testing "another value with the key then a different key"
     (let [[h n :as r] @(sut/buffer-values
                         compare
+                        :foo
                         (s/->source [0 1])
                         [0 [0 0]])]
       (is (= r [[0 [0 0 0]]
@@ -171,10 +176,12 @@
     (let [[ek err] @(pr/catch-error
                      (sut/buffer-values
                       compare
+                      :foo
                       (s/->source [0])
                       [1 [1]]))]
       (is (= ek ::sut/stream-not-sorted))
-      (is (= err {:this [1 [1]]
+      (is (= err {:stream-key :foo
+                  :this [1 [1]]
                   :next [0 [0]]})))))
 
 (deftest init-stream-buffers-test

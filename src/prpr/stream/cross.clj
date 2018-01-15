@@ -130,12 +130,12 @@
   "given a stream and a [k buf] structure, retrieve values from
    the stream matching key k into buf, until a value not matching k
    is encountered. returns Deferred<[[k updated-buf] [nk nk-buf]]>"
-  [key-comparator-fn s [sort-key buf-v]]
+  [key-comparator-fn stream-key stream [sort-key buf-v]]
 
   (d/loop [[k buf] [sort-key buf-v]]
 
     (d/chain'
-     (-take! s)
+     (-take! stream)
      (fn [v]
        (cond
          ;; initialising with an empty stream
@@ -145,24 +145,25 @@
 
          ;; initialising
          (nil? k)
-         (d/recur [(-key s v) [v]])
+         (d/recur [(-key stream v) [v]])
 
          ;; end-of-stream
          (= ::drained v)
          [[k buf] ::drained]
 
          ;; another value with the key
-         (= k (-key s v))
+         (= k (-key stream v))
          (d/recur [k (conj buf v)])
 
          ;; no more values with the key
          :else
          (do
-           (let [nk (-key s v)]
+           (let [nk (-key stream v)]
 ;;              (warn "compare" k nk)
              (when (> (key-comparator-fn k nk) 0)
                (throw
-                (pr/error-ex ::stream-not-sorted {:this [k buf]
+                (pr/error-ex ::stream-not-sorted {:stream-key stream-key
+                                                  :this [k buf]
                                                   :next [nk [v]]})))
              [[k buf] [nk [v]]])))))))
 
@@ -178,6 +179,7 @@
         ivs (->> (for [[sk s] skey-streams]
                    (ddo [bvs (buffer-values
                               key-comparator-fn
+                              sk
                               s
                               nil)]
                      (return [sk bvs])))
@@ -204,6 +206,7 @@
                                         (not= ::drained n))
                                  (buffer-values
                                   key-comparator-fn
+                                  sk
                                   (get skey-streams sk)
                                   n)
                                  (return [::drained]))]

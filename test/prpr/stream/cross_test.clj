@@ -128,6 +128,10 @@
                              (s/->source v))]))
         (into (linked/map)))))
 
+(deftest min-key-val-test
+  (is (= 1 (sut/min-key-val compare [3 2 1])))
+  (is (= 3 (sut/min-key-val (comp - compare) [3 2 1]))))
+
 (deftest buffer-values-test
   (testing "empty stream"
     (let [[h n :as r] @(sut/buffer-values
@@ -338,6 +342,7 @@
 (deftest head-values-cartesian-product-merge-test
   (testing "trivial cartesian product"
     (is (= (sut/head-values-cartesian-product-merge
+            identity
             []
             {}
             {})
@@ -361,6 +366,7 @@
                     hvs)
 
             kvcp (sut/head-values-cartesian-product-merge
+                  identity
                   []
                   kss
                   mkskvs)]
@@ -373,11 +379,32 @@
                              [sk v])))
                     (apply combo/cartesian-product)
                     (map #(sut/merge-stream-objects [] kss %)))
-               kvcp))))))
+               kvcp)))))
 
-(deftest min-key-val-test
-  (is (= 1 (sut/min-key-val compare [3 2 1])))
-  (is (= 3 (sut/min-key-val (comp - compare) [3 2 1]))))
+  (testing "product-sort-fn sorts the cartesian product output"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               (fn [o [sk v]] (merge o v))
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp (sut/head-values-cartesian-product-merge
+                (partial sort-by (juxt :bar :baz))
+                {}
+                kss
+                mkskvs)]
+      (is (=
+           [{:foo 1, :bar 1, :baz 1}
+            {:foo 1, :bar 1, :baz 2}
+            {:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp)))))
 
 (deftest next-output-values-test
   (testing "next-output-values"
@@ -409,6 +436,7 @@
              next-skey-head-values] @(sut/next-output-values
                                       compare
                                       sut/select-first
+                                      identity
                                       {}
                                       kss
                                       skey-streambufs)]
@@ -443,6 +471,7 @@
                      (sut/next-output-values
                       compare
                       (fn [& args] nil)
+                      identity
                       {}
                       kss
                       {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
@@ -456,6 +485,7 @@
                        (sut/next-output-values
                         compare
                         (fn [& args] [::blah])
+                        identity
                         {}
                         kss
                         {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
@@ -477,10 +507,10 @@
       ;; (warn "vs" kvs)
       (let [kss (keyed-vecs->streams kvs)
             os @(sut/cross-streams
-                 compare
-                 sut/select-first
-                 {}
-                 kss)
+                 {:key-compare-fn compare
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
             ovs @(s/reduce conj [] os)]
         (is (= (->> kvs
                     (mapcat (fn [[k vs]] (for [v vs] [k v])))
@@ -497,10 +527,10 @@
             _ (doseq [v [1 2 3]] (s/put! s1 v))
             kss {:0 s0 :1 s1}
             os-d (sut/cross-streams
-                  (fn [& args] (throw (ex-info "boo" {})))
-                  sut/select-first
-                  nil
-                  kss)]
+                  {:key-compare-fn (fn [& args] (throw (ex-info "boo" {})))
+                   :selector-fn sut/select-first
+                   :init-output-value nil
+                   :skey-streams kss})]
         (is (s/drained? @os-d))
         (is (s/closed? s0))
         (is (s/closed? s0)))))
@@ -513,16 +543,16 @@
             _ (doseq [vs [1 2 3]] (s/put! s1 vs))
             kss {:0 s0 :1 s1}
             os @(sut/cross-streams
-                 (let [n (atom 0)]
-                   (fn [& args]
-                     ;; 4 is slightly flakey... the key-comparator
-                     ;; now gets called during buffering...
-                     (if (> (swap! n inc) 4)
-                       (throw (ex-info "hoo" {}))
-                       (apply compare args))))
-                 sut/select-first
-                 {}
-                 kss)
+                 {:key-compare-fn (let [n (atom 0)]
+                                    (fn [& args]
+                                      ;; 4 is slightly flakey... the key-comparator
+                                      ;; now gets called during buffering...
+                                      (if (> (swap! n inc) 4)
+                                        (throw (ex-info "hoo" {}))
+                                        (apply compare args))))
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
             ovs @(s/reduce conj [] os)]
 
         (is (s/closed? s0))
@@ -543,10 +573,10 @@
                 (s/close! s))
 
             cs @(sut/cross-streams
-                 clojure.core/compare
-                 sut/select-first
-                 {}
-                 kss)
+                 {:key-compare-fn clojure.core/compare
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
             ms (s/map (fn [k-v]
                         (let [[k v] (first k-v)]
                           (if (< v 2)
@@ -563,12 +593,13 @@
         (is (= [2 2] ovs))))))
 
 (deftest sort-merge-streams-test
-  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1000
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1
                                       :max-vec-cnt 20
                                       :max-vec-sz 100
                                       :el-val-range 5})]
     (let [kss (keyed-vecs->streams kvs)
-          os @(sut/sort-merge-streams kss)
+          os @(sut/sort-merge-streams
+               {:skey-streams kss})
           ovs @(s/reduce conj [] os)]
       (is (= (->> kvs
                   vals
@@ -582,7 +613,9 @@
           s1 (s/->source [{:foo 1 :baz 100} {:foo 2 :baz 200} {:foo 3 :baz 300}])
           kss {:0 s0 :1 s1}
 
-          os @(sut/full-outer-join-streams :foo kss)
+          os @(sut/full-outer-join-streams
+               {:default-key-fn :foo
+                :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
       (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
@@ -602,7 +635,9 @@
                           {:foo 3 :baz 300}])
           kss {:0 s0 :1 s1}
 
-          os @(sut/full-outer-join-streams :foo kss)
+          os @(sut/full-outer-join-streams
+               {:default-key-fn :foo
+                :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
       (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
@@ -624,7 +659,9 @@
                             {:foo 3 :baz 400}])
             kss {:0 s0 :1 s1}
 
-            os @(sut/full-outer-join-streams :foo kss)
+            os @(sut/full-outer-join-streams
+                 {:default-key-fn :foo
+                  :skey-streams kss})
             ovs @(s/reduce conj [] os)]
 
         (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
@@ -643,7 +680,9 @@
           ss1 (sut/sorted-stream :foofoo conj s1)
           kss {:0 s0 :1 ss1}
 
-          os @(sut/full-outer-join-streams :foo kss)
+          os @(sut/full-outer-join-streams
+               {:default-key-fn :foo
+                :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
       (is (= [{:0 {:foo 1 :bar 10} :1 {:foofoo 1 :baz 100}}

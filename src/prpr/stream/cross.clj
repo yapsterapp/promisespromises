@@ -112,6 +112,17 @@
   [skey-head-values]
   (keys skey-head-values))
 
+(defn set-select-all
+  [skey-head-values]
+  (let [set? (->> (for [[sk vs] skey-head-values]
+                    (count vs))
+                  (every? #(= % 1)))]
+    (when-not set?
+      (throw
+       (pr/error-ex ::not-a-set
+                    {:skey-head-values skey-head-values})))
+    (keys skey-head-values)))
+
 (defn min-key-val
   "uses the comparator to find the minimum key value from ks"
   [key-compare-fn ks]
@@ -561,7 +572,118 @@
                                  s)])
                              (into (linked/map))))))))
 
-;; TODO
-;; set/intersection - n-left-join where n=no of streams
-;; set/union - outer join
-;; set/difference - two-way join where output a record only if not present on right stream
+(defn set-streams-intersect
+  [{key-compare-fn :key-compare-fn
+    default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    :or {key-compare-fn compare
+         default-key-fn identity}
+    :as args}]
+  (let [skey-streams (coerce-linked-map skey-streams)
+
+        ;; only return a record if there is a value
+        ;; in the joined record from every stream
+        intersect-finish-merge-fn
+        (fn [skey-vals]
+          (let [all-skeys (keys skey-streams)
+                satisfies-intersect? (->> (for [sk all-skeys]
+                                         (get skey-vals sk))
+                                       (every? some?))]
+            (when satisfies-intersect?
+              ((or finish-merge-fn identity)
+               skey-vals))))]
+    (cross-streams
+     (-> args
+         (dissoc :default-key-fn)
+         (assoc
+          :key-compare-fn key-compare-fn
+          ;; choose all offered lowest-key head-items
+          ;; bork if there are multiple values for a key on any
+          ;; one stream i.e. it's not a set
+          :selector-fn set-select-all
+          :finish-merge-fn intersect-finish-merge-fn
+          ;; merge the chosen items into a map with conj
+          :init-output-value {}
+          :skey-streams (->> (for [[sk s] skey-streams]
+                               [sk
+                                (sorted-stream
+                                 default-key-fn
+                                 conj
+                                 s)])
+                             (into (linked/map))))))))
+
+(defn set-streams-union
+  [{key-compare-fn :key-compare-fn
+    default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    :or {key-compare-fn compare
+         default-key-fn identity}
+    :as args}]
+  (let [skey-streams (coerce-linked-map skey-streams)]
+    (cross-streams
+     (-> args
+         (dissoc :default-key-fn)
+         (assoc
+          :key-compare-fn key-compare-fn
+          ;; choose all offered lowest-key head-items
+          ;; bork if there are multiple values for a key on any
+          ;; one stream i.e. it's not a set
+          :selector-fn set-select-all
+          :finish-merge-fn finish-merge-fn
+          ;; merge the chosen items into a map with conj
+          :init-output-value {}
+          :skey-streams (->> (for [[sk s] skey-streams]
+                               [sk
+                                (sorted-stream
+                                 default-key-fn
+                                 conj
+                                 s)])
+                             (into (linked/map))))))))
+
+(defn set-streams-difference
+  [{key-compare-fn :key-compare-fn
+    default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    :or {key-compare-fn compare
+         default-key-fn identity}
+    :as args}]
+  (let [skey-streams (coerce-linked-map skey-streams)
+
+        ;; only return a record if there is a record in
+        ;; the first stream and no other stream
+        difference-finish-merge-fn
+        (fn [skey-vals]
+          (let [all-skeys (keys skey-streams)
+                first-skey (first all-skeys)
+                rest-skeys (rest all-skeys)
+
+                first-val (get skey-vals first-skey)
+                has-rest-val? (some #(get skey-vals %) rest-skeys)]
+            (when (and first-val (not has-rest-val?))
+              ((or finish-merge-fn identity)
+               skey-vals))))]
+    (cross-streams
+     (-> args
+         (dissoc :default-key-fn)
+         (assoc
+          :key-compare-fn key-compare-fn
+          ;; choose all offered lowest-key head-items
+          ;; bork if there are multiple values for a key on any
+          ;; one stream i.e. it's not a set
+          :selector-fn set-select-all
+          :finish-merge-fn difference-finish-merge-fn
+          ;; merge the chosen items into a map with conj
+          :init-output-value {}
+          :skey-streams (->> (for [[sk s] skey-streams]
+                               [sk
+                                (sorted-stream
+                                 default-key-fn
+                                 conj
+                                 s)])
+                             (into (linked/map))))))))

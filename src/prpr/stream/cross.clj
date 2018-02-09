@@ -518,9 +518,50 @@
                                  s)])
                              (into (linked/map))))))))
 
+(defn n-left-join-streams
+  [{key-compare-fn :key-compare-fn
+    default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    n :n
+    :or {key-compare-fn compare
+         default-key-fn identity
+         n 1}
+    :as args}]
+  (let [skey-streams (coerce-linked-map skey-streams)
+
+        ;; only return a record if there is a value
+        ;; in the joined record from each of the
+        ;; n leftmost streams
+        n-left-join-finish-merge-fn
+        (fn [skey-vals]
+          (let [n-left-skeys (take n (keys skey-streams))
+                satisfies-n-left? (->> (for [sk n-left-skeys]
+                                         (get skey-vals sk))
+                                       (every? some?))]
+            (when satisfies-n-left?
+              ((or finish-merge-fn identity)
+               skey-vals))))]
+    (cross-streams
+     (-> args
+         (dissoc :default-key-fn)
+         (assoc
+          :key-compare-fn key-compare-fn
+          ;; choose all offered lowest-key head-items
+          :selector-fn select-all
+          :finish-merge-fn n-left-join-finish-merge-fn
+          ;; merge the chosen items into a map with conj
+          :init-output-value {}
+          :skey-streams (->> (for [[sk s] skey-streams]
+                               [sk
+                                (sorted-stream
+                                 default-key-fn
+                                 conj
+                                 s)])
+                             (into (linked/map))))))))
+
 ;; TODO
-;; n-left-join - only output elements with matching keys on n leftmost streams
-;; left-join - n-left-join where n=1
 ;; set/intersection - n-left-join where n=no of streams
 ;; set/union - outer join
 ;; set/difference - two-way join where output a record only if not present on right stream

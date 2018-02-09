@@ -725,3 +725,76 @@
               {:0 {:foo 3 :bar 30} :1 {:foofoo 3 :baz 300}}
               {:0 {:foo 4 :bar 40}}]
              ovs)))))
+
+(deftest n-left-join-test
+  (testing "1-1 1-left join"
+    (let [s0 (s/->source [{:foo 1 :bar 10}
+                          {:foo 3 :bar 30}
+                          {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100}
+                          {:foo 2 :baz 200}
+                          {:foo 3 :baz 300}])
+
+          kss [[:0 s0][:1 s1]]
+
+          os @(sut/n-left-join-streams
+               {:default-key-fn :foo
+                :skey-streams kss
+                :n 1})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+              {:0 {:foo 4 :bar 40}}]
+             ovs))))
+
+  (testing "1-1 2-left join"
+    (let [s0 (s/->source [{:foo 1 :bar 10}
+                          {:foo 3 :bar 30}
+                          {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100}
+                          {:foo 2 :baz 200}
+                          {:foo 3 :baz 300}])
+          s2 (s/->source [{:foo 1 :baz 1000}
+                          {:foo 2 :baz 2000}
+                          {:foo 4 :bar 40}
+                          {:foo 5 :baz 5000}])
+
+          kss [[:0 s0][:1 s1][:2 s2]]
+
+          os @(sut/n-left-join-streams
+               {:default-key-fn :foo
+                :skey-streams kss
+                :n 2})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100} :2 {:foo 1 :baz 1000}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}]
+             ovs))))
+
+  (testing "many-many joins"
+    (with-log-level :warn
+      (let [s0 (s/->source [{:foo 1 :bar 10}
+                            {:foo 3 :bar 30}
+                            {:foo 3 :bar 40}
+                            {:foo 4 :bar 40}])
+            s1 (s/->source [{:foo 1 :baz 100}
+                            {:foo 3 :baz 300}
+                            {:foo 3 :baz 400}
+                            {:foo 5 :baz 500}])
+            kss [[:0 s0][:1 s1]]
+
+            os @(sut/n-left-join-streams
+                 {:default-key-fn :foo
+                  :skey-streams kss
+                  :n 1})
+            ovs @(s/reduce conj [] os)]
+
+        (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 4 :bar 40}}]
+               ovs)))))
+  )

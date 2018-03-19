@@ -21,15 +21,14 @@
   (testing "ISortedStream ops work correctly"
     (let [s (s/stream)
           _ (s/put! s {:foo 10})
-          ss (sut/sorted-stream :foo merge s)
+          ss (sut/sorted-stream :foo s)
           v @(sut/-take! ss)]
       (is (= {:foo 10} v))
-      (is (= 10 (sut/-key ss v)))
-      (is (= {:foo 10 :bar 100} (sut/-merge ss {:bar 100} v)))))
+      (is (= 10 (sut/-key ss v)))))
 
   (testing "doesn't nest"
-    (let [ss (sut/sorted-stream  identity merge (s/stream))
-          ss2 (sut/sorted-stream identity merge ss)]
+    (let [ss (sut/sorted-stream  identity (s/stream))
+          ss2 (sut/sorted-stream identity ss)]
       ;; (is (instance? SortedStream ss))
       (is (identical? ss ss2)))))
 
@@ -120,11 +119,10 @@
        (into (linked/map))))
 
 (defn keyed-vecs->sorted-streams
-  ([key-fn merge-fn kvs]
+  ([key-fn kvs]
    (->> kvs
         (map (fn [[k v]] [k (sut/sorted-stream
                              key-fn
-                             merge-fn
                              (s/->source v))]))
         (into (linked/map)))))
 
@@ -311,7 +309,6 @@
                                       :el-val-range 3})]
     (let [kss (keyed-vecs->sorted-streams
                identity
-               (fn [o [sk v]] (+ o v))
                kvs)
           hvs @(sut/init-stream-buffers compare kss)
 
@@ -332,6 +329,7 @@
 
           mos (sut/merge-stream-objects
                0
+               (fn [o sk v] (+ o v))
                kss
                skey-vals)]
       (is (=  (->> skey-vals
@@ -342,9 +340,10 @@
 (deftest head-values-cartesian-product-merge-test
   (testing "trivial cartesian product"
     (is (= (sut/head-values-cartesian-product-merge
-            identity
-            identity
             []
+            conj
+            identity
+            identity
             {}
             {})
            [])))
@@ -367,9 +366,10 @@
                     hvs)
 
             kvcp (sut/head-values-cartesian-product-merge
-                  identity
-                  identity
                   []
+                  conj
+                  identity
+                  identity
                   kss
                   mkskvs)]
         ;; (info "mkskvs" mkskvs)
@@ -380,7 +380,7 @@
                            (for [v hvals]
                              [sk v])))
                     (apply combo/cartesian-product)
-                    (map #(sut/merge-stream-objects [] kss %)))
+                    (map #(sut/merge-stream-objects [] conj kss %)))
                kvcp)))))
 
   (testing "finish-merge finishes merges and product-sort-fn sorts the cartesian product output"
@@ -389,7 +389,6 @@
           kvs {:s1 s1 :s2 s2}
           kss (keyed-vecs->sorted-streams
                :foo
-               conj
                kvs)
           hvs @(sut/init-stream-buffers compare kss)
           mkskvs (sut/min-key-skey-values
@@ -397,9 +396,10 @@
                   kss
                   hvs)
           kvcp (sut/head-values-cartesian-product-merge
+                {}
+                assoc
                 (fn [o] (->> o vals (apply merge)))
                 (partial sort-by (juxt :bar :baz))
-                {}
                 kss
                 mkskvs)]
       (is (=
@@ -415,7 +415,6 @@
           kvs {:s1 s1 :s2 s2}
           kss (keyed-vecs->sorted-streams
                :foo
-               conj
                kvs)
           hvs @(sut/init-stream-buffers compare kss)
           mkskvs (sut/min-key-skey-values
@@ -423,6 +422,8 @@
                   kss
                   hvs)
           kvcp (sut/head-values-cartesian-product-merge
+                {}
+                assoc
                 (fn [o] (->> o
                              vals
                              (apply merge)
@@ -430,7 +431,6 @@
                                 (when (even? (:bar m))
                                   m)))))
                 (partial sort-by (juxt :bar :baz))
-                {}
                 kss
                 mkskvs)]
       (is (=
@@ -451,7 +451,7 @@
                  )]
       (let [kss (keyed-vecs->sorted-streams
                  identity
-                 (fn [o [sk v]] (conj o [sk v]))
+                 ;; (fn [o [sk v]] (conj o [sk v]))
                  kvs)
 
             skey-streambufs @(sut/init-stream-buffers compare kss)
@@ -466,13 +466,13 @@
 
             [output-values
              next-skey-head-values] @(sut/next-output-values
-                                      compare
-                                      sut/select-first
-                                      nil
-                                      nil
-                                      {}
-                                      kss
-                                      skey-streambufs)]
+                                      {:key-compare-fn compare
+                                       :selector-fn sut/select-first
+                                       :finish-merge-fn nil
+                                       :product-sort-fn nil
+                                       :init-output-value {}
+                                       :skey-streams kss
+                                       :skey-streambufs skey-streambufs})]
         ;; (warn "kvs" kvs)
         (if all-drained?
           (do
@@ -502,13 +502,13 @@
           kss {:0 s0 :1 s1}
           [ek err] @(pr/catch-error
                      (sut/next-output-values
-                      compare
-                      (fn [& args] nil)
-                      nil
-                      nil
-                      {}
-                      kss
-                      {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
+                      {:key-compare-fn compare
+                       :selector-fn (fn [& args] nil)
+                       :finish-merge-fn nil
+                       :product-sort-fn nil
+                       :init-output-value {}
+                       :skey-streams kss
+                       :skey-streambufs {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}}))]
       (is (= ::sut/selector-fn-failed ek))))
 
   (testing "throws if selector-fn chooses a wrong value"
@@ -517,13 +517,13 @@
           kss {:0 s0 :1 s1}
           [ek error] @(pr/catch-error
                        (sut/next-output-values
-                        compare
-                        (fn [& args] [::blah])
-                        nil
-                        nil
-                        {}
-                        kss
-                        {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}))]
+                        {:key-compare-fn compare
+                         :selector-fn (fn [& args] [::blah])
+                         :finish-merge-fn  nil
+                         :product-sort-fn nil
+                         :init-output-value {}
+                         :skey-streams kss
+                         :skey-streambufs {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}}))]
       (is (= ::sut/selector-fn-failed ek))))
   )
 
@@ -712,7 +712,7 @@
           s1 (s/->source [{:foofoo 1 :baz 100}
                           {:foofoo 2 :baz 200}
                           {:foofoo 3 :baz 300}])
-          ss1 (sut/sorted-stream :foofoo conj s1)
+          ss1 (sut/sorted-stream :foofoo s1)
           kss {:0 s0 :1 ss1}
 
           os @(sut/full-outer-join-streams

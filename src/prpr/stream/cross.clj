@@ -24,9 +24,7 @@
     "extracts the sort-key from the value -
      the head-values with the lowest sort-key will
      be given to the selector-fn to select which
-     values will compose the next output-value")
-  (-merge [_ output-value skey-val]
-    "merge a selected value for the stream with stream-key into the output value"))
+     values will compose the next output-value"))
 
 ;; default ISortedStream uses values as keys directly
 ;; and merges by replacement.
@@ -38,8 +36,7 @@
     ([s] (s/take! s ::drained))
     ([s default-val] (s/take! s default-val)))
   (-close! [s] (s/close! s))
-  (-key [_ v] v)
-  (-merge [_ output-value skey-val] (conj output-value skey-val)))
+  (-key [_ v] v))
 
 (defrecord SortedStream [stream key-fn merge-fn]
   ISortedStream
@@ -47,21 +44,19 @@
   (-take! [_] (s/take! stream ::drained))
   (-take! [_ default-val] (s/take! stream default-val))
   (-close! [_] (s/close! stream))
-  (-key [_ v] (key-fn v))
-  (-merge [_ output-value skey-val] (merge-fn output-value skey-val)))
+  (-key [_ v] (key-fn v)))
 
 (defn sorted-stream
   "create an ISortedStream from a manifold stream with a
    supplied key-fn and merge-fn"
-  [key-fn merge-fn stream]
+  [key-fn stream]
   (assert (or
            (instance? SortedStream stream)
            (instance? IEventSource stream)))
   (if (instance? SortedStream stream)
     stream
     (map->SortedStream {:stream stream
-                        :key-fn key-fn
-                        :merge-fn merge-fn})))
+                        :key-fn key-fn})))
 
 (defn- intermediate-stream
   "given a sorted-stream, create an intermediate-stream,
@@ -294,12 +289,11 @@
   "given a seq of [skey val] objects, merge the vals
    using the -merge operation defined on the stream from
    skey-streams {skey stream}"
-  [init-output-value skey-streams skey-vals]
-  (let [skey-streams (coerce-linked-map skey-streams)
-        skey-vals (coerce-linked-map skey-vals)]
+  [init-output-value merge-fn skey-streams skey-vals]
+  (let [skey-vals (coerce-linked-map skey-vals)]
     (->> skey-vals
          (reduce (fn [o [sk v]]
-                   (-merge (get skey-streams sk) o [sk v]))
+                   (merge-fn o sk v))
                  init-output-value))))
 
 (defn head-values-cartesian-product-merge
@@ -308,7 +302,12 @@
    first produce a cartesian product and then merge each product value
    to a single value, finishing off each merge with finish-merge-fn and
    then sorting the merged values with product-sort-fn"
-  [finish-merge-fn product-sort-fn init-output-value skey-streams skey-values]
+  [init-output-value
+   merge-fn
+   finish-merge-fn
+   product-sort-fn
+   skey-streams
+   skey-values]
   ;; do the reduce in the order of skey-streams (if it was passed
   ;; as a seq rather than a map)
   ;; (warn "key-values-cartesian-product" init-output-value skey-streams skey-values)
@@ -331,7 +330,11 @@
 
     (->> (for [skey-vals cp]
            ((or finish-merge-fn identity)
-            (merge-stream-objects init-output-value skey-streams skey-vals)))
+            (merge-stream-objects
+             init-output-value
+             merge-fn
+             skey-streams
+             skey-vals)))
          (filter identity) ;; finish-merge-fn can remove records
          ((or product-sort-fn identity)))))
 
@@ -347,13 +350,13 @@
    accordingly
 
    - returns [output-value next-skey-streambufs] or [::drained]"
-  [key-compare-fn
-   selector-fn
-   finish-merge-fn
-   product-sort-fn
-   init-output-value
-   skey-streams
-   skey-streambufs]
+  [{key-compare-fn :key-compare-fn
+    selector-fn :selector-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    skey-streambufs :skey-streambufs
+    :as args}]
   (ddo [:let [skey-streams (coerce-linked-map skey-streams)
               skey-streambufs (coerce-linked-map skey-streambufs)
 
@@ -371,9 +374,10 @@
               ;; _ (warn "selected-skey-values" selected-skey-values)
 
               output-values (head-values-cartesian-product-merge
+                             {}
+                             assoc
                              finish-merge-fn
                              product-sort-fn
-                             init-output-value
                              skey-streams
                              selected-skey-values)
 
@@ -411,7 +415,6 @@
     selector-fn :selector-fn
     finish-merge-fn :finish-merge-fn
     product-sort-fn :product-sort-fn
-    init-output-value :init-output-value
     skey-streams :skey-streams
     :as args}]
   ;; (info "cross-streams" args)
@@ -443,13 +446,9 @@
            (fn [sk-nvs]
              ;; (info "sk-nvs" sk-nvs)
              (next-output-values
-              key-compare-fn
-              selector-fn
-              finish-merge-fn
-              product-sort-fn
-              init-output-value
-              skey-intermediates
-              sk-nvs))
+              (assoc args
+                     :skey-streams skey-intermediates
+                     :skey-streambufs sk-nvs)))
            (fn [[ovs sk-nvs]]
              ;; (info "ovs sk-nvs" [ovs sk-nvs])
              (if (= ::drained ovs)
@@ -488,15 +487,16 @@
           :key-compare-fn key-compare-fn
           ;; choose only the first of the lowest-key head-items
           :selector-fn select-first
-          ;; init-value gets ignored by merge-fn
-          :init-output-value nil
-          ;; since there will only be a single chosen item, merge ignores
-          ;; the merged-value arg
+          ;; there should only be a single value in the merged output
+          :finish-merge-fn (fn [m]
+                             (assert (= 1 (count m)))
+                             (let [[k v] (first m)]
+                               v))
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 (fn [_ [_ v]] v) s)])
+                                 s)])
                              (into (linked/map))))))))
 
 (defn full-outer-join-streams
@@ -519,13 +519,10 @@
           :key-compare-fn key-compare-fn
           ;; choose all offered lowest-key head-items
           :selector-fn select-all
-          ;; merge the chosen items into a map with conj
-          :init-output-value {}
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 conj
                                  s)])
                              (into (linked/map))))))))
 
@@ -562,13 +559,10 @@
           ;; choose all offered lowest-key head-items
           :selector-fn select-all
           :finish-merge-fn n-left-join-finish-merge-fn
-          ;; merge the chosen items into a map with conj
-          :init-output-value {}
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 conj
                                  s)])
                              (into (linked/map))))))))
 
@@ -604,13 +598,10 @@
           ;; one stream i.e. it's not a set
           :selector-fn set-select-all
           :finish-merge-fn intersect-finish-merge-fn
-          ;; merge the chosen items into a map with conj
-          :init-output-value {}
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 conj
                                  s)])
                              (into (linked/map))))))))
 
@@ -634,13 +625,10 @@
           ;; one stream i.e. it's not a set
           :selector-fn set-select-all
           :finish-merge-fn finish-merge-fn
-          ;; merge the chosen items into a map with conj
-          :init-output-value {}
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 conj
                                  s)])
                              (into (linked/map))))))))
 
@@ -678,12 +666,9 @@
           ;; one stream i.e. it's not a set
           :selector-fn set-select-all
           :finish-merge-fn difference-finish-merge-fn
-          ;; merge the chosen items into a map with conj
-          :init-output-value {}
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
                                 (sorted-stream
                                  default-key-fn
-                                 conj
                                  s)])
                              (into (linked/map))))))))

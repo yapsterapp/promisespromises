@@ -566,6 +566,18 @@
                                  s)])
                              (into (linked/map))))))))
 
+(defn inner-join-streams
+  [{key-compare-fn :key-compare-fn
+    default-key-fn :default-key-fn
+    finish-merge-fn :finish-merge-fn
+    product-sort-fn :product-sort-fn
+    skey-streams :skey-streams
+    :or {key-compare-fn compare
+         default-key-fn identity}
+    :as args}]
+  (n-left-join-streams
+   (assoc args :n (count skey-streams))))
+
 (defn set-streams-intersect
   [{key-compare-fn :key-compare-fn
     default-key-fn :default-key-fn
@@ -583,8 +595,8 @@
         (fn [skey-vals]
           (let [all-skeys (keys skey-streams)
                 satisfies-intersect? (->> (for [sk all-skeys]
-                                         (get skey-vals sk))
-                                       (every? some?))]
+                                            (get skey-vals sk))
+                                          (every? some?))]
             (when satisfies-intersect?
               ((or finish-merge-fn identity)
                skey-vals))))]

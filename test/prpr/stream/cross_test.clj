@@ -339,13 +339,13 @@
 
 (deftest head-values-cartesian-product-merge-test
   (testing "trivial cartesian product"
-    (is (= (sut/head-values-cartesian-product-merge
-            []
-            conj
-            identity
-            identity
-            {}
-            {})
+    (is (= @(sut/head-values-cartesian-product-merge
+             []
+             conj
+             identity
+             identity
+             {}
+             {})
            [])))
   (testing "non-trivial cartesian products"
     (doseq [;; ensure no empty streams with :min-vec-sz
@@ -365,13 +365,13 @@
                     kss
                     hvs)
 
-            kvcp (sut/head-values-cartesian-product-merge
-                  []
-                  conj
-                  identity
-                  identity
-                  kss
-                  mkskvs)]
+            kvcp @(sut/head-values-cartesian-product-merge
+                   []
+                   conj
+                   identity
+                   identity
+                   kss
+                   mkskvs)]
         ;; (info "mkskvs" mkskvs)
         ;; (info "kvcp" (vec kvcp))
 
@@ -395,13 +395,39 @@
                   compare
                   kss
                   hvs)
-          kvcp (sut/head-values-cartesian-product-merge
-                {}
-                assoc
-                (fn [o] (->> o vals (apply merge)))
-                (partial sort-by (juxt :bar :baz))
-                kss
-                mkskvs)]
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o vals (apply merge)))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
+      (is (=
+           [{:foo 1, :bar 1, :baz 1}
+            {:foo 1, :bar 1, :baz 2}
+            {:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp))))
+
+  (testing "finish-merge returning a Deferred result"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o vals (apply merge) d/success-deferred))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
       (is (=
            [{:foo 1, :bar 1, :baz 1}
             {:foo 1, :bar 1, :baz 2}
@@ -421,18 +447,18 @@
                   compare
                   kss
                   hvs)
-          kvcp (sut/head-values-cartesian-product-merge
-                {}
-                assoc
-                (fn [o] (->> o
-                             vals
-                             (apply merge)
-                             ((fn [m]
-                                (when (even? (:bar m))
-                                  m)))))
-                (partial sort-by (juxt :bar :baz))
-                kss
-                mkskvs)]
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o
+                              vals
+                              (apply merge)
+                              ((fn [m]
+                                 (when (even? (:bar m))
+                                   m)))))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
       (is (=
            [{:foo 1, :bar 2, :baz 1}
             {:foo 1, :bar 2, :baz 2}]

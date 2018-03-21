@@ -311,32 +311,37 @@
   ;; do the reduce in the order of skey-streams (if it was passed
   ;; as a seq rather than a map)
   ;; (warn "key-values-cartesian-product" init-output-value skey-streams skey-values)
-  (let [skey-streams (coerce-linked-map skey-streams)
+  (ddo [:let [skey-streams (coerce-linked-map skey-streams)
 
-        ordered-skeys (->> skey-streams
-                           (map (fn [[sk _]] sk))
-                           (filter (set (keys skey-values))))
-        ordered-skey-hvals (for [sk ordered-skeys]
-                             (for [hv (get skey-values sk)]
-                               [sk hv]))
+              ordered-skeys (->> skey-streams
+                                 (map (fn [[sk _]] sk))
+                                 (filter (set (keys skey-values))))
+              ordered-skey-hvals (for [sk ordered-skeys]
+                                   (for [hv (get skey-values sk)]
+                                     [sk hv]))
 
-        ;; cartesian-product produces '(()) if empty - bug?
-        cp (if (not-empty ordered-skey-hvals)
-             (apply combo/cartesian-product ordered-skey-hvals)
-             '())]
+              ;; cartesian-product produces '(()) if empty - bug?
+              cp (if (not-empty ordered-skey-hvals)
+                   (apply combo/cartesian-product ordered-skey-hvals)
+                   '())]
 
-    ;; (warn "ordered-skey-hvals" (vec ordered-skey-hvals))
-    ;; (warn "cartesian-product" (vec cp))
+        ;; (warn "ordered-skey-hvals" (vec ordered-skey-hvals))
+        ;; (warn "cartesian-product" (vec cp))
 
-    (->> (for [skey-vals cp]
-           ((or finish-merge-fn identity)
-            (merge-stream-objects
-             init-output-value
-             merge-fn
-             skey-streams
-             skey-vals)))
-         (filter identity) ;; finish-merge-fn can remove records
-         ((or product-sort-fn identity)))))
+        ;; allow for async finish-merge-fn
+        merged (->> (for [skey-vals cp]
+                      ((or finish-merge-fn identity)
+                       (merge-stream-objects
+                        init-output-value
+                        merge-fn
+                        skey-streams
+                        skey-vals)))
+                    (apply d/zip))]
+    (->> merged
+         ;; finish-merge-fn can return nil to remove records
+         (filter identity)
+         ((or product-sort-fn identity))
+         return)))
 
 (defn next-output-values
   "given skey-streams and the current head values from those streams
@@ -372,15 +377,16 @@
                                     mkskvs)
 
               ;; _ (warn "selected-skey-values" selected-skey-values)
+              ]
 
-              output-values (head-values-cartesian-product-merge
-                             {}
-                             assoc
-                             finish-merge-fn
-                             product-sort-fn
-                             skey-streams
-                             selected-skey-values)
-
+        output-values (head-values-cartesian-product-merge
+                       {}
+                       assoc
+                       finish-merge-fn
+                       product-sort-fn
+                       skey-streams
+                       selected-skey-values)
+        :let [
               ;; _ (warn "output-values" (vec output-values))
               ]
 

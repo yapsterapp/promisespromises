@@ -9,7 +9,9 @@
    [manifold
     [deferred :as d]
     [stream :as s]]
-   [prpr.promise :as pr :refer [ddo]])
+   [manifold.stream.core :as stream.core]
+   [prpr.promise :as pr :refer [ddo]]
+   [manifold.stream :as stream])
   (:import
    [linked.map LinkedMap]
    [manifold.stream.core IEventSource]))
@@ -39,6 +41,20 @@
   (-key [_ v] v))
 
 (defrecord SortedStream [stream key-fn merge-fn]
+
+  IEventSource
+  (take [_ default-val blocking?]
+    (.take stream default-val blocking?))
+  (take [_ default-val blocking? timeout timeout-val]
+    (.take stream default-val blocking? timeout timeout-val))
+  (isDrained [_]
+    (.isDrained stream))
+  (onDrained [_ callback]
+    (.onDrained stream callback))
+  (connector [_ sink]
+    (fn [_ sink options]
+      (stream/connect stream sink options)))
+
   ISortedStream
   (-stream [_] stream)
   (-take! [_] (s/take! stream ::drained))

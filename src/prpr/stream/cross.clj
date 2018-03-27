@@ -496,9 +496,7 @@
                  ;; (info "closing!")
                  (s/close! dst)
                  false)
-               (do
-                 (doseq [ov ovs]
-                   (s/put! dst ov))
+               (ddo [_ (s/put-all! dst ovs)]
                  (d/recur sk-nvs)))))))
 
     (d/success-deferred

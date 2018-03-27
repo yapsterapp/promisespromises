@@ -64,15 +64,33 @@
 
 (defn sorted-stream
   "create an ISortedStream from a manifold stream with a
-   supplied key-fn and merge-fn"
+   supplied key-fn. if the stream is already a SortedStream,
+   update its key-fn"
   [key-fn stream]
   (assert (or
            (instance? SortedStream stream)
            (instance? IEventSource stream)))
   (if (instance? SortedStream stream)
-    stream
+    (if (= key-fn (:key-fn stream))
+      stream
+      ;; changing the key-fn
+      (assoc stream :key-fn key-fn))
     (map->SortedStream {:stream stream
                         :key-fn key-fn})))
+
+(defn event-source->sorted-stream
+  "if stream is already a SortedStream, return it unchanged.
+   if it's an IEventSource create a SortedStream with the
+   supplied default-key-fn"
+  [default-key-fn stream]
+  (assert (or
+           (and default-key-fn
+                (instance? IEventSource stream))
+           (instance? SortedStream stream)))
+  (if (instance? SortedStream stream)
+    stream
+    (map->SortedStream {:stream stream
+                        :key-fn default-key-fn})))
 
 (defn- intermediate-stream
   "given a sorted-stream, create an intermediate-stream,
@@ -181,7 +199,7 @@
          :else
          (do
            (let [nk (-key stream v)]
-;;              (warn "compare" k nk)
+             ;;              (warn "compare" k nk)
              (when (> (key-compare-fn k nk) 0)
                (throw
                 (pr/error-ex ::stream-not-sorted {:stream-key stream-key
@@ -516,7 +534,7 @@
                                v))
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))
@@ -543,7 +561,7 @@
           :selector-fn select-all
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))
@@ -583,7 +601,7 @@
           :finish-merge-fn n-left-join-finish-merge-fn
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))
@@ -634,7 +652,7 @@
           :finish-merge-fn intersect-finish-merge-fn
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))
@@ -661,7 +679,7 @@
           :finish-merge-fn finish-merge-fn
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))
@@ -702,7 +720,7 @@
           :finish-merge-fn difference-finish-merge-fn
           :skey-streams (->> (for [[sk s] skey-streams]
                                [sk
-                                (sorted-stream
+                                (event-source->sorted-stream
                                  default-key-fn
                                  s)])
                              (into (linked/map))))))))

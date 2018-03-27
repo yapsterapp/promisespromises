@@ -27,10 +27,43 @@
       (is (= 10 (sut/-key ss v)))))
 
   (testing "doesn't nest"
-    (let [ss (sut/sorted-stream  identity (s/stream))
-          ss2 (sut/sorted-stream identity ss)]
-      ;; (is (instance? SortedStream ss))
-      (is (identical? ss ss2)))))
+    (let [s (s/stream)
+          _ (s/put! s {:foo 10})
+          _ (s/close! s)
+          ss (sut/sorted-stream  :foo s)
+          ss2 (sut/sorted-stream :foo ss)]
+      (is (identical? ss ss2))
+      (is (= :foo (:key-fn ss)))
+      (is (= :foo (:key-fn ss2)))
+      (is (= 10 (sut/-key ss2 @(sut/-take! ss2))))))
+
+  (testing "changing the key-fn"
+    (let [s (s/stream)
+          _ (s/put! s {:bar 20})
+          _ (s/close! s)
+          ss (sut/sorted-stream  :foo s)
+          ss2 (sut/sorted-stream :bar ss)]
+      (is (= :foo (:key-fn ss)))
+      (is (= :bar (:key-fn ss2)))
+      (is (= 20 (sut/-key ss2 @(sut/-take! ss2)))))))
+
+(deftest event-source->sorted-stream-test
+  (testing "creates a sorted-stream"
+    (let [s (s/stream)
+          _ (s/put! s {:foo 10})
+          _ (s/close! s)
+          ss (sut/event-source->sorted-stream :foo s)]
+      (is (= :foo (:key-fn ss)))
+      (is (= 10 (sut/-key ss @(sut/-take! ss))))))
+
+  (testing "doesn't update key-fn"
+    (let [s (s/stream)
+          _ (s/put! s {:foo 20})
+          _ (s/close! s)
+          ss (sut/event-source->sorted-stream :foo s)
+          ss2 (sut/event-source->sorted-stream :bar ss)]
+      (is (= :foo (:key-fn ss2)))
+      (is (= 20 (sut/-key ss2 @(sut/-take! ss2)))))))
 
 (defn random-sorted-vec
   "returns a sorted vector of random integers"

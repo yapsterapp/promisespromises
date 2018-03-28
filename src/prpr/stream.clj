@@ -80,3 +80,14 @@
     (do (warn (:error v) description)
         nil)
     v))
+
+(defn reduce-catch
+  "reduce, but with any errors caught and exemplars logged"
+  ([description f source]
+   (->> source
+        (filter-log-stream-errors description)
+        (st/reduce f)))
+  ([description f init source]
+   (->> source
+        (filter-log-stream-errors description)
+        (st/reduce f init))))

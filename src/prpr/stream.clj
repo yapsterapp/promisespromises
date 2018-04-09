@@ -5,7 +5,9 @@
    [cats.core :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
    [prpr.promise :as pr :refer [ddo]]
-   [taoensso.timbre :refer [warn]]))
+   [taoensso.timbre :refer [info warn]])
+  (:import
+   [manifold.stream Callback]))
 
 (defn realize-stream
   [v]
@@ -91,3 +93,74 @@
    (->> source
         (filter-log-stream-errors description)
         (st/reduce f init))))
+
+(defn s-first
+  "consume a stream completely, returning a Deferred of the first value from
+   the stream, if any. returns Deferred<no-val> if the stream is empty"
+  ([source]
+   (s-first nil source))
+  ([no-val source]
+   (st/reduce (fn [fv v]
+                (if (= no-val fv)
+                  v
+                  fv))
+              no-val
+              source)))
+
+(defn divert-stream-errors
+  "kinda awkward - adapted from connect-via... takes src and
+   returns [err dst]. feeds StreamErrors from src to err, and any
+   other values to dst"
+  ([src]
+   (let [src             (st/realize-each src)
+         err             (st/stream)
+         dst             (st/stream)
+         divert-callback (fn [v]
+                           (if (stream-error? v)
+                             (st/put! err v)
+                             (st/put! dst v)))
+         close-callback #(do
+                           (st/close! dst)
+                           (st/close! err))]
+     (st/connect
+      src
+      (Callback. divert-callback close-callback dst nil)
+      {})
+     (st/connect
+      src
+      (Callback. (fn [_] (d/success-deferred true)) nil err nil)
+      {})
+     [err dst])))
+
+(defn reduce-throw
+  "reduce, but with the first error turned into an error-deferred result"
+  ([description f source]
+   (let [logger (log-stream-error-exemplars description 2 source)
+         [err out] (->> source
+                        (st/map #(catch-stream-error %))
+                        (st/realize-each)
+                        (st/map logger)
+                        (divert-stream-errors))
+         rv-d (st/reduce f out)
+         e-d (s-first ::none err)]
+     (ddo [e e-d
+           rv rv-d]
+       (if (= ::none e)
+         (return rv)
+         (d/error-deferred (:error e))))))
+
+  ([description f init source]
+   (let [logger (log-stream-error-exemplars description 2 source)
+         err (st/stream)
+         [err out] (->> source
+                        (st/map #(catch-stream-error %))
+                        (st/realize-each)
+                        (st/map logger)
+                        (divert-stream-errors))
+         rv-d (st/reduce f init out)
+         e-d (s-first ::none err)]
+     (ddo [e e-d
+           rv rv-d]
+       (if (= ::none e)
+         (return rv)
+         (d/error-deferred (:error e)))))))

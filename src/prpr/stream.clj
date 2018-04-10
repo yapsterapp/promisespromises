@@ -110,7 +110,7 @@
 (defn divert-stream-errors
   "kinda awkward - adapted from connect-via... takes src and
    returns [err dst]. feeds StreamErrors from src to err, and any
-   other values to dst"
+   other values to dst. closes err and dst when src is exhausted"
   ([src]
    (let [src             (st/realize-each src)
          err             (st/stream)
@@ -132,8 +132,9 @@
       {})
      [err dst])))
 
-(defn reduce-throw
-  "reduce, but with the first error turned into an error-deferred result"
+(defn reduce-all-throw
+  "reduce a stream, but if there are any errors will log
+   exemplars and return an error-deferred with the first error"
   ([description f source]
    (let [logger (log-stream-error-exemplars description 2 source)
          [err out] (->> source

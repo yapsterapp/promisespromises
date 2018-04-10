@@ -145,7 +145,8 @@
 
 (defn reduce-all-throw
   "reduce a stream, but if there are any errors will log
-   exemplars and return an error-deferred with the first error"
+   exemplars and return an error-deferred with the first error. always
+   reduces the entire stream, as if any errors were filtered"
   ([description f source]
    (let [[err out] (log-divert-stream-errors description source)
          rv-d (st/reduce f out)

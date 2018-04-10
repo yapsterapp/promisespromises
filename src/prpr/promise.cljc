@@ -47,6 +47,11 @@
             (vnt/convert-vector-variant-to-map
              [tag value]))))
 
+(defn success-pr
+  "creates a promise containing the value"
+  [value]
+  (prpr.promise.platform/pr-success value))
+
 (defn error-pr
   "creates an errored promise encoding the error-variant"
   ([[tag value]] (error-pr tag value))

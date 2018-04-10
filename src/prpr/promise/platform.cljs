@@ -13,6 +13,9 @@
 (def pr-catch
   promesa.core/catch)
 
+(def pr-success
+  promesa.core/promise)
+
 (def pr-error
   promesa.core/rejected)
 

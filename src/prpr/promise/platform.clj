@@ -13,6 +13,9 @@
 (def pr-catch
   @#'manifold.deferred/catch)
 
+(def pr-success
+  @#'manifold.deferred/success-deferred)
+
 (def pr-error
   @#'manifold.deferred/error-deferred)
 

@@ -132,16 +132,22 @@
       {})
      [err dst])))
 
+(defn- log-divert-stream-errors
+  "log exemplars of stream errors and divert the errors to the err
+   stream. returns [err dst]"
+  [description source]
+  (let [logger (log-stream-error-exemplars description 2 source)]
+    (->> source
+         (st/map #(catch-stream-error %))
+         (st/realize-each)
+         (st/map logger)
+         (divert-stream-errors))))
+
 (defn reduce-all-throw
   "reduce a stream, but if there are any errors will log
    exemplars and return an error-deferred with the first error"
   ([description f source]
-   (let [logger (log-stream-error-exemplars description 2 source)
-         [err out] (->> source
-                        (st/map #(catch-stream-error %))
-                        (st/realize-each)
-                        (st/map logger)
-                        (divert-stream-errors))
+   (let [[err out] (log-divert-stream-errors description source)
          rv-d (st/reduce f out)
          e-d (s-first ::none err)]
      (ddo [e e-d
@@ -151,13 +157,7 @@
          (d/error-deferred (:error e))))))
 
   ([description f init source]
-   (let [logger (log-stream-error-exemplars description 2 source)
-         err (st/stream)
-         [err out] (->> source
-                        (st/map #(catch-stream-error %))
-                        (st/realize-each)
-                        (st/map logger)
-                        (divert-stream-errors))
+   (let [[err out] (log-divert-stream-errors description source)
          rv-d (st/reduce f init out)
          e-d (s-first ::none err)]
      (ddo [e e-d

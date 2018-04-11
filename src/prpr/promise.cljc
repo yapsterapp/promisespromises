@@ -79,6 +79,23 @@
       [::unknown-error v])))
 
 #?(:clj
+   (defmacro finally
+     "finally for promises - makes sure to run the finally
+      even if promise chain init throws. some exceptions
+      might slip through the net - non-Exception Throwables
+      on the jvm for example - but we are probably in deeper
+      trouble anyway if that happens"
+     [callback & body]
+     `(prpr.promise.platform/pr-finally
+       (prpr.util.macro/try-catch
+        ~@body
+        (catch
+            x#
+            (callback)
+          (prpr.promise.platform/pr-error x#)))
+       callback)))
+
+#?(:clj
    (defmacro catch
      "catches any errors and returns the result of
       applying the error-handler to the error-value"

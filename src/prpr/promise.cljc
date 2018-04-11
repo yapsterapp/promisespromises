@@ -86,14 +86,13 @@
       on the jvm for example - but we are probably in deeper
       trouble anyway if that happens"
      [callback & body]
-     `(prpr.promise.platform/pr-finally
-       (prpr.util.macro/try-catch
-        ~@body
-        (catch
-            x#
-            (callback)
-          (prpr.promise.platform/pr-error x#)))
-       callback)))
+     `(try
+        (prpr.promise.platform/pr-finally
+         (do ~@body)
+         ~callback)
+        (catch Exception x#
+          (~callback)
+          (prpr.promise.platform/pr-error x#)))))
 
 #?(:clj
    (defmacro catch

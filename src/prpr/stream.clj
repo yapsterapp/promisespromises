@@ -166,3 +166,14 @@
        (if (= ::none e)
          (return rv)
          (d/error-deferred (:error e)))))))
+
+(defn close-on-closed
+  "close a Closeable object (such as an InputStream) when the stream
+   is closed"
+  [closeable stream]
+  (st/on-closed
+   stream
+   (fn []
+     (warn "close-on-closed")
+     (.close closeable)))
+  stream)

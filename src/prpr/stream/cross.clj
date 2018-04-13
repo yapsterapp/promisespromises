@@ -2,6 +2,7 @@
   (:require
    [cats.core :as m :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
+   [clojure.pprint :refer [pprint]]
    [clojure.set :as set]
    [clojure.math.combinatorics :as combo]
    [linked.core :as linked]
@@ -451,7 +452,8 @@
 
    different selector-fns and ISortedStream impls can give different
    behaviours, such as sort-merge or join"
-  [{key-compare-fn :key-compare-fn
+  [{id :id
+    key-compare-fn :key-compare-fn
     selector-fn :selector-fn
     finish-merge-fn :finish-merge-fn
     product-sort-fn :product-sort-fn
@@ -468,7 +470,13 @@
 
     (pr/catch
         (fn [e]
-          (warn e "error crossing the streams" )
+
+          (let [exd (ex-data e)
+                pp (with-out-str (pprint exd))]
+            ;; pprint all the ex-data in the message so it doesn't get truncated
+            ;; by exception printin
+            (warn e (str "error crossing the streams. op-id:" id "\n" pp) ))
+
           (doseq [s (concat [dst]
                             (vals skey-streams)
                             (vals skey-intermediates))]

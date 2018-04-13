@@ -75,8 +75,10 @@
       (vnt/is-map-variant? v)
       (vnt/convert-map-variant-to-vector v)
 
+      ;; we print any error to avoid getting
+      ;; undeserializable #error tags in the EDN
       :else
-      [::unknown-error v])))
+      [::unknown-error {:error (with-out-str (print v))}])))
 
 #?(:clj
    (defmacro finally
@@ -135,6 +137,23 @@
             x#
             (prpr.promise.platform/pr-error x#)))
        (fn [e#] (decode-error-value e#)))))
+
+#?(:clj
+   (defmacro wrap-catch-error
+     "wraps any normal responses in a [tag <response>] variant, and
+      catches any errors and returns the results of decode-error-value
+      on the error value. has to be a macro to catch any exceptions
+      in the initial evaluation of the body"
+     ([body] `(wrap-catch-error :ok ~body))
+     ([tag body]
+      `(prpr.promise.platform/pr-catch
+        (prpr.util.macro/try-catch
+         (ddo [r# ~body]
+           [~tag r#])
+         (catch
+             x#
+             (prpr.promise.platform/pr-error x#)))
+        (fn [e#] (decode-error-value e#))))))
 
 #?(:clj
    (defmacro catch-error-log

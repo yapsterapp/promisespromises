@@ -39,10 +39,10 @@
   (is (= [:foo :bar] (sut/decode-error-value [:foo :bar])))
   (is (= [:foo :bar] (sut/decode-error-value {:tag :foo :value :bar})))
   (is (= [:foo :bar] (sut/decode-error-value (sut/error-ex :foo :bar))))
-  (is (= ::sut/unknown-error
-         (first (sut/decode-error-value (ex-info "foo" {})))))
-  (is (instance? Throwable
-                 (second (sut/decode-error-value (ex-info "foo" {}))))))
+  (let [[tag value] (sut/decode-error-value (ex-info "foo" {}))]
+    (is (= ::sut/unknown-error tag))
+    (is (string? (:error value)))
+    (is (re-matches #"(?s)^#error .*" (:error value)))))
 
 (deftest catch-error-test
   ;; test exceptions in the promise init are caught
@@ -50,12 +50,31 @@
          @(sut/catch-error (throw (sut/error-ex :foo :bar)))))
   (let [[k v] @(sut/catch-error (throw (ex-info "boo" {:boo true})))]
     (is (= ::sut/unknown-error k))
-    (is (= {:boo true} (ex-data v))))
+    (is (string? (:error v)))
+    (is (re-matches #"(?s)^#error .*" (:error v))))
 
   ;; test errored promises are caught
   (is (= [:ok] @(sut/catch-error (d/success-deferred [:ok]))))
   (is (= [:foo :bar] @(sut/catch-error (sut/error-pr :foo :bar))))
   (is (= [:foo :bar] @(sut/catch-error
+                       (d/chain
+                        (d/success-deferred true)
+                        (fn [_] (throw (sut/error-ex :foo :bar))))))))
+
+(deftest wrap-catch-error-test
+  ;; test exceptions in the promise init are caught
+  (is (= [:foo :bar]
+         @(sut/wrap-catch-error (throw (sut/error-ex :foo :bar)))))
+  (let [[k v] @(sut/wrap-catch-error (throw (ex-info "boo" {:boo true})))]
+    (is (= ::sut/unknown-error k))
+    (is (string? (:error v)))
+    (is (re-matches #"(?s)^#error .*" (:error v))))
+
+  ;; test errored promises are caught
+  (is (= [:ok :val] @(sut/wrap-catch-error (d/success-deferred :val))))
+  (is (= [:success-tag :val] @(sut/wrap-catch-error :success-tag (d/success-deferred :val))))
+  (is (= [:foo :bar] @(sut/wrap-catch-error (sut/error-pr :foo :bar))))
+  (is (= [:foo :bar] @(sut/wrap-catch-error
                        (d/chain
                         (d/success-deferred true)
                         (fn [_] (throw (sut/error-ex :foo :bar))))))))
@@ -67,7 +86,8 @@
            @(sut/catch-error-log "test" (throw (sut/error-ex :foo :bar)))))
     (let [[k v] @(sut/catch-error-log "test" (throw (ex-info "boo" {:boo true})))]
       (is (= ::sut/unknown-error k))
-      (is (= {:boo true} (ex-data v))))
+      (is (string? (:error v)))
+      (is (re-matches #"(?s)^#error .*" (:error v))))
 
     ;; test errored promises are caught
     (is (= [:ok] @(sut/catch-error-log "test" (d/success-deferred [:ok]))))
@@ -87,7 +107,8 @@
                   #(into % [:baz])
                   (throw (ex-info "boo" {:boo true})))]
     (is (= ::sut/unknown-error k))
-    (is (= {:boo true} (ex-data v)))
+    (is (string? (:error v)))
+    (is (re-matches #"(?s)^#error .*" (:error v)))
     (is (= :baz z)))
 
   ;; test errored promises are caught

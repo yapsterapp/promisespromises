@@ -43,7 +43,7 @@
   "encodes an error-variant on to an ex-info"
   ([[tag value]] (error-ex tag value))
   ([tag value]
-   (ex-info "error variant transport exception"
+   (ex-info (str tag)
             (vnt/convert-vector-variant-to-map
              [tag value]))))
 

@@ -171,6 +171,14 @@
          (return rv)
          (d/error-deferred (:error e)))))))
 
+(defn count-all-throw
+  [description source]
+  (reduce-all-throw
+   description
+   (fn [cnt _] (inc cnt))
+   0
+   source))
+
 (defn close-on-closed
   "close a Closeable object (such as an InputStream) when the stream
    is closed"

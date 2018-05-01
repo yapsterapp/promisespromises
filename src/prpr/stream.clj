@@ -41,8 +41,10 @@
 (defmacro catch-stream-error
   "catch any errors and put them in a StreamError marker"
   [& body]
+  ;; (warn "catch-stream-error: wrapped")
   `(prpr.promise/catch
        (fn [err#]
+         ;; (warn "catch-stream-error: caught")
          (->StreamError err#))
        ~@body))
 
@@ -112,7 +114,9 @@
    returns [err dst]. feeds StreamErrors from src to err, and any
    other values to dst. closes err and dst when src is exhausted"
   ([src]
-   (let [src             (st/realize-each src)
+   (let [src             (->> src
+                              (st/map #(catch-stream-error %))
+                              (st/realize-each))
          err             (st/stream)
          dst             (st/stream)
          divert-callback (fn [v]

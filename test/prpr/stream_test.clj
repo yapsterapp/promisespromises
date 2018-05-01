@@ -144,4 +144,19 @@
                +
                s)
             ed (ex-data (d/error-value r ::oops))]
-        (is (= {:bar :bar} ed))))))
+        (is (= {:bar :bar} ed))))
+
+    (testing "throw gets caught"
+      (let [s (s/stream 1)
+            ev (d/chain (d/success-deferred :foo)
+                        (fn [v]
+                          (throw (ex-info "boo" {:foo ::foo}))))
+            _ @(s/put! s ev)
+            _ (s/close! s)
+            r (sut/reduce-all-throw
+               "throw"
+               conj
+               []
+               s)
+            ed (ex-data (d/error-value r ::oops))]
+        (is (= {:foo ::foo} ed))))))

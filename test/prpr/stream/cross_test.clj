@@ -601,7 +601,8 @@
       ;; (warn "vs" kvs)
       (let [kss (keyed-vecs->streams kvs)
             os @(sut/cross-streams
-                 {:key-compare-fn compare
+                 {:id ::cross-streams-test-streams-get-crossed
+                  :key-compare-fn compare
                   :selector-fn sut/select-first
                   :init-output-value {}
                   :skey-streams kss})
@@ -621,7 +622,8 @@
             _ (doseq [v [1 2 3]] (s/put! s1 v))
             kss {:0 s0 :1 s1}
             os-d (sut/cross-streams
-                  {:key-compare-fn (fn [& args] (throw (ex-info "boo" {})))
+                  {:id ::cross-streams-test-errors-during-setup
+                   :key-compare-fn (fn [& args] (throw (ex-info "boo" {})))
                    :selector-fn sut/select-first
                    :init-output-value nil
                    :skey-streams kss})]
@@ -637,7 +639,8 @@
             _ (doseq [vs [1 2 3]] (s/put! s1 vs))
             kss {:0 s0 :1 s1}
             os @(sut/cross-streams
-                 {:key-compare-fn (let [n (atom 0)]
+                 {:id ::cross-streams-test-errors-after-setup
+                  :key-compare-fn (let [n (atom 0)]
                                     (fn [& args]
                                       ;; 4 is slightly flakey... the key-comparator
                                       ;; now gets called during buffering...
@@ -667,7 +670,8 @@
                 (s/close! s))
 
             cs @(sut/cross-streams
-                 {:key-compare-fn clojure.core/compare
+                 {:id ::cross-streams-test-errors-on-derived-streams
+                  :key-compare-fn clojure.core/compare
                   :selector-fn sut/select-first
                   :init-output-value {}
                   :skey-streams kss})
@@ -693,7 +697,8 @@
                                       :el-val-range 5})]
     (let [kss (keyed-vecs->streams kvs)
           os @(sut/sort-merge-streams
-               {:skey-streams kss})
+               {:id ::sort-merge-streams-test
+                :skey-streams kss})
           ovs @(s/reduce conj [] os)]
       (is (= (->> kvs
                   vals
@@ -708,7 +713,8 @@
           kss {:0 s0 :1 s1}
 
           os @(sut/full-outer-join-streams
-               {:default-key-fn :foo
+               {:id ::full-outer-join-records-test-single-key-fn
+                :default-key-fn :foo
                 :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
@@ -730,7 +736,8 @@
           kss {:0 s0 :1 s1}
 
           os @(sut/full-outer-join-streams
-               {:default-key-fn :foo
+               {:id ::full-outer-join-records-test-1-many-joins
+                :default-key-fn :foo
                 :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
@@ -754,7 +761,8 @@
             kss {:0 s0 :1 s1}
 
             os @(sut/full-outer-join-streams
-                 {:default-key-fn :foo
+                 {:id ::full-outer-join-records-test-many-many-joins
+                  :default-key-fn :foo
                   :skey-streams kss})
             ovs @(s/reduce conj [] os)]
 
@@ -775,7 +783,8 @@
           kss {:0 s0 :1 ss1}
 
           os @(sut/full-outer-join-streams
-               {:default-key-fn :foo
+               {:id ::full-outer-join-records-test-custom-key-fns
+                :default-key-fn :foo
                 :skey-streams kss})
           ovs @(s/reduce conj [] os)]
 
@@ -797,7 +806,8 @@
           kss [[:0 s0][:1 s1]]
 
           os @(sut/n-left-join-streams
-               {:default-key-fn :foo
+               {:id ::n-left-join-test-1-1-1-left-join
+                :default-key-fn :foo
                 :skey-streams kss
                 :n 1})
           ovs @(s/reduce conj [] os)]
@@ -822,7 +832,8 @@
           kss [[:0 s0][:1 s1][:2 s2]]
 
           os @(sut/n-left-join-streams
-               {:default-key-fn :foo
+               {:id ::n-left-join-test-1-1-2-left-join
+                :default-key-fn :foo
                 :skey-streams kss
                 :n 2})
           ovs @(s/reduce conj [] os)]
@@ -844,7 +855,8 @@
             kss [[:0 s0][:1 s1]]
 
             os @(sut/n-left-join-streams
-                 {:default-key-fn :foo
+                 {:id ::n-left-join-test-many-many-joins
+                  :default-key-fn :foo
                   :skey-streams kss
                   :n 1})
             ovs @(s/reduce conj [] os)]

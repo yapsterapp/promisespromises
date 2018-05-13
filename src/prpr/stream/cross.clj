@@ -437,6 +437,23 @@
       (return [output-values next-skey-streambufs])
       (return [::drained]))))
 
+(defn close-all-streams
+  [& streams]
+  (let [streams (flatten streams)]
+    (doseq [s streams]
+      (try (-close! s)
+           (catch Exception x
+             (warn x "error closing errored streams"))))))
+
+(defn warn-full
+  "warn with an error, tag and value"
+  [e msg]
+  (let [exd (ex-data e)
+        ppv (with-out-str (pprint exd))]
+    ;; pprint all the ex-data in the message so it doesn't get truncated
+    ;; by exception printin
+    (warn e (str msg "\n" ppv))))
+
 (defn cross-streams
   "join values from some sorted streams onto a new sorted stream
 
@@ -460,6 +477,7 @@
     skey-streams :skey-streams
     :as args}]
   ;; (info "cross-streams" args)
+  (assert id)
   (let [skey-streams (coerce-linked-map skey-streams)
 
         dst (s/stream)
@@ -468,44 +486,85 @@
                               [sk (intermediate-stream dst s)])
                             (into (linked/map)))]
 
-    (pr/catch
-        (fn [e]
+    (->> (d/loop [skey-streambufs (init-stream-buffers
+                                   key-compare-fn
+                                   skey-intermediates)]
 
-          (let [exd (ex-data e)
-                pp (with-out-str (pprint exd))]
-            ;; pprint all the ex-data in the message so it doesn't get truncated
-            ;; by exception printin
-            (warn e (str "error crossing the streams. op-id:" id "\n" pp) ))
+           (d/chain'
+            skey-streambufs
+            (fn [sk-nvs]
+              (pr/catch
+                  (fn [e]
+                    ;; catch here so we can add the skey-streambufs
+                    ;; as context to the error report
+                    (let [[t v] (pr/decode-error-value e)
+                          e (pr/error-ex
+                             ::cross-streams-error
+                             (assoc v
+                                    ::original-error-tag t
+                                    ::id id
+                                    ::key-compare-fn key-compare-fn
+                                    ::selector-fn selector-fn
+                                    ::finish-merge-fn finish-merge-fn
+                                    ::product-sort-fn product-sort-fn
+                                    ::skey-streambufs sk-nvs))]
+                      (warn-full
+                       e
+                       (str "error crossing the streams. id:" id))
+                      (throw e)))
+                  (do
+                    ;; (info "sk-nvs" sk-nvs)
+                    (next-output-values
+                     (assoc args
+                            :skey-streams skey-intermediates
+                            :skey-streambufs sk-nvs)))))
+            (fn [[ovs sk-nvs]]
+              ;; (info "ovs sk-nvs" [ovs sk-nvs])
+              (if (= ::drained ovs)
+                (do
+                  ;; (info "closing!")
+                  (s/close! dst)
+                  false)
+                (ddo [_ (s/put-all! dst ovs)]
+                  (d/recur sk-nvs))))))
 
-          (doseq [s (concat [dst]
-                            (vals skey-streams)
-                            (vals skey-intermediates))]
-            (try (-close! s)
-                 (catch Exception x
-                   (warn x "error closing errored streams"))))
-          (throw e))
+         (pr/catch
+             (fn [e]
+               ;; catch here as a last resort... if it was
+                 ;; already warned then don't warn again
 
-        (d/loop [skey-streambufs (init-stream-buffers
-                                  key-compare-fn
-                                  skey-intermediates)]
+                 (let [[t v] (pr/decode-error-value e)
+                       e (if (= t ::cross-streams-error)
+                           e
+                           (pr/error-ex
+                            ::cross-streams-error
+                            (assoc v
+                                   ::original-error-tag t
+                                   ::id id
+                                   ::key-compare-fn key-compare-fn
+                                   ::selector-fn selector-fn
+                                   ::finish-merge-fn finish-merge-fn
+                                   ::product-sort-fn product-sort-fn)))]
 
-          (d/chain'
-           skey-streambufs
-           (fn [sk-nvs]
-             ;; (info "sk-nvs" sk-nvs)
-             (next-output-values
-              (assoc args
-                     :skey-streams skey-intermediates
-                     :skey-streambufs sk-nvs)))
-           (fn [[ovs sk-nvs]]
-             ;; (info "ovs sk-nvs" [ovs sk-nvs])
-             (if (= ::drained ovs)
-               (do
-                 ;; (info "closing!")
-                 (s/close! dst)
-                 false)
-               (ddo [_ (s/put-all! dst ovs)]
-                 (d/recur sk-nvs)))))))
+                   (when (not= t ::cross-streams-error)
+                     (warn-full
+                      e
+                      (str "error crossing the streams. id:" id)))
+
+                   ;; end of the line. put an error-deferred on to the output,
+                   ;; so it can be propagated
+
+                   ;; not doing this yet, since it changes the contract...
+                   ;; TODO enable in 2.3
+
+                   ;(s/put! dst (d/error-deferred e))
+                   )))
+
+         (pr/finally
+           (fn []
+             (close-all-streams (concat [dst]
+                                        (vals skey-streams)
+                                        (vals skey-intermediates))))))
 
     (d/success-deferred
      (s/source-only

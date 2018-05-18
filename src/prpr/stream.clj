@@ -5,7 +5,8 @@
    [cats.core :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
    [prpr.promise :as pr :refer [ddo]]
-   [taoensso.timbre :refer [info warn]])
+   [taoensso.timbre :refer [info warn]]
+   [cats.core :as monad])
   (:import
    [manifold.stream Callback]))
 
@@ -189,3 +190,20 @@
      (warn "close-on-closed")
      (.close closeable)))
   stream)
+
+(defn stream-peek
+  "peeks the first value from a stream, returning
+   [val new-stream] where val is the first value and
+   new-stream is a new-stream with the same content as the
+   input stream. default-val is returned as the val if
+   the input stream is empty"
+  ([stream]
+   (stream-peek stream ::closed))
+  ([stream default-val]
+   (ddo [:let [out (st/stream 1)]
+         v (st/take! stream default-val)
+         _ (monad/when (not= v default-val)
+             (st/put! out v))]
+     (st/connect stream out)
+     (return
+      [v out]))))

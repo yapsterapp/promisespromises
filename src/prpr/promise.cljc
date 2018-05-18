@@ -97,6 +97,20 @@
           (prpr.promise.platform/pr-error x#)))))
 
 #?(:clj
+   (defmacro always-pr
+     "wraps body in a promise, even if the body exprs throw
+      during evaluation"
+     [& body]
+     `(prpr.util.macro/try-catch
+       (let [r# ~@body]
+         (if (prpr.promise.platform/pr? r#)
+           r#
+           (prpr.promise.platform/pr-success r#)))
+       (catch
+           x#
+           (prpr.promise.platform/pr-error x#)))))
+
+#?(:clj
    (defmacro catch
      "catches any errors and returns the result of
       applying the error-handler to the error-value"

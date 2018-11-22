@@ -58,9 +58,19 @@
   ([tag value]
    (platform/pr-error (error-ex tag value))))
 
+(defn factory-pr
+  "promesa-style promise creation - the factory-cb callback will
+   receive resolve and reject fns to complete the promise"
+  [factory-cb]
+  (platform/pr-factory factory-cb))
+
 (defn chain-pr
   [p & fs]
   (apply platform/pr-chain p fs))
+
+(defn branch-pr
+  [p success-fn error-fn]
+  (platform/pr-branch p success-fn error-fn))
 
 (defn all-pr
   [& ps]

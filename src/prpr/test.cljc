@@ -32,6 +32,11 @@
    (defmacro with-test-binding-frame
      [& body]
      `(let [curr-frame# (clojure.lang.Var/getThreadBindingFrame)]
+        (when (nil? @test-binding-frame)
+          (throw
+           (ex-info
+            "test-async missing ? (nil test-binding-frame)"
+            {})))
         (try
           (clojure.lang.Var/resetThreadBindingFrame @test-binding-frame)
           ~@body
@@ -50,11 +55,11 @@
      [prpr.test :refer [deftest test-async is testing]])))
 
 #?(:clj
-   (defmacro deftest
+   (defmacro use-fixtures
      [& body]
      `(if-cljs
-       (cljs.test/deftest ~@body)
-       (clojure.test/deftest ~@body))))
+       (cljs.test/use-fixtures ~@body)
+       (clojure.test/use-fixtures ~@body))))
 
 ;; if you make the body of test-async a form or forms that
 ;; each return a promise... this will complete them
@@ -71,6 +76,13 @@
                        (prpr.promise/all-pr ~@ps)))]
          (record-test-binding-frame
           @(body#))))))
+
+#?(:clj
+   (defmacro deftest
+     [& body]
+     `(if-cljs
+       (cljs.test/deftest ~@body)
+       (clojure.test/deftest ~@body))))
 
 #?(:clj
    (defmacro is

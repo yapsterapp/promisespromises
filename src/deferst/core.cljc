@@ -2,39 +2,13 @@
   (:require
    #?(:clj [clojure.tools.namespace.repl :as tn])
    [clojure.string :as str]
-   #?(:clj [manifold.deferred :as d]
-      :cljs [promesa.core :as p])
-   #?(:clj [cats.labs.manifold :as dm]
-      :cljs [cats.labs.promise :as pm])
+   [prpr.promise :as pr]
    [deferst.system :as s]))
 
 (defprotocol ISys
   (start! [_] [_ conf])
   (stop! [_])
   (system-map [_]))
-
-(defn return-pr
-  [v]
-  #?(:clj (d/success-deferred v)
-     :cljs (p/promise v)))
-
-;; cross-platform promise creation in the promesa style
-#?(:clj (defn create-pr
-          [resolve-reject-fn]
-          (let [d (d/deferred)]
-            (resolve-reject-fn
-             #(d/success! d %)
-             #(d/error! d %))
-            d))
-   :cljs (def create-pr p/promise))
-
-;; cross-platform branch
-#?(:clj (defn branch
-          [p success-fn error-fn]
-          (-> p
-              (d/chain success-fn)
-              (d/catch error-fn)))
-   :cljs (def branch p/branch))
 
 (defn start!*
   [builder sys-val conf label resolve-fn reject-fn]
@@ -48,7 +22,7 @@
                       (s/start-system! builder conf)))]
        (-> sys-pr
            s/system-map
-           (branch resolve-fn reject-fn))
+           (pr/branch-pr resolve-fn reject-fn))
        sys-pr))))
 
 (defn stop!*
@@ -61,9 +35,9 @@
                        (when label (println "stopping: " label))
                        (s/system-map
                         (s/stop-system! sys-pr)))
-                     (return-pr nil))]
+                     (pr/success-pr nil))]
        ;; returns nil on success or an error to the caller
-       (branch stop-pr resolve-fn reject-fn)
+       (pr/branch-pr stop-pr resolve-fn reject-fn)
        nil))))
 
 (defn system-map*
@@ -73,8 +47,8 @@
    (fn [sys-pr]
      (let [sm-pr (if sys-pr
                    (s/system-map sys-pr)
-                   (return-pr nil))]
-       (branch sm-pr resolve-fn reject-fn))
+                   (pr/success-pr nil))]
+       (pr/branch-pr sm-pr resolve-fn reject-fn))
      sys-pr)))
 
 (defrecord Sys [builder sys-val default-conf label]
@@ -83,17 +57,17 @@
     (start! this default-conf))
 
   (start! [_ conf]
-    (create-pr
+    (pr/factory-pr
      (fn [resolve-fn reject-fn]
        (start!* builder sys-val conf label resolve-fn reject-fn))))
 
   (stop! [_]
-    (create-pr
+    (pr/factory-pr
      (fn [resolve-fn reject-fn]
        (stop!* builder sys-val label resolve-fn reject-fn))))
 
   (system-map [_]
-    (create-pr
+    (pr/factory-pr
      (fn [resolve-fn reject-fn]
        (system-map* sys-val resolve-fn reject-fn)))))
 

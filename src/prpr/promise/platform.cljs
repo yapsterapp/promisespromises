@@ -22,5 +22,11 @@
 (def pr-error
   promesa.core/rejected)
 
+(def pr-factory
+  promesa.core/promise)
+
+(def pr-branch
+  promesa.core/branch)
+
 (def pr-context
   cats.labs.promise/context)

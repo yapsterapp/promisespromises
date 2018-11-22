@@ -58,7 +58,28 @@
   ([tag value]
    (platform/pr-error (error-ex tag value))))
 
-(defn decode-error-value
+(defn factory-pr
+  "promesa-style promise creation - the factory-cb callback will
+   receive resolve and reject fns to complete the promise"
+  [factory-cb]
+  (platform/pr-factory factory-cb))
+
+(defn chain-pr
+  [p & fs]
+  (apply platform/pr-chain p fs))
+
+(defn branch-pr
+  [p success-fn error-fn]
+  (platform/pr-branch p success-fn error-fn))
+
+;; cherry-picked along with factory-pr
+;; from 2.4.0-branch -> 2.3.10-branch
+;; and commented until back to 2.4.0-branch
+;; (defn all-pr
+;;   [& ps]
+;;   (platform/pr-all ps))
+
+ (defn decode-error-value
   "decodes an error value to a variant. if the error-value
    is already a variant, or an ex-info with a variant,
    it returns that directly, otherwise you will get an

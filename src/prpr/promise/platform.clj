@@ -22,5 +22,21 @@
 (def pr-error
   @#'manifold.deferred/error-deferred)
 
+(defn pr-factory
+  "promesa-style promise creation - the factory-cb callback
+   receives the resolve and reject fns"
+  [factory-cb]
+  (let [d (manifold.deferred/deferred)]
+    (factory-cb
+     #(manifold.deferred/success! d %)
+     #(manifold.deferred/error! d %))
+    d))
+
+(defn pr-branch
+  [p success-fn error-fn]
+  (-> p
+      (manifold.deferred/chain success-fn)
+      (manifold.deferred/catch error-fn)))
+
 (def pr-context
   @#'cats.labs.manifold/deferred-context)

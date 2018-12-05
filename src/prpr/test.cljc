@@ -9,7 +9,8 @@
              (:require-macros
               [prpr.util.macro :refer [if-cljs]]
               [cljs.test :refer [deftest async]]
-              [prpr.promise :refer [catch-error-log]])]))
+              [prpr.promise :refer [catch-error-log]]
+              [taoensso.timbre :refer [warn]])]))
 
 ;; lord help me
 #?(:clj
@@ -68,9 +69,19 @@
      [& ps]
      `(if-cljs
        (cljs.test/async ~'done
-                        (prpr.promise/chain-pr
-                         (prpr.promise/all-pr ~@ps)
-                         (fn [~'_] (~'done))))
+                        (prpr.promise/finally
+                          ;; always call done
+                          (fn [~'_]
+                            (~'done))
+                          ;; make sure errors get reported
+                          (prpr.promise/catch
+                              (fn [e#]
+                                (taoensso.timbre/warn e#)
+                                (cljs.test/report {:type :error
+                                                   :message (str e#)
+                                                   :error e#})
+                                nil)
+                              (prpr.promise/all-pr ~@ps))))
        (let [body# (fn []
                      (with-test-binding-frame
                        (prpr.promise/all-pr ~@ps)))]

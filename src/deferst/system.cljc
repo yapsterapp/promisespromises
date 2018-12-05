@@ -8,7 +8,8 @@
    [cats.core :as monad :refer [mlet return bind]]
    [prpr.cats.prws :as prws]
    [prpr.promise :as pr]
-   [deferst.kahn :refer [kahn-sort]]))
+   [deferst.kahn :refer [kahn-sort]]
+   [taoensso.timbre :refer [warn]]))
 
 (def ^:private SystemStateSchema
   {;; for each key, a map of constructor, destructor config-ctx
@@ -244,13 +245,14 @@
    (system-builder nil key-factoryfn-argspecs-list))
 
   ([base-system-builder key-factoryfn-argspecs-list]
-   (reduce (fn [mv [k factory-fn arg-specs]]
-             (with-context prws/context
-               (bind mv (fn [_]
-                          (m-constructor k factory-fn arg-specs)))) )
-           (or base-system-builder (new-system))
-           (toposort-key-factoryfn-argspecs-list
-            key-factoryfn-argspecs-list))))
+   (let [toposorted (toposort-key-factoryfn-argspecs-list
+                     key-factoryfn-argspecs-list)]
+     (reduce (fn [mv [k factory-fn arg-specs]]
+               (with-context prws/context
+                 (bind mv (fn [_]
+                            (m-constructor k factory-fn arg-specs)))) )
+             (or base-system-builder (new-system))
+             toposorted))))
 
 (defn- system-destructor
   "given a system (including the ::system key) create a
@@ -292,22 +294,22 @@
    returns a Deferred<[_, system]>"
   [system-builder config]
   (pr/catch
-   (fn [e]
-     (let [{st :state :as xd} (ex-data e)
-           sd (system-destructor st)]
-       (pr/catch
-           (fn [ue]
-             (pr/error-pr ::unwind-failed
-                          {:state st
-                           :error e
-                           :unwind-error ue}))
+      (fn [e]
+        (let [{st :state :as xd} (ex-data e)
+              sd (system-destructor st)]
+          (pr/catch
+              (fn [ue]
+                (pr/error-pr ::unwind-failed
+                             {:state st
+                              :error e
+                              :unwind-error ue}))
 
-           (prws/run-prws sd {::state/state st})
-         (pr/error-pr ::start-failed
-                      {:state st
-                       :error e}))))
+              (prws/run-prws sd {::state/state st})
+            (pr/error-pr ::start-failed
+                         {:state st
+                          :error e}))))
 
-   (prws/run-prws system-builder {::state/state config})))
+      (prws/run-prws system-builder {::state/state config})))
 
 (defn system-map
   "given the result of a config-ctx value fn,

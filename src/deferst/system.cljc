@@ -124,12 +124,13 @@
    the resulting value (or Deferred value) into the PRWS
    monad"
   [st factory-fn args]
-  (pr/catch
-      (fn [e]
-        (pr/error-pr ::factory-fn-threw
-                     {:state st
-                      :error e}))
-      (prws/lift (factory-fn args))))
+  (prws/lift
+   (pr/catch
+       (fn [e]
+         (pr/error-pr ::factory-fn-threw
+                      {:state st
+                       :error e}))
+       (factory-fn args))))
 
 (defn- construct-obj
   [factory-fn arg-specs]

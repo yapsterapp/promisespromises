@@ -18,7 +18,8 @@
    'prpr.promise-cljs-test
    'prpr.cats.monoid-test
    'prpr.cats.prws-test
+   'deferst.system-test
    'deferst.core-test
-   'deferst.system-test)
+   )
 
   0)

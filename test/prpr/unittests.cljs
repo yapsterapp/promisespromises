@@ -2,7 +2,9 @@
   (:require
    [cljs.test :as t]
    [prpr.promise-cljs-test]
-   [prpr.cats.prws-test]))
+   [prpr.cats.prws-test]
+   [deferst.core-test]
+   [deferst.system-test]))
 
 (def success 0)
 
@@ -15,6 +17,8 @@
   (t/run-tests
    'prpr.promise-cljs-test
    'prpr.cats.monoid-test
-   'prpr.cats.prws-test)
+   'prpr.cats.prws-test
+   'deferst.core-test
+   'deferst.system-test)
 
   0)

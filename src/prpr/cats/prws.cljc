@@ -5,7 +5,7 @@
                      [cats.data :as d]
                      [cats.util :as util]
                      [cats.monad.state :as state]
-                     [prpr.promise :as prpr]
+                     [prpr.promise :as prpr :include-macros true]
                      [prpr.cats.monoid :refer [<>]]
                      [prpr.cats.reader :as reader]
                      [prpr.cats.writer :as writer]

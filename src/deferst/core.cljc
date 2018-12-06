@@ -2,7 +2,7 @@
   (:require
    #?(:clj [clojure.tools.namespace.repl :as tn])
    [clojure.string :as str]
-   [prpr.promise :as pr]
+   [prpr.promise :as pr #?@(:cljs [:include-macros true])]
    [deferst.system :as s]))
 
 (defprotocol ISys

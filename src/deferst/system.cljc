@@ -6,8 +6,8 @@
    [cats.data :as data]
    [cats.monad.state :as state]
    [cats.core :as monad :refer [mlet return bind]]
-   [prpr.cats.prws :as prws]
-   [prpr.promise :as pr]
+   [prpr.cats.prws :as prws #?@(:cljs [:include-macros true])]
+   [prpr.promise :as pr #?@(:cljs [:include-macros true])]
    [deferst.kahn :refer [kahn-sort]]
    [taoensso.timbre :refer [warn]]))
 

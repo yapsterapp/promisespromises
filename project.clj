@@ -20,7 +20,7 @@
                  [org.clojure/tools.namespace "0.2.11"]
 
                  ;; wow, such logging
-                 [org.clojure/tools.logging "0.4.1"]
+                 [org.clojure/tools.logging "_"]
                  [com.taoensso/timbre "4.10.0"]
                  [org.slf4j/slf4j-api "1.7.25"]
                  [employeerepublic/slf4j-timbre "0.5.0"]

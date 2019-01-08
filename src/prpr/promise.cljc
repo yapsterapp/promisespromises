@@ -188,6 +188,28 @@
         (fn [e#] (decode-error-value e#))))))
 
 #?(:clj
+   (defmacro wrap-catch-error-log
+     "wraps any normal responses in a [tag <response>] variant, and
+      catches any errors and returns the results of decode-error-value
+      on the error value. has to be a macro to catch any exceptions
+      in the initial evaluation of the body"
+     ([description body]
+      `(wrap-catch-error-log
+        ~description :ok ~body))
+     ([description tag body]
+      `(prpr.promise.platform/pr-catch
+        (prpr.util.macro/try-catch
+         (ddo [r# ~body]
+           [~tag r#])
+         (catch
+             x#
+             (prpr.promise.platform/pr-error x#)))
+        (fn [e#]
+          (let [v# (decode-error-value e#)]
+            (warn ~description v#)
+            v#))))))
+
+#?(:clj
    (defmacro catch-error-log
      [description body]
      `(prpr.promise.platform/pr-catch

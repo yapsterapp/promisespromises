@@ -1,7 +1,7 @@
 (ns prpr.promise.lastcall
   (:require
    #?(:clj [clojure.tools.macro :refer [name-with-attributes]])
-   [prpr.promise :refer [factory-pr branch-pr ddo error-ex error-pr]]))
+   [prpr.promise :refer [factory-pr branch-pr ddo success-pr error-ex error-pr]]))
 
 (defn lastcall-fn-impl
   [in-flight-atom fn-name params p]
@@ -28,7 +28,11 @@
       invocations such that if the results of multiple invocations are
       unresolved at any point in time, only the last invocation will return
       a result - all the others will error with
-      [:cancelled {:fn <fn-name> :params <params>}]"
+      [:cancelled {:fn <fn-name> :params <params>}]
+
+     provides a no-args version of the fn which will cancel any outstanding
+     unresolved promises (where cancel means they will return [:cancelled ...]
+     errors, nothing more - they will not be interrupted)"
      [def-sym fn-name params-body]
      (let [fn-sym (-> fn-name name symbol)
            [fn-sym [params & body]] (name-with-attributes fn-sym params-body)]
@@ -42,7 +46,8 @@
               nil
               (prpr.promise/error-pr
                [:cancelled {:fn (quote ~fn-name)
-                            :params nil}])))
+                            :params nil}]))
+             (success-pr true))
             (~params
              (let [val-p# ~@body]
                (prpr.promise.lastcall/lastcall-fn-impl

@@ -40,4 +40,19 @@
       (is (= ::foo-fn fr1-fn))
       (is (= [r1] fr1-params))
       (is (= [:ook {:reason :happenstance}]
-             @(p/catch-error fr2))))))
+             @(p/catch-error fr2)))))
+
+  (testing "explicit cancellation"
+    (let [r1 (p/delay-pr 1000 :delayed-foo)
+          f (sut/lastcall-fn ::foo-fn [r] r)
+          fr1 (f r1)
+          cr (f)
+
+          [fr1-tag
+           {fr1-fn :fn
+            fr1-params :params
+            :as fr1-val}] @(p/catch-error fr1)]
+      (is (= :cancelled fr1-tag))
+      (is (= ::foo-fn fr1-fn))
+      (is (= [r1] fr1-params))
+      (is (= true @cr)))))

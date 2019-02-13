@@ -1,8 +1,7 @@
 (ns prpr.promise.platform
   (:require
    [manifold.deferred]
-   [cats.labs.manifold]
-   [prpr.promise :as p]))
+   [cats.labs.manifold]))
 
 (defn ex?
   [v]

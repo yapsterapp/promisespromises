@@ -28,5 +28,8 @@
 (def pr-branch
   promesa.core/branch)
 
+(def pr-delay
+  promesa.core/delay)
+
 (def pr-context
   cats.labs.promise/context)

@@ -1,7 +1,8 @@
 (ns prpr.promise.platform
   (:require
    [manifold.deferred]
-   [cats.labs.manifold]))
+   [cats.labs.manifold]
+   [prpr.promise :as p]))
 
 (defn ex?
   [v]
@@ -37,6 +38,14 @@
   (-> p
       (manifold.deferred/chain success-fn)
       (manifold.deferred/catch error-fn)))
+
+(defn pr-delay
+  [delay-ms value]
+  (let [p (manifold.deferred/deferred)]
+    (manifold.deferred/timeout!
+     p
+     delay-ms
+     value)))
 
 (def pr-context
   @#'cats.labs.manifold/deferred-context)

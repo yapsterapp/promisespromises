@@ -17,6 +17,7 @@
   :dependencies [[org.clojure/clojure "_"]
                  [org.clojure/clojurescript "_"]
                  [org.clojure/tools.reader "_"]
+                 [org.clojure/tools.macro "0.1.5"]
 
                  ;; wow, such logging
                  [org.clojure/tools.logging "0.3.1"]

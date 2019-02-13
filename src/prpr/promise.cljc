@@ -64,9 +64,12 @@
   [factory-cb]
   (platform/pr-factory factory-cb))
 
-(defn chain-pr
-  [p & fs]
-  (apply platform/pr-chain p fs))
+;; cherry-picked along with factory-pr
+;; from 2.4.0-branch -> 2.3.10-branch
+;; and commented until back to 2.4.0-branch
+;; (defn chain-pr
+;;   [p & fs]
+;;   (apply platform/pr-chain p fs))
 
 (defn branch-pr
   [p success-fn error-fn]
@@ -78,6 +81,10 @@
 ;; (defn all-pr
 ;;   [& ps]
 ;;   (platform/pr-all ps))
+
+(defn delay-pr
+  [delay-ms value]
+  (platform/pr-delay delay-ms value))
 
  (defn decode-error-value
   "decodes an error value to a variant. if the error-value

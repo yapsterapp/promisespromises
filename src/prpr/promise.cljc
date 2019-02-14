@@ -1,4 +1,5 @@
 (ns prpr.promise
+  #?(:cljs (:require-macros [prpr.promise :refer [ddo]]))
   (:require
    [taoensso.timbre
     #?@(:clj [:refer [debug info warn error]]

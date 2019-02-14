@@ -76,6 +76,10 @@
   [& ps]
   (platform/pr-all ps))
 
+(defn delay-pr
+  [delay-ms value]
+  (platform/pr-delay delay-ms value))
+
 (defn decode-error-value
   "decodes an error value to a variant. if the error-value
    is already a variant, or an ex-info with a variant,

@@ -18,6 +18,7 @@
                  [org.clojure/clojurescript "_"]
                  [org.clojure/tools.reader "_"]
                  [org.clojure/tools.namespace "0.2.11"]
+                 [org.clojure/tools.macro "0.1.5"]
 
                  ;; wow, such logging
                  [org.clojure/tools.logging "_"]

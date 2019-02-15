@@ -1,7 +1,7 @@
 (ns prpr.promise.lastcall
   (:require
    #?(:clj [clojure.tools.macro :refer [name-with-attributes]])
-   [prpr.promise :refer [factory-pr branch-pr ddo success-pr error-ex error-pr]]))
+   [prpr.promise :refer [factory-pr branch-pr success-pr error-ex error-pr]]))
 
 (defn lastcall-fn-impl
   [in-flight-atom fn-name params p]

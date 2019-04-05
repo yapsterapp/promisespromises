@@ -39,8 +39,7 @@
                  [org.clojure/math.combinatorics "0.1.4"]
                  [frankiesardo/linked "1.3.0"]]
 
-  :profiles {:repl {:pedantic? :ranges
-                    :dependencies [[org.clojure/tools.nrepl "0.2.13"]]}
+  :profiles {:repl {:pedantic? :ranges}
 
              :test {:resource-paths ["test-resources" "resources"]}}
 

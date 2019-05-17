@@ -105,17 +105,17 @@
            stop-name (make-name base-name "stop!")
            reload-name (make-name base-name "reload!")]
        `(do
-          (def ~name (deferst/create-system
+          (def ~name (deferst.core/create-system
                        ~builder
                        ~default-conf
                        (symbol (name (ns-name *ns*)) (name '~name))))
           (defn ~start-name
-            ([] (deferst/start! ~name))
-            ([conf#] (deferst/start! ~name conf#)))
-          (defn ~system-map-name [] (deferst/system-map ~name))
-          (defn ~stop-name [] (deferst/stop! ~name))
+            ([] (deferst.core/start! ~name))
+            ([conf#] (deferst.core/start! ~name conf#)))
+          (defn ~system-map-name [] (deferst.core/system-map ~name))
+          (defn ~stop-name [] (deferst.core/stop! ~name))
           (defn ~reload-name []
-            (deferst/stop! ~name)
+            (deferst.core/stop! ~name)
             (refresh-start
              (symbol (name (ns-name *ns*)) (name '~start-name))))))))
 

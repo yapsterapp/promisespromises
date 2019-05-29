@@ -129,8 +129,8 @@
    (pr/catch
        (fn [e]
          (pr/error-pr ::factory-fn-threw
-                      {:state st
-                       :error e}))
+                      {:state st}
+                      e))
        (factory-fn args))))
 
 (defn- construct-obj
@@ -150,8 +150,8 @@
   (pr/catch
       (fn [e]
         (pr/error-pr ::destructor-fn-threw
-                     {:state st
-                      :error e}))
+                     {:state st}
+                     e))
       (prws/lift (when destructor-fn
                    (destructor-fn)))))
 
@@ -300,14 +300,13 @@
           (pr/catch
               (fn [ue]
                 (pr/error-pr ::unwind-failed
-                             {:state st
-                              :error e
-                              :unwind-error ue}))
+                             {:state st}
+                             ue))
 
               (prws/run-prws sd {::state/state st})
             (pr/error-pr ::start-failed
-                         {:state st
-                          :error e}))))
+                         {:state st}
+                         e))))
 
       (prws/run-prws system-builder {::state/state config})))
 

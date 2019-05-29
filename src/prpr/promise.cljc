@@ -43,10 +43,12 @@
 (defn error-ex
   "encodes an error-variant on to an ex-info"
   ([[tag value]] (error-ex tag value))
-  ([tag value]
+  ([tag value] (error-ex tag value nil))
+  ([tag value cause]
    (ex-info (str tag)
             (vnt/convert-vector-variant-to-map
-             [tag value]))))
+             [tag value])
+            cause)))
 
 (defn success-pr
   "creates a promise containing the value"
@@ -56,8 +58,9 @@
 (defn error-pr
   "creates an errored promise encoding the error-variant"
   ([[tag value]] (error-pr tag value))
-  ([tag value]
-   (platform/pr-error (error-ex tag value))))
+  ([tag value] (error-pr tag value nil))
+  ([tag value cause]
+   (platform/pr-error (error-ex tag value cause))))
 
 (defn factory-pr
   "promesa-style promise creation - the factory-cb callback will

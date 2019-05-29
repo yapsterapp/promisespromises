@@ -118,6 +118,10 @@
     (prpr/promise? v) (lift-promise v)
     :else (lift-value v)))
 
+(defn prws-error?
+  [err]
+  (= ::prws-error (:tag (ex-data err))))
+
 (def ^{:no-doc true}
   context
   (reify
@@ -147,30 +151,34 @@
        (s/fn [{s ::state/state e ::reader/env :as t} :- PRWSFnArgs]
          (prpr/chain-pr
           (prpr/catch
-              (fn [err]
-                (prpr/error-pr
-                 ::prws-error
-                 {::state/state s
-                  ::reader/env e
-                  ::err err
-                  ::mv mv
-                  ::f f}))
-              (run-prws mv t))
+           (fn [err]
+             (if (prws-error? err)
+               (prpr.promise.platform/pr-error err)
+               (prpr/error-pr
+                ::prws-error
+                {::state/state s
+                 ::reader/env e
+                 ::mv mv
+                 ::f f}
+                err)))
+           (run-prws mv t))
           (s/fn [{a ::monad/val s' ::state/state w ::writer/log} :- PRWSResultValue]
             (prpr/chain-pr
              (prpr/catch
-                 (fn [err]
-                   (prpr/error-pr
-                    ::prws-error
-                    {::monad/val a
-                     ::state/state s
-                     ::state/state' s
-                     ::reader/env e
-                     ::writer/log w
-                     ::err err
-                     ::mv mv
-                     ::f f}))
-                 (run-prws (f a) {::state/state s' ::reader/env e}))
+              (fn [err]
+                (if (prws-error? err)
+                  (prpr.promise.platform/pr-error err)
+                  (prpr/error-pr
+                   ::prws-error
+                   {::monad/val a
+                    ::state/state s
+                    ::state/state' s
+                    ::reader/env e
+                    ::writer/log w
+                    ::mv mv
+                    ::f f}
+                   err)))
+              (run-prws (f a) {::state/state s' ::reader/env e}))
              (s/fn [{b ::monad/val s'' ::state/state w' ::writer/log} :- PRWSResultValue]
                (tag-result {::monad/val b
                             ::state/state s''
@@ -345,5 +353,4 @@
                                          {:id #uuid "36a458c0-85e7-11e8-a4d4-49c83153c871"
                                           :foo 0}
                                          {:id #uuid "36a458c0-85e7-11e8-a4d4-49c83153c871"
-                                          :foo 10}]]}}>
-  )
+                                          :foo 10}]]}} >)

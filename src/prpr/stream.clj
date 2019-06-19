@@ -1,14 +1,62 @@
 (ns prpr.stream
+  (:refer-clojure
+   :exclude [concat filter map mapcat reduce reductions transform])
   (:require
+   [clojure.core :as clj]
    [manifold.stream :as st]
    [manifold.deferred :as d]
-   [cats.core :refer [return]]
+   [cats.core :as monad :refer [return]]
    [cats.labs.manifold :refer [deferred-context]]
+   [potemkin :refer [import-vars]]
    [prpr.promise :as pr :refer [ddo]]
-   [taoensso.timbre :refer [info warn]]
-   [cats.core :as monad])
+   [taoensso.timbre :refer [info warn]])
   (:import
    [manifold.stream Callback]))
+
+(import-vars
+ [manifold.stream
+  sinkable?
+  sourceable?
+  ->sink
+  ->source
+  connect
+  source-only
+  sink-only
+  onto
+  stream?
+  source?
+  sink?
+  description
+  downstream
+  weak-handle
+  synchronous?
+  close!
+  closed?
+  on-closed
+  drained?
+  on-drained
+  put!
+  put-all!
+  try-put!
+  take!
+  try-take!
+  stream
+  stream*
+  splice
+  consume
+  consume-async
+  connect-via
+  connect-via-proxy
+  drain-into
+  periodically
+  zip
+  reductions
+  lazily-partition-by
+  concat
+  buffered-stream
+  buffer
+  batch
+  throttle])
 
 (defn realize-stream
   [v]
@@ -49,6 +97,126 @@
          (->StreamError err#))
        ~@body))
 
+;; safer StreamError marker producing versions of standard stream ops
+(defn realize-each
+  "Takes a stream of potentially deferred values, and returns a stream of
+  realized values capturing and wrapping any deferred errors in StreamError
+  markers."
+  [s]
+  (let [s' (st/stream)]
+    (st/connect-via
+     s
+     (fn [msg]
+       (-> msg
+           (d/chain' #(st/put! s' %))
+           (d/catch' #(st/put! s' (->StreamError %)))))
+     s'
+     {:description {:op "realize-each"}})
+    (st/source-only s')))
+
+(defn map
+  "Equivalent to Manifold's `map` for single streams but with any errors caught
+  and added to the stream as StreamErrors"
+  [f s]
+  (st/map
+   (fn [msg]
+     (if (stream-error? msg)
+       msg
+       (catch-stream-error (f msg))))
+   s))
+
+(defn mapcat
+  "Equivalent to Manifold's `mapcat` but with errors caught and added to the
+  output stream as StreamErrors
+
+  Note: just as with Manifold's `mapcat` the mapping `f`n must be a pure fn that
+  returns a non-deferred value (though the returned collection _can_ contain
+  deferred values.)"
+  [f s]
+  (st/mapcat
+   (fn [msg]
+     (if (stream-error? msg)
+       [msg]
+       (try
+         (f msg)
+         (catch Throwable e
+           [(->StreamError e)]))))
+   s))
+
+(defn filter
+  "Equivalent to Manifold's `filter` but with errors caught and added to the
+  stream as StreamErrors
+
+  Note: just as with Manifold's `filter` the `pred` must be a _pure_ fn
+  returning a non-deferred value"
+  ;; unlike `map` and `mapcat` the implementation here is a straight-up copy
+  ;; with modification from Manifold as the alternative seemed to be a slightly
+  ;; less performant and more confusing pipeline of map/filter/map operations
+  [pred s]
+  (let [safe-pred (fn [msg]
+                    (if (stream-error? msg)
+                      [nil msg]
+                      (let [ev (try
+                                 (pred msg)
+                                 (catch Throwable e
+                                   (->StreamError e)))]
+                        (if (stream-error? ev)
+                          [nil ev]
+                          [ev nil]))))
+        xs (st/stream)]
+    (st/connect-via
+     s
+     (fn [msg]
+       (let [[t e] (safe-pred msg)]
+         (case [(boolean t) (some? e)]
+           [false true]  (st/put! xs e)
+           [true  false] (st/put! xs msg)
+           [false false] (d/success-deferred true))))
+     xs
+     {:description {:op "filter"}})
+    (st/source-only xs)))
+
+(defn stream-error-capturing-stream-xform
+  "Returns a transducing xform that wraps the given `xform` but captures errors
+  raised when invoking any arity and passes them to the upstream `xf` fn wrapped
+  in `StreamError` markers"
+  [xform]
+  (fn [xf]
+    (let [xff (xform xf)]
+      (fn
+        ([]
+         (try
+           (xff)
+           (catch Throwable e
+             (xf (xf) (->StreamError e)))))
+        ([rs]
+         (try
+           (xff rs)
+           (catch Throwable e
+             (xf (xf rs (->StreamError e))))))
+        ([rs msg]
+         (if (stream-error? msg)
+           (xf rs msg)
+           (try
+             (xff rs msg)
+             (catch Throwable e
+               (xf rs (->StreamError e))))))))))
+
+(defn transform
+  "Equivalent to Manifold's `transform` but with errors caught and added to the
+  stream as StreamErrors"
+  ([xform s]
+   (transform
+    xform
+    0
+    s))
+  ([xform buffer-size s]
+   (st/transform
+    (stream-error-capturing-stream-xform xform)
+    buffer-size
+    s)))
+
+;; utility fns for handling StreamErrors
 (defn log-stream-error-exemplars
   [description n source]
   (let [error-count-atom (atom 0)]
@@ -101,7 +269,7 @@
   "consume a stream completely, returning a Deferred of the first value from
    the stream, if any. returns Deferred<no-val> if the stream is empty"
   ([source]
-   (s-first nil source))
+   (s-first ::none source))
   ([no-val source]
    (st/reduce (fn [fv v]
                 (if (= no-val fv)
@@ -148,29 +316,67 @@
          (st/map logger)
          (divert-stream-errors))))
 
+(defmacro safe-call-reducing-fn
+  [err-stream rv & body]
+  `(let [r# (try
+              ~@body
+              (catch Throwable e#
+                (st/put! ~err-stream (->StreamError e#))
+                ~rv))]
+
+     (if (d/deferred? r#)
+       (do
+         (st/put! ~err-stream
+                  (->StreamError
+                   (ex-info "reducing fns must return plain (undeferred) values"
+                            {:rv ~rv})))
+         ~rv)
+
+       r#)))
+
 (defn reduce-all-throw
   "reduce a stream, but if there are any errors will log
    exemplars and return an error-deferred with the first error. always
    reduces the entire stream, as if any errors were filtered"
   ([description f source]
-   (let [[err out] (log-divert-stream-errors description source)
-         rv-d (st/reduce f out)
-         e-d (s-first ::none err)]
-     (ddo [e e-d
-           rv rv-d]
-       (if (= ::none e)
-         (return rv)
-         (d/error-deferred (:error e))))))
-
+   (reduce-all-throw description f ::st/none source))
   ([description f init source]
-   (let [[err out] (log-divert-stream-errors description source)
-         rv-d (st/reduce f init out)
+   (let [[err source] (log-divert-stream-errors description source)
+         rv-d (st/reduce
+               (fn
+                 ([]     (f))
+                 ([rs i] (safe-call-reducing-fn err rs  (f rs i))))
+               init
+               source)
          e-d (s-first ::none err)]
      (ddo [e e-d
            rv rv-d]
        (if (= ::none e)
          (return rv)
          (d/error-deferred (:error e)))))))
+
+(defmacro reduce
+  "Macro wrapping reduce-all-throw that uses the calling location (namespace,
+  line, and column) in the `description` of logged errors"
+  ([f source]
+   (let [ns# *ns*
+         {l# :line
+          c# :column} (meta &form)
+         tag# (str ns# ":L" l# ":C" c#)]
+     `(reduce-all-throw
+       ~tag#
+       ~f
+       ~source)))
+  ([f init source]
+   (let [ns# *ns*
+         {l# :line
+          c# :column} (meta &form)
+         tag# (str ns# ":L" l# ":C" c#)]
+     `(reduce-all-throw
+       ~tag#
+       ~f
+       ~init
+       ~source))))
 
 (defn count-all-throw
   [description source]

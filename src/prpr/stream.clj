@@ -122,7 +122,13 @@
    (fn [msg]
      (if (stream-error? msg)
        msg
-       (catch-stream-error (f msg))))
+       (try
+         (let [x (f msg)]
+           (if (d/deferred? x)
+             (d/catch x #(->StreamError %))
+             x))
+         (catch Throwable e
+           (->StreamError e)))))
    s))
 
 (defn mapcat

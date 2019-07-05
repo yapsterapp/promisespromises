@@ -58,28 +58,6 @@
   batch
   throttle])
 
-(defn realize-stream
-  [v]
-  (if-not (st/stream? v)
-    (return deferred-context v)
-    (->> v
-         st/realize-each
-         (st/reduce conj []))))
-
-(defn test-realize-stream
-  "given a possibly deferred stream,
-   realize it as a Deferred<vector>"
-  [v]
-  (ddo [v (if (d/deferred? v)
-            v
-            (d/success-deferred v))]
-
-    (if-not (st/stream? v)
-      (return deferred-context v)
-      (->> v
-           st/realize-each
-           (st/reduce conj [])))))
-
 ;; a marker for errors on a stream
 (defrecord StreamError [error])
 
@@ -419,3 +397,25 @@
      (st/connect stream out)
      (return
       [v out]))))
+
+(defn realize-stream
+  [v]
+  (if-not (st/stream? v)
+    (return deferred-context v)
+    (->> v
+         realize-each
+         (reduce conj []))))
+
+(defn test-realize-stream
+  "given a possibly deferred stream,
+   realize it as a Deferred<vector>"
+  [v]
+  (ddo [v (if (d/deferred? v)
+            v
+            (d/success-deferred v))]
+
+       (if-not (st/stream? v)
+         (return deferred-context v)
+         (->> v
+              realize-each
+              (reduce conj [])))))

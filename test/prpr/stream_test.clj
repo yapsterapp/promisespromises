@@ -420,3 +420,44 @@
                 (map (comp ex-data #(.error %)))
                 (remove nil?)
                 (map :n))))))
+
+(deftest realize-stream-reduces-all-and-throws-first-error-test
+  (let [processed (atom [])
+        s (s/stream 8)
+        _ @(s/put-all! s [0 1 2 3 4 5 6 7])
+        _ (s/close! s)
+        r (->> s
+               (sut/map
+                (fn [i]
+                  (swap! processed conj i)
+                  (case i
+                    3 (throw (ex-info (str ::odd-number) {:n i}))
+                    5 (throw (ex-info (str ::odd-number) {:n i}))
+                    #_else i)))
+               (sut/realize-stream))
+        rs (d/success-value r ::not-successful)
+        ed (ex-data (d/error-value r ::no-error))]
+    (is (= (range 0 8) @processed))
+    (is (= ::not-successful rs))
+    (is (= {:n 3} ed))))
+
+(deftest test-realize-stream-reduces-deferred-stream-and-throws-first-error-test
+  (let [processed (atom [])
+        s (s/stream 8)
+        _ @(s/put-all! s [0 1 2 3 4 5 6 7])
+        _ (s/close! s)
+        r (->> s
+               (sut/map
+                (fn [i]
+                  (swap! processed conj i)
+                  (case i
+                    3 (throw (ex-info (str ::odd-number) {:n i}))
+                    5 (throw (ex-info (str ::odd-number) {:n i}))
+                    #_else i)))
+               (d/success-deferred)
+               (sut/test-realize-stream))
+        rs (d/success-value r ::not-successful)
+        ed (ex-data (d/error-value r ::no-error))]
+    (is (= (range 0 8) @processed))
+    (is (= ::not-successful rs))
+    (is (= {:n 3} ed))))

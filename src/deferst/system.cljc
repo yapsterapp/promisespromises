@@ -2,7 +2,7 @@
   (:require
    [schema.core :as s]
    [clojure.set :as set]
-   [cats.context :refer [with-context]]
+   [cats.context #?(:clj :refer :cljs :refer-macros) [with-context]]
    [cats.data :as data]
    [cats.monad.state :as state]
    [cats.core :as monad :refer [mlet return bind]]

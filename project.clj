@@ -30,7 +30,7 @@
                  [org.slf4j/jul-to-slf4j "1.7.25"]
 
 
-                 [mccraigmccraig/cats "2.2.0.101"]
+                 [funcool/cats "2.3.2"]
                  [prismatic/schema "1.1.9"]
                  [funcool/promesa "1.9.0"]
                  [manifold "0.1.8"]

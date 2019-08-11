@@ -107,18 +107,21 @@
       [::unknown-error {:error (with-out-str (print v))}])))
 
 #?(:clj
-   (defmacro finally
-     "finally for promises - makes sure to run the finally
+   (defmacro ^:deprecated finally
+     "TODO this has bugs causing compilation warnings and
+           errors under clojurescript - do no use until fixed
+
+      finally for promises - makes sure to run the finally
       even if promise chain init throws. some exceptions
       might slip through the net - non-Exception Throwables
       on the jvm for example - but we are probably in deeper
       trouble anyway if that happens"
      [callback & body]
-     `(try
+     `(prpr.util.macro/try-catch
         (prpr.promise.platform/pr-finally
          (do ~@body)
-         ~callback)
-        (catch Exception x#
+         (~callback))
+        (catch x#
           (~callback)
           (prpr.promise.platform/pr-error x#)))))
 

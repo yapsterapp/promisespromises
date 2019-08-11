@@ -2,14 +2,15 @@
   #?@(:clj [(:require
              [prpr.util.macro :refer [if-cljs]]
              [clojure.test :as t]
-             [prpr.promise :as prpr])]
+             [prpr.promise :as prpr]
+             [taoensso.timbre :refer [warn]])]
       :cljs [(:require
               [prpr.promise :as prpr]
               [cljs.test])
              (:require-macros
               [prpr.util.macro :refer [if-cljs]]
               [cljs.test :refer [deftest async]]
-              [prpr.promise :refer [catch-error-log]]
+              [prpr.promise :refer [catch-error-log ddo]]
               [taoensso.timbre :refer [warn]])]))
 
 ;; lord help me
@@ -68,25 +69,26 @@
    (defmacro test-async
      [& ps]
      `(if-cljs
-       (cljs.test/async ~'done
-                        (prpr.promise/finally
-                          ;; always call done
-                          (fn [~'_]
-                            (~'done))
-                          ;; make sure errors get reported
-                          (prpr.promise/catch
-                              (fn [e#]
-                                (taoensso.timbre/warn e#)
-                                (cljs.test/report {:type :error
-                                                   :message (str e#)
-                                                   :error e#})
-                                nil)
-                              (prpr.promise/all-pr ~@ps))))
-       (let [body# (fn []
-                     (with-test-binding-frame
-                       (prpr.promise/all-pr ~@ps)))]
-         (record-test-binding-frame
-          @(body#))))))
+          (cljs.test/async
+           done#
+
+           ;; with just catch - promise/finally is currently broken on cljs
+           (prpr.promise/catch
+               (fn [e#]
+                 (taoensso.timbre/warn e#)
+                 (cljs.test/report {:type :error
+                                    :message (str e#)
+                                    :error e#})
+                 (done#))
+               (prpr.promise/ddo [:let [ps# [~@ps]]
+                                  r# (prpr.promise.platform/pr-all ps#)]
+                 (done#))))
+
+        (let [body# (fn []
+                      (with-test-binding-frame
+                        (prpr.promise/all-pr ~@ps)))]
+          (record-test-binding-frame
+           @(body#))))))
 
 #?(:clj
    (defmacro deftest

@@ -117,11 +117,12 @@
       on the jvm for example - but we are probably in deeper
       trouble anyway if that happens"
      [callback & body]
-     `(prpr.util.macro/try-catch
+     `(try
         (prpr.promise.platform/pr-finally
          (do ~@body)
-         (~callback))
-        (catch x#
+         ;; TODO this should call the callback! breaks stream-cross tests tho
+         ~callback)
+        (catch Exception x#
           (~callback)
           (prpr.promise.platform/pr-error x#)))))
 

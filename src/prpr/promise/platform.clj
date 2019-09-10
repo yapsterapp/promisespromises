@@ -53,5 +53,8 @@
      delay-ms
      value)))
 
+(def pr-timeout
+  @#'manifold.deferred/timeout!)
+
 (def pr-context
   @#'cats.labs.manifold/deferred-context)

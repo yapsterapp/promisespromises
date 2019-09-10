@@ -37,5 +37,8 @@
 (def pr-delay
   promesa.core/delay)
 
+(def pr-timeout
+  promesa.core/timeout)
+
 (def pr-context
   cats.labs.promise/context)

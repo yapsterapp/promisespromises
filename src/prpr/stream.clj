@@ -419,3 +419,42 @@
          (->> v
               realize-each
               (reduce conj [])))))
+
+(defn map-serially*
+  "apply a function f to each of the values in
+   stream s, strictly serially - only one application of f will
+   be in progress at a time
+
+   can be used to process a set of jobs serially, since using
+   stream buffering to control concurrency is somewhat inexact
+   (minimum of 2 ops in progress concurrently, or if you apply
+   a buffer then n+3 ops in progress)
+
+   internally makes direct use of manifold's reduce fn, which
+   passes a deferred reduce result straight to the next
+   reduce iteration"
+  [description f s]
+  (let [out (stream)]
+    (d/chain
+     (pr/catch-error-log
+      description
+      (st/reduce (fn [p v]
+                   (ddo [_ p ;; extract p
+                         r (catch-stream-error
+                            (f v)) ;; apply f and extract
+                         ;; send the response to the output, backpressure
+                         _ (put! out r)]
+                     (return r))) ;; wrap the response for the next iteration
+              (return deferred-context true)
+              (->source s)))
+     (fn [_]
+       (close! out)))
+    out))
+
+(defmacro map-serially
+  [f s]
+  (let [ns# *ns*
+        {l# :line
+         c# :column} (meta &form)
+        tag# (str ns# ":L" l# ":C" c#)]
+    `(map-serially* ~tag# ~f ~s)))

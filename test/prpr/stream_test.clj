@@ -461,3 +461,47 @@
     (is (= (range 0 8) @processed))
     (is (= ::not-successful rs))
     (is (= {:n 3} ed))))
+
+(deftest map-serially*-test
+  (testing "behaves like map"
+    (let [r (->> [0 1 2 3 4 5]
+                 (sut/map-serially* ::map inc)
+                 (sut/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6]))))
+  (testing "catches errors"
+    (let [r (->> [0 1 2 3 4 5]
+                 (sut/map-serially*
+                  ::map
+                  (fn [v]
+                    (if (#{2 5} v)
+                      (throw (ex-info "boo" {:v v}))
+                      (inc v))))
+                 ;; reduce without error propagation
+                 (s/reduce conj [])
+                 deref)]
+      (is (= (filter number? r)
+             [1 2 4 5]))
+      (is (= (->> r
+                  (filter sut/stream-error?)
+                  (map (comp :v ex-data :error)))
+             [2 5]))))
+  (testing "applies strictly serially"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5]
+                 (sut/map-serially*
+                  ::map
+                  (fn [v]
+                    (swap! active-a conj v)
+                    (swap! active-history-a conj @active-a)
+                    (Thread/sleep 20)
+                    (swap! active-a disj v)
+                    (swap! active-history-a conj @active-a)
+                    (inc v)))
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6]))
+      (is (= #{} @active-a))
+      (is (= [#{0} #{} #{1} #{} #{2} #{} #{3} #{} #{4} #{} #{5} #{}]
+             @active-history-a)))))

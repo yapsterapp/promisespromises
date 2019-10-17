@@ -465,11 +465,41 @@
 (deftest map-serially*-test
   (testing "behaves like map"
     (let [r (->> [0 1 2 3 4 5]
+                 (sut/map-serially*
+                  ::map
+                  (fn [v]
+                    (d/future
+                      (Thread/sleep 20)
+                      (inc v))))
+                 (sut/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6]))))
+  (testing "behaves like map with plain valued map fns"
+    (let [r (->> [0 1 2 3 4 5]
                  (sut/map-serially* ::map inc)
                  (sut/reduce conj [])
                  deref)]
       (is (= r [1 2 3 4 5 6]))))
   (testing "catches errors"
+    (let [r (->> [0 1 2 3 4 5]
+                 (sut/map-serially*
+                  ::map
+                  (fn [v]
+                    (d/future
+                      (Thread/sleep 20)
+                      (if (#{2 5} v)
+                        (throw (ex-info "boo" {:v v}))
+                        (inc v)))))
+                 ;; reduce without error propagation
+                 (s/reduce conj [])
+                 deref)]
+      (is (= (filter number? r)
+             [1 2 4 5]))
+      (is (= (->> r
+                  (filter sut/stream-error?)
+                  (map (comp :v ex-data :error)))
+             [2 5]))))
+  (testing "catches errors with plain-valued map fns"
     (let [r (->> [0 1 2 3 4 5]
                  (sut/map-serially*
                   ::map
@@ -493,15 +523,63 @@
                  (sut/map-serially*
                   ::map
                   (fn [v]
-                    (swap! active-a conj v)
-                    (swap! active-history-a conj @active-a)
-                    (Thread/sleep 20)
-                    (swap! active-a disj v)
-                    (swap! active-history-a conj @active-a)
-                    (inc v)))
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
                  (s/reduce conj [])
                  deref)]
       (is (= r [1 2 3 4 5 6]))
       (is (= #{} @active-a))
+      (is (= 12 (count @active-history-a)))
       (is (= [#{0} #{} #{1} #{} #{2} #{} #{3} #{} #{4} #{} #{5} #{}]
              @active-history-a)))))
+
+(deftest concurrency-test
+  (testing "limits concurrency to 3"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9]
+                 (sut/map
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (sut/concurrency 3)
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10]))
+      (is (= #{} @active-a))
+      (is (= 20 (count @active-history-a)))
+      (is (= 3 (->> @active-history-a
+                    (map count)
+                    (reduce max))))))
+  (testing "limits concurrency to 5"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14]
+                 (sut/map
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (sut/concurrency 5)
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]))
+      (is (= #{} @active-a))
+      (is (= 30 (count @active-history-a)))
+      (is (= 5 (->> @active-history-a
+                    (map count)
+                    (reduce max)))))))

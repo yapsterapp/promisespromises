@@ -458,3 +458,47 @@
          c# :column} (meta &form)
         tag# (str ns# ":L" l# ":C" c#)]
     `(map-serially* ~tag# ~f ~s)))
+
+(comment
+  ;; use the following to convince yourself that the
+  ;; minimum concurrency achievable with
+  ;; buffer/realize is buffer-size+3 -
+  ;; presumably due to each
+  ;; stage in a stream chain introducing an implicit
+  ;; buffer of 1
+
+  (def ops-a (atom #{}))
+  (def ops-history-a (atom []))
+
+  (def op (fn [v]
+            (manifold.deferred/future
+              (prn "starting:" v)
+              (swap! ops-a conj v)
+              (swap! ops-history-a conj @ops-a)
+              (Thread/sleep (* 100 v))
+              (prn "finishing;" v)
+              (swap! ops-a disj v)
+              (swap! ops-history-a conj @ops-a)
+              (inc v))))
+
+  (reset! ops-history-a [])
+  @(->> [0 1 2 3 4 5 6 7 8 9]
+        (manifold.stream/->source)
+        (manifold.stream/map op)
+        (manifold.stream/buffer 2)
+        (manifold.stream/realize-each)
+        (manifold.stream/reduce conj []))
+  @ops-history-a
+  )
+
+(defn concurrency
+  "use realize-each and buffer to control the
+   concurrency of a stream of deferred results of
+   operations (probably produced by mapping a fn
+   over a description of the operation)"
+  [con s]
+  (when (< con 3)
+    (throw (ex-info "minimum concurrency is 3" {:con con})))
+  (->> s
+       (st/buffer (max 0 (- con 3)))
+       (st/realize-each)))

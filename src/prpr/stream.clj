@@ -459,6 +459,12 @@
         tag# (str ns# ":L" l# ":C" c#)]
     `(map-serially* ~tag# ~f ~s)))
 
+(defn map-concurrency-two
+  [f s]
+  (->> s
+       (map f)
+       (st/realize-each)))
+
 (comment
   ;; use the following to convince yourself that the
   ;; minimum concurrency achievable with
@@ -491,7 +497,7 @@
   @ops-history-a
   )
 
-(defn concurrency
+(defn buffer-concurrency
   "use realize-each and buffer to control the
    concurrency of a stream of deferred results of
    operations (probably produced by mapping a fn
@@ -502,3 +508,16 @@
   (->> s
        (st/buffer (max 0 (- con 3)))
        (st/realize-each)))
+
+(defn map-concurrently
+  "uniform interface to all the concurrency options - map a fn
+   (which returns a deferred result) over a stream,
+   ensuring that there are a
+   maximum of con unrealized results at any one time"
+  [con f s]
+  (case con
+    1 (map-serially f s)
+    2 (map-concurrency-two f s)
+    (->> s
+         (map f)
+         (buffer-concurrency con))))

@@ -538,7 +538,30 @@
       (is (= [#{0} #{} #{1} #{} #{2} #{} #{3} #{} #{4} #{} #{5} #{}]
              @active-history-a)))))
 
-(deftest concurrency-test
+(deftest map-concurrency-two-test
+  (testing "limits concurrency to 2"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9]
+                 (sut/map-concurrency-two
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10]))
+      (is (= #{} @active-a))
+      (is (= 20 (count @active-history-a)))
+      (is (= 2 (->> @active-history-a
+                    (map count)
+                    (reduce max)))))))
+
+(deftest buffer-concurrency-test
   (testing "limits concurrency to 3"
     (let [active-a (atom #{})
           active-history-a (atom [])
@@ -552,7 +575,7 @@
                       (swap! active-a disj v)
                       (swap! active-history-a conj @active-a)
                       (inc v))))
-                 (sut/concurrency 3)
+                 (sut/buffer-concurrency 3)
                  (s/reduce conj [])
                  deref)]
       (is (= r [1 2 3 4 5 6 7 8 9 10]))
@@ -574,7 +597,96 @@
                       (swap! active-a disj v)
                       (swap! active-history-a conj @active-a)
                       (inc v))))
-                 (sut/concurrency 5)
+                 (sut/buffer-concurrency 5)
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]))
+      (is (= #{} @active-a))
+      (is (= 30 (count @active-history-a)))
+      (is (= 5 (->> @active-history-a
+                    (map count)
+                    (reduce max)))))))
+
+(deftest map-concurrently-test
+  (testing "limits concurrency to 1"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5]
+                 (sut/map-concurrently
+                  1
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6]))
+      (is (= #{} @active-a))
+      (is (= 12 (count @active-history-a)))
+      (is (= [#{0} #{} #{1} #{} #{2} #{} #{3} #{} #{4} #{} #{5} #{}]
+             @active-history-a))))
+  (testing "limits concurrency to 2"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9]
+                 (sut/map-concurrently
+                  2
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10]))
+      (is (= #{} @active-a))
+      (is (= 20 (count @active-history-a)))
+      (is (= 2 (->> @active-history-a
+                    (map count)
+                    (reduce max))))))
+  (testing "limits concurrency to 3"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9]
+                 (sut/map-concurrently
+                  3
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
+                 (s/reduce conj [])
+                 deref)]
+      (is (= r [1 2 3 4 5 6 7 8 9 10]))
+      (is (= #{} @active-a))
+      (is (= 20 (count @active-history-a)))
+      (is (= 3 (->> @active-history-a
+                    (map count)
+                    (reduce max))))))
+  (testing "limits concurrency to 5"
+    (let [active-a (atom #{})
+          active-history-a (atom [])
+          r (->> [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14]
+                 (sut/map-concurrently
+                  5
+                  (fn [v]
+                    (d/future
+                      (swap! active-a conj v)
+                      (swap! active-history-a conj @active-a)
+                      (Thread/sleep 20)
+                      (swap! active-a disj v)
+                      (swap! active-history-a conj @active-a)
+                      (inc v))))
                  (s/reduce conj [])
                  deref)]
       (is (= r [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]))

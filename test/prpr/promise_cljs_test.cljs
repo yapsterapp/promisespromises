@@ -43,6 +43,159 @@
     (is (= ::sut/unknown-error tag))
     (is (string? (:error value)))))
 
+(deftest finally-calls-callback-when-successful-test
+  (let [branch (atom #{})
+        a (atom 0)]
+    (async
+     done
+     (-> (sut/finally
+           (sut/success-pr :foo)
+           (swap! a inc))
+         (p/then (fn [v]
+                   (swap! branch conj :then)
+                   (is (= :foo v))))
+         (p/catch (fn [_] (swap! branch conj :catch)))
+         (p/finally (fn []
+                      (is (= #{:then} @branch))
+                      (is (= 1 @a))
+                      (done)))))))
+
+(deftest finally-calls-callback-when-successful-threaded-test
+  (let [branch (atom #{})
+        a (atom 0)]
+    (async done
+           (-> (-> (sut/success-pr :foo)
+                   (sut/finally (swap! a inc)))
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= :foo v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (is (= 1 @a))
+                            (done)))))))
+
+(deftest finally-calls-callback-when-errored-test
+  (let [branch (atom #{})
+        a (atom 0)]
+    (async done
+           (-> (sut/finally
+                 (sut/error-pr [:foo :bar])
+                 (swap! a inc))
+               (p/then (fn [_] (swap! branch conj :then)))
+               (p/catch
+                   (fn [v]
+                     (swap! branch conj :catch)
+                     (is (= [:foo :bar]
+                            (sut/decode-error-value v)))))
+               (p/finally (fn []
+                            (is (= #{:catch} @branch))
+                            (is (= 1 @a))
+                            (done)))))))
+
+(deftest finally-calls-callback-when-errored-threaded-test
+  (let [branch (atom #{})
+        a (atom 0)]
+    (async done
+           (-> (-> (sut/success-pr 1)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr (fn [n] (throw (sut/error-ex :foo n))))
+                   (sut/finally (swap! a inc)))
+               (p/then (fn [_] (swap! branch conj :then)))
+               (p/catch (fn [v]
+                          (swap! branch conj :catch)
+                          (is (= [:foo 3] (sut/decode-error-value v)))))
+               (p/finally (fn []
+                            (is (= #{:catch} @branch))
+                            (is (= 1 @a))
+                            (done)))))))
+
+(deftest finally-calls-callback-when-errored-during-construction-test
+  (let [branch (atom #{})
+        a (atom 0)]
+    (async done
+           (-> (-> (throw (sut/error-ex :foo :bar))
+                   (sut/finally (swap! a inc)))
+               (p/then (fn [_] (swap! branch conj :then)))
+               (p/catch (fn [v]
+                          (swap! branch conj :catch)
+                          (is (= [:foo :bar] (sut/decode-error-value v)))))
+               (p/finally (fn []
+                            (is (= #{:catch} @branch))
+                            (is (= 1 @a))
+                            (done)))))))
+
+(deftest catchall-returns-success-result-test
+  (let [branch (atom #{})]
+    (async done
+           (-> (sut/catchall
+                (sut/success-pr :foo)
+                (constantly :nope))
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= :foo v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (done)))))))
+
+(deftest catchall-returns-success-result-threaded-test
+  (let [branch (atom #{})]
+    (async done
+           (-> (-> (sut/success-pr :foo)
+                   (sut/catchall (constantly :nope)))
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= :foo v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (done)))))))
+
+(deftest catchall-catches-error-test
+  (let [branch (atom #{})]
+    (async done
+           (-> (sut/catchall
+                (sut/error-pr :foo :bar)
+                sut/decode-error-value)
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= [:foo :bar] v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (done)))))))
+
+(deftest catchall-catches-error-threaded-test
+  (let [branch (atom #{})]
+    (async done
+           (-> (-> (sut/success-pr 1)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr (fn [n] (throw (sut/error-ex :foo n))))
+                   (sut/catchall sut/decode-error-value))
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= [:foo 3] v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (done)))))))
+
+(deftest catchall-catches-error-during-construction-test
+  (let [branch (atom #{})]
+    (async done
+           (-> (-> (throw (sut/error-ex :foo :bar))
+                   (sut/catchall sut/decode-error-value))
+               (p/then (fn [v]
+                         (swap! branch conj :then)
+                         (is (= [:foo :bar] v))))
+               (p/catch (fn [_] (swap! branch conj :catch)))
+               (p/finally (fn []
+                            (is (= #{:then} @branch))
+                            (done)))))))
+
 (deftest catch-error-test-init-variant
   (async done
          (p/then (sut/catch-error (throw (sut/error-ex :foo :bar)))

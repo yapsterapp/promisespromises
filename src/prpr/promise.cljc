@@ -115,24 +115,31 @@
       [::unknown-error {:error (with-out-str (print v))}])))
 
 #?(:clj
-   (defmacro ^:deprecated finally
-     "TODO this has bugs causing compilation warnings and
-           errors under clojurescript - do no use until fixed
+   (defmacro finally
+     "leakproof finally for promises - catches any errors
+      during evaluation of the first arg promise, chains
+      nicely"
+     [pr callback]
+     `(prpr.promise.platform/pr-finally
+       (prpr.util.macro/try-catch
+        ~pr
+        (catch
+            x#
+            (prpr.promise.platform/pr-error x#)))
+       ~callback)))
 
-      finally for promises - makes sure to run the finally
-      even if promise chain init throws. some exceptions
-      might slip through the net - non-Exception Throwables
-      on the jvm for example - but we are probably in deeper
-      trouble anyway if that happens"
-     [callback & body]
-     `(try
-        (prpr.promise.platform/pr-finally
-         (do ~@body)
-         ;; TODO this should call the callback! breaks stream-cross tests tho
-         ~callback)
-        (catch Exception x#
-          (~callback)
-          (prpr.promise.platform/pr-error x#)))))
+#?(:clj
+   (defmacro catchall
+     "leakproof catch for promises, with a promise first-arg so it
+      threads/chains nicely"
+     [pr error-handler]
+     `(prpr.promise.platform/pr-catch
+       (prpr.util.macro/try-catch
+        ~pr
+        (catch
+            x#
+            (prpr.promise.platform/pr-error x#)))
+       (fn [e#] (~error-handler e#)))))
 
 #?(:clj
    (defmacro always-pr

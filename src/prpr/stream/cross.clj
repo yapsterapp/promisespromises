@@ -12,6 +12,7 @@
     [stream :as s]]
    [manifold.stream.core :as stream.core]
    [prpr.promise :as pr :refer [ddo]]
+   [prpr.stream :as pr.st]
    [manifold.stream :as stream])
   (:import
    [linked.map LinkedMap]
@@ -486,57 +487,19 @@
                               [sk (intermediate-stream dst s)])
                             (into (linked/map)))]
 
-    (->> (d/loop [skey-streambufs (init-stream-buffers
-                                   key-compare-fn
-                                   skey-intermediates)]
+    (-> (d/loop [skey-streambufs (init-stream-buffers
+                                  key-compare-fn
+                                  skey-intermediates)]
 
-           (d/chain'
-            skey-streambufs
-            (fn [sk-nvs]
-              (pr/catch
-                  (fn [e]
-                    ;; catch here so we can add the skey-streambufs
-                    ;; as context to the error report
-                    (let [[t v] (pr/decode-error-value e)
-                          e (pr/error-ex
-                             ::cross-streams-error
-                             (assoc v
-                                    ::original-error-tag t
-                                    ::id id
-                                    ::key-compare-fn key-compare-fn
-                                    ::selector-fn selector-fn
-                                    ::finish-merge-fn finish-merge-fn
-                                    ::product-sort-fn product-sort-fn
-                                    ::skey-streambufs sk-nvs))]
-                      (warn-full
-                       e
-                       (str "error crossing the streams. id:" id))
-                      (throw e)))
-                  (do
-                    ;; (info "sk-nvs" sk-nvs)
-                    (next-output-values
-                     (assoc args
-                            :skey-streams skey-intermediates
-                            :skey-streambufs sk-nvs)))))
-            (fn [[ovs sk-nvs]]
-              ;; (info "ovs sk-nvs" [ovs sk-nvs])
-              (if (= ::drained ovs)
-                (do
-                  ;; (info "closing!")
-                  (s/close! dst)
-                  false)
-                (ddo [_ (s/put-all! dst ovs)]
-                  (d/recur sk-nvs))))))
-
-         (pr/catch
-             (fn [e]
-               ;; catch here as a last resort... if it was
-                 ;; already warned then don't warn again
-
-                 (let [[t v] (pr/decode-error-value e)
-                       e (if (= t ::cross-streams-error)
-                           e
-                           (pr/error-ex
+          (d/chain'
+           skey-streambufs
+           (fn [sk-nvs]
+             (pr/catch
+                 (fn [e]
+                   ;; catch here so we can add the skey-streambufs
+                   ;; as context to the error report
+                   (let [[t v] (pr/decode-error-value e)
+                         e (pr/error-ex
                             ::cross-streams-error
                             (assoc v
                                    ::original-error-tag t
@@ -544,27 +507,59 @@
                                    ::key-compare-fn key-compare-fn
                                    ::selector-fn selector-fn
                                    ::finish-merge-fn finish-merge-fn
-                                   ::product-sort-fn product-sort-fn)))]
-
-                   (when (not= t ::cross-streams-error)
+                                   ::product-sort-fn product-sort-fn
+                                   ::skey-streambufs sk-nvs))]
                      (warn-full
                       e
-                      (str "error crossing the streams. id:" id)))
+                      (str "error crossing the streams. id:" id))
+                     (throw e)))
+                 (do
+                   ;; (info "sk-nvs" sk-nvs)
+                   (next-output-values
+                    (assoc args
+                           :skey-streams skey-intermediates
+                           :skey-streambufs sk-nvs)))))
+           (fn [[ovs sk-nvs]]
+             ;; (info "ovs sk-nvs" [ovs sk-nvs])
+             (if (= ::drained ovs)
+               (do
+                 ;; (info "closing!")
+                 (s/close! dst)
+                 false)
+               (ddo [_ (s/put-all! dst ovs)]
+                 (d/recur sk-nvs))))))
 
-                   ;; end of the line. put an error-deferred on to the output,
-                   ;; so it can be propagated
+        (pr/catchall
+         (fn [e]
+           (let [[t v] (pr/decode-error-value e)
+                 e (if (= t ::cross-streams-error)
+                     e
+                     (pr/error-ex
+                      ::cross-streams-error
+                      (assoc v
+                             ::original-error-tag t
+                             ::id id
+                             ::key-compare-fn key-compare-fn
+                             ::selector-fn selector-fn
+                             ::finish-merge-fn finish-merge-fn
+                             ::product-sort-fn product-sort-fn)))]
 
-                   ;; not doing this yet, since it changes the contract...
-                   ;; TODO enable in 2.3
+             (when (not= t ::cross-streams-error)
+               (warn-full
+                e
+                (str "error crossing the streams. id:" id)))
 
-                   ;(s/put! dst (d/error-deferred e))
-                   )))
+             ;; end of the line. put a StreamError on to the output,
+             ;; so it propagates
 
-         (pr/finally
-           (fn []
-             (close-all-streams (concat [dst]
-                                        (vals skey-streams)
-                                        (vals skey-intermediates))))))
+             (s/put! dst (pr.st/->StreamError e))
+             )))
+
+        (pr/finally
+          (fn []
+            (close-all-streams (concat (vals skey-streams)
+                                       (vals skey-intermediates)
+                                       [dst])))))
 
     (d/success-deferred
      (s/source-only

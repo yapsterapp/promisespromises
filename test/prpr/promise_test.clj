@@ -44,6 +44,93 @@
     (is (string? (:error value)))
     (is (re-matches #"(?s)^#error .*" (:error value)))))
 
+(deftest finally-test
+  (testing "calls the callback when successful"
+    (let [a (atom 0)
+          r @(sut/finally
+               (sut/success-pr :foo)
+               (fn [] (swap! a inc)))]
+      (is (= 1 @a ))
+      (is (= :foo r))))
+  (testing "calls the callback when successful in a thread"
+    (let [a (atom 0)
+          r @(-> (sut/success-pr 1)
+                 (sut/chain-pr inc)
+                 (sut/chain-pr inc)
+                 (sut/finally (fn [] (swap! a inc))))]
+      (is (= 1 @a))
+      (is (= 3 r))))
+  (testing "calls the callback when errored"
+    (let [a (atom 0)
+          r (try
+              @(sut/finally
+                 (sut/error-pr :foo :bar)
+                 (fn [] (swap! a inc)))
+              :nope
+              (catch Exception x
+                x))]
+      (is (= 1 @a))
+      (is (= [:foo :bar]
+             (sut/decode-error-value r)))))
+  (testing "calls the callback when errored in a thread"
+    (let [a (atom 0)
+          r (try
+              @(-> (sut/success-pr 1)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr inc)
+                   (sut/chain-pr (fn [n] (throw (sut/error-ex :foo n))))
+                   (sut/finally (fn [] (swap! a inc))))
+              :nope
+              (catch Exception x
+                x))]
+      (is (= 1 @a))
+      (is (= [:foo 3]
+             (sut/decode-error-value r)))))
+  (testing "raison d'être - calls the callback when initial promise construction errors"
+    (let [a (atom 0)
+          r (try
+              @(-> (throw (sut/error-ex :foo :bar))
+                   (sut/finally (fn [] (swap! a inc))))
+              :nope
+              (catch Exception x
+                x))]
+      (is (= 1 @a))
+      (is (= [:foo :bar]
+             (sut/decode-error-value r))))))
+
+(deftest catchall-test
+  (testing "returns successful promises"
+    (is (= :foo
+           @(sut/catchall
+             (sut/success-pr :foo)
+             (constantly :nope)))))
+  (testing "catches errored promises"
+    (is (= [:foo :bar]
+           @(sut/catchall
+             (sut/error-pr :foo :bar)
+             sut/decode-error-value))))
+  (testing "catches errored promises in a thread"
+    (is (= [:foo :bar]
+           @(-> (sut/error-pr :foo :bar)
+                (sut/catchall sut/decode-error-value)))))
+  (testing "raison d'être - catches errors during initial promise construction"
+    (is (= [:foo :bar]
+           @(sut/catchall
+             (throw (sut/error-ex :foo :bar))
+             sut/decode-error-value))))
+  (testing "raison d'être - catches errors during initial promise construction in a thread"
+    (is (= [:foo :bar]
+           @(-> (throw (sut/error-ex :foo :bar))
+                (sut/catchall sut/decode-error-value)))))
+  (testing "catches errors in threaded chains"
+    (is (= [:foo 3]
+           @(-> (sut/success-pr 1)
+                (sut/chain-pr inc)
+                (sut/chain-pr inc)
+                (sut/chain-pr (fn [n] (throw (sut/error-ex :foo n))))
+                (sut/chain-pr inc)
+                (sut/catchall sut/decode-error-value))))))
+
 (deftest catch-error-test
   ;; test exceptions in the promise init are caught
   (is (= [:foo :bar]

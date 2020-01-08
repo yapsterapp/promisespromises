@@ -9,7 +9,8 @@
    [linked.core :as linked]
    [prpr.util.test :refer [with-log-level]]
    [taoensso.timbre :refer [info warn error]]
-   [prpr.promise :as pr])
+   [prpr.promise :as pr]
+   [prpr.stream :as pr.st])
   (:import
    [prpr.stream.cross SortedStream]))
 
@@ -615,7 +616,7 @@
     )
 
   (with-log-level :error
-    (testing "errors during setup close the sources"
+    (testing "errors during setup close the sources and propagate"
       (let [s0 (s/stream)
             s1 (s/stream)
             _ (doseq [v [1 2 3]] (s/put! s0 v))
@@ -626,13 +627,18 @@
                    :key-compare-fn (fn [& args] (throw (ex-info "boo" {})))
                    :selector-fn sut/select-first
                    :init-output-value nil
-                   :skey-streams kss})]
-        (is (s/drained? @os-d))
+                   :skey-streams kss})
+
+            _ (is (not (s/drained? @os-d)))
+            v @(s/take! @os-d)]
+        (is (pr.st/stream-error? v))
+        (let [[k v] (some-> v :error ex-data pr/decode-error-value)]
+          (is (= ::sut/cross-streams-error k)))
         (is (s/closed? s0))
         (is (s/closed? s0)))))
 
   (with-log-level :error
-    (testing "errors after setup close the sources and the output"
+    (testing "errors after setup close the sources and the output and propagate"
       (let [s0 (s/stream)
             s1 (s/stream)
             _ (doseq [vs [1 2 3]] (s/put! s0 vs))
@@ -650,13 +656,16 @@
                   :selector-fn sut/select-first
                   :init-output-value {}
                   :skey-streams kss})
-            ovs @(s/reduce conj [] os)]
+            [v1 v2 :as ovs] @(s/reduce conj [] os)]
 
         (is (s/closed? s0))
         (is (s/closed? s1))
         (is (s/drained? os))
-        (is (= [{:0 1}]
-               ovs)))))
+        (is (= 2 (count ovs)))
+        (is (= {:0 1} v1))
+        (is (pr.st/stream-error? v2))
+        (let [[k v] (some-> v2 :error ex-data pr/decode-error-value)]
+          (is (= ::sut/cross-streams-error k))))))
 
   (with-log-level :fatal
     (testing "errors on derived streams don't cause hangs"
@@ -675,6 +684,7 @@
                   :selector-fn sut/select-first
                   :init-output-value {}
                   :skey-streams kss})
+
             ms (s/map (fn [k-v]
                         (let [[k v] (first k-v)]
                           (if (< v 2)
@@ -686,9 +696,11 @@
         (is (s/closed? s0))
         (is (s/closed? s1))
         (is (s/drained? ms))
-        ;; (is (s/drained? cs)) ;; this is reasonable
+        (is (s/drained? cs)) ;; this is reasonable
 
-        (is (= [2 2] ovs))))))
+        (is (= [2 2] ovs)))))
+
+  )
 
 (deftest sort-merge-streams-test
   (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1

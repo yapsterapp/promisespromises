@@ -5,13 +5,12 @@
     #?@(:clj [:refer [debug info warn error]]
         :cljs [:refer-macros [debug info warn error]])]
    [cats.core
-    #?@(:clj [:refer [mlet return]]
-        :cljs [:refer-macros [mlet] :refer [return]])]
+    #?@(:clj [:refer [mlet]]
+        :cljs [:refer-macros [mlet]])]
    [cats.context
     #?@(:clj [:refer [with-context]]
         :cljs [:refer-macros [with-context]])]
-   [prpr.promise.platform :as platform
-    :refer [pr-context pr-catch pr-error]]
+   [prpr.promise.platform :as platform]
    [prpr.util.variant :as vnt]
    #?(:clj [prpr.util.macro])))
 
@@ -23,6 +22,11 @@
 (defn promise?
   [v]
   (platform/pr? v))
+
+;; for convenience
+(def return cats.core/return)
+
+(def pr-context prpr.promise.platform/pr-context)
 
 #?(:clj
    (defmacro ddo

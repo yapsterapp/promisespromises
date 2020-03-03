@@ -233,7 +233,7 @@
              (prpr.promise.platform/pr-error x#)))
         (fn [e#]
           (let [v# (decode-error-value e#)]
-            (warn ~description v#)
+            (warn e# ~description v#)
             v#))))))
 
 #?(:clj
@@ -247,7 +247,7 @@
             (prpr.promise.platform/pr-error x#)))
        (fn [e#]
          (let [v# (decode-error-value e#)]
-           (warn ~description v#)
+           (warn e# ~description v#)
            v#)))))
 
 #?(:clj

@@ -89,8 +89,10 @@
   (platform/pr-delay delay-ms value))
 
 (defn timeout-pr
-  [p timeout-ms]
-  (platform/pr-timeout p timeout-ms))
+  ([p timeout-ms]
+   (platform/pr-timeout p timeout-ms))
+  ([p timeout-ms timeout-val]
+   (platform/pr-timeout p timeout-ms timeout-val)))
 
 (defn decode-error-value
   "decodes an error value to a variant. if the error-value

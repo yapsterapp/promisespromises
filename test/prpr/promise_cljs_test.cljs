@@ -30,10 +30,18 @@
 (deftest error-pr-test
   (let [pr (sut/error-pr [:foo :bar])
         pr2 (sut/error-pr :foo :bar)]
-    (is (= {:tag :foo :value :bar}
-           (ex-data (p/extract pr))))
-    (is (= {:tag :foo :value :bar}
-           (ex-data (p/extract pr2))))))
+    (async done
+           (-> pr
+               (p/catch (fn [e] [:error (ex-data e)]))
+               (p/then (fn [v]
+                         (is (= [:error {:tag :foo :value :bar}] v))
+                         (done)))))
+    (async done
+           (-> pr2
+               (p/catch (fn [e] [:error (ex-data e)]))
+               (p/then (fn [v]
+                         (is (= [:error {:tag :foo :value :bar}] v))
+                         (done)))))))
 
 (deftest decode-error-value-test
   (is (= [:foo :bar] (sut/decode-error-value [:foo :bar])))

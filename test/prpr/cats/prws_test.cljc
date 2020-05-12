@@ -3,7 +3,7 @@
    #?(:clj [prpr.cats.prws :as sut :refer [prwsdo]]
       :cljs [prpr.cats.prws :as sut :refer [PRWS_V_T] :refer-macros [prwsdo]])
    [cats.core :as monad :refer [>>= return]]
-   [cats.context :refer [with-context]]
+   [cats.context #?(:clj :refer :cljs :refer-macros) [with-context]]
    [cats.monad.state :as state]
    [prpr.promise :as prpr :refer [ddo]]
    [prpr.test :refer [deftest test-async is testing]]

@@ -1,0 +1,19 @@
+{
+  "name": "promisespromises",
+  "version": "1.0.0",
+  "description": "promisespromises",
+  "dependencies": {
+    "core-js": "^3.6.4",
+    "bluebird": "^3.7.2"
+  },
+  "devDependencies": {
+    "gulp": "^4.0.2",
+    "concurrently": "5.0.2",
+    "node-repl": "^2.0.2",
+    "shadow-cljs": "^2.8.94"
+  },
+  "scripts": {
+    "test": "gulp shadow-node-test && node target/node-test/node-tests.js",
+    "watch": "gulp watch-watch-node-test"
+  }
+}

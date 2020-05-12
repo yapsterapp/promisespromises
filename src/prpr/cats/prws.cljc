@@ -90,7 +90,9 @@
   (PRWS_T.
    (s/fn [{s ::state/state e ::reader/env :as t} :- PRWSFnArgs]
      (prpr/chain-pr
-      p
+      (if (PRWS? p)
+        (run-prws p t)
+        p)
       (fn [v]
         (cond
           (PRWS? v) (run-prws v t) ;; shouldn't happen ?

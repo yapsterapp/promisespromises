@@ -1,0 +1,10 @@
+#!/bin/bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+cd $DIR/../..
+npm install
+cd $DIR/..
+npm install
+
+npx gulp shadow-node-test ; node -r source-map-support/register target/node-test/node-tests.js

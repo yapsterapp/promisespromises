@@ -29,10 +29,13 @@
   promesa.core/rejected)
 
 (def pr-factory
-  promesa.core/promise)
+  promesa.core/create)
 
-(def pr-branch
-  promesa.core/branch)
+(defn pr-branch
+  [p success-fn error-fn]
+  (-> p
+      (pr-catch error-fn)
+      (pr-chain success-fn)))
 
 (def pr-delay
   promesa.core/delay)

@@ -8,6 +8,7 @@
               [prpr.promise :as prpr]
               [cljs.test])
              (:require-macros
+              prpr.test
               [prpr.util.macro :refer [if-cljs]]
               [cljs.test :refer [deftest async]]
               [prpr.promise :refer [catch-error-log ddo]]

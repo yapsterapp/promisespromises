@@ -4,9 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-20160816.002513-1"]
-            [lein-cljsbuild "1.1.7"
-             :exclusions [org.clojure/clojure org.clojure/clojurescript]]]
+  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-20160816.002513-1"]]
 
   :pedantic? :abort
 
@@ -30,9 +28,9 @@
                  [org.slf4j/jul-to-slf4j "1.7.25"]
 
 
-                 [funcool/cats "2.3.2"]
+                 [funcool/cats "2.3.6"]
                  [prismatic/schema "1.1.9"]
-                 [funcool/promesa "1.9.0"]
+                 [funcool/promesa "5.1.0"]
                  [manifold "0.1.8"]
                  [potemkin "0.4.5"
                   :exclusions [riddley]]
@@ -40,26 +38,4 @@
                  [frankiesardo/linked "1.3.0"]]
 
   :profiles {:repl {:pedantic? :ranges}
-
-             :test {:resource-paths ["test-resources" "resources"]}}
-
-  ;; :hooks [leiningen.cljsbuild]
-
-  :cljsbuild
-  {:builds {:test
-            {:source-paths ["src" "test"]
-             :resource-paths ["test-resources" "resources"]
-             :compiler {:output-to "phantom/unit-test-js/unit-test.js"
-                        :output-dir "phantom/unit-test-js"
-                        :source-map "phantom/unit-test-js/unit-test.js.map"
-                        :optimizations :whitespace
-                        :pretty-print true
-                        :closure-output-charset "US-ASCII"}}}
-
-   :test-commands
-   {"unit" ["phantomjs"
-            "phantom/unit-test.js"
-            "phantom/unit-test.html"]}}
-
-  :clean-targets ^{:protect false} ["phantom/unit-test-js"
-                                    :target-path])
+             :test {:resource-paths ["test-resources" "resources"]}})

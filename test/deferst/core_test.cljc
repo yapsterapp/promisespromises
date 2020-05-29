@@ -17,19 +17,19 @@
        (ddo [sysmap (d/start! sys)
              :let [x-sysmap {:foo 10 :a {:a-arg 10}}]]
          (return
-          (is (= sysmap x-sysmap)))))
+          (is (= x-sysmap sysmap)))))
 
      (testing "simple system returns system map"
        (ddo [sysmap (d/system-map sys)
              :let [x-sysmap {:foo 10 :a {:a-arg 10}}]]
          (return
-          (is (= sysmap x-sysmap)))))
+          (is (= x-sysmap sysmap)))))
 
      (testing "start! returns same system map if already started"
        (ddo [sysmap (d/start! sys {:foo 20})
              :let [x-sysmap {:foo 10 :a {:a-arg 10}}]]
          (return
-          (is (= sysmap x-sysmap)))))
+          (is (= x-sysmap sysmap)))))
 
      ;; i think this changed when porting... from Pr<config> to Pr<nil>
      ;; (testing "simple system stops and returns a promise of the config"
@@ -41,10 +41,10 @@
      (testing "simple system stops and returns a promise of nil"
        (ddo [stop-sys (d/stop! sys)]
          (return
-          (is (= stop-sys nil)))))
+          (is (= nil stop-sys)))))
 
      (testing "start! returns new system map when restarted"
        (ddo [sysmap (d/start! sys {:foo 20})
              :let [x-sysmap {:foo 20 :a {:a-arg 20}}]]
          (return
-          (is (= sysmap x-sysmap))))))))
+          (is (= x-sysmap sysmap))))))))

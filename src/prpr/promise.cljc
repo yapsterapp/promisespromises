@@ -89,8 +89,10 @@
   (platform/pr-delay delay-ms value))
 
 (defn timeout-pr
-  [p timeout-ms]
-  (platform/pr-timeout p timeout-ms))
+  ([p timeout-ms]
+   (platform/pr-timeout p timeout-ms))
+  ([p timeout-ms timeout-val]
+   (platform/pr-timeout p timeout-ms timeout-val)))
 
 (defn decode-error-value
   "decodes an error value to a variant. if the error-value
@@ -140,6 +142,36 @@
             x#
             (prpr.promise.platform/pr-error x#)))
        (fn [e#] (~error-handler e#)))))
+
+#?(:clj
+   (defmacro catchall-variant
+     "leakproof catch, returning an
+     [:ok <result>] or
+     [<error-tag> <error-desc>] variant"
+     [pr]
+     `(catchall
+       (chain-pr ~pr (fn [r#] [:ok r#]))
+       decode-error-value)))
+
+#?(:clj
+   (defmacro catchall-rethrowable
+     "leakproof catch, returning an
+     [:ok <result>] or
+     [:error <error-value>] variant which preserves any stack
+     when the error-value is an Exception, and can be used
+     with return-or-rethrow"
+     [pr]
+     `(catchall
+       (chain-pr ~pr (fn [r#] [:ok r#]))
+       (fn [e#] [:error e#]))))
+
+(defn return-or-rethrow
+  "takes the result of catchall-rethrowable,
+   returns if it was successful and errors if not"
+  [[tag result-or-error]]
+  (if (= :ok tag)
+    (platform/pr-success result-or-error)
+    (platform/pr-error result-or-error)))
 
 #?(:clj
    (defmacro always-pr

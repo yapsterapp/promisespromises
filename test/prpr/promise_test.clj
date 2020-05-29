@@ -131,6 +131,54 @@
                 (sut/chain-pr inc)
                 (sut/catchall sut/decode-error-value))))))
 
+(deftest catchall-variant-test
+  (testing "returns successes wrapped in :ok"
+    (is (= [:ok :foo]
+           @(sut/catchall-variant
+             (sut/success-pr :foo)))))
+  (testing "returns errors decoded"
+    (is (= [:foo 2]
+           @(-> (sut/success-pr 1)
+                (sut/chain-pr inc)
+                (sut/chain-pr (fn [n] (throw (sut/error-ex :foo n))))
+                (sut/chain-pr inc)
+                (sut/catchall-variant))))))
+
+(deftest catchall-rethrowable-test
+  (testing "returns successes wrapped in :ok"
+    (is (= [:ok :foo]
+           @(sut/catchall-variant
+             (sut/success-pr :foo)))))
+  (testing "returns error values unchanged"
+    (testing "when the error value is an exception"
+      (let [x (sut/error-ex :foo :bar)]
+        (identical?
+         [:error x]
+         @(-> (sut/success-pr 1)
+              (sut/chain-pr inc)
+              (sut/chain-pr (fn [n] (throw x)))
+              (sut/catchall-rethrowable)))))
+    (testing "when the error value is not an exception"
+      (let [x ::foo]
+        (identical?
+         [:error x]
+         @(-> (sut/success-pr 1)
+              (sut/chain-pr inc)
+              (sut/chain-pr (fn [_] (prpr.promise.platform/pr-error x)))
+              (sut/catchall-rethrowable)))))))
+
+(deftest return-or-rethrow-test
+  (testing "returns successes plain"
+    (is (= :foo
+           @(sut/return-or-rethrow [:ok :foo]))))
+  (testing "passes exceptions unchanged"
+    (let [x (sut/error-ex :foo :bar)
+          caught-x (try
+                     @(sut/return-or-rethrow [:error x])
+                     (catch Exception x*
+                       x*))]
+      (is (identical? x caught-x)))))
+
 (deftest catch-error-test
   ;; test exceptions in the promise init are caught
   (is (= [:foo :bar]

@@ -59,6 +59,13 @@
   [value]
   (prpr.promise.platform/pr-success value))
 
+(defn return-pr
+  "monad/return with an explicit promise context"
+  [value]
+  (cats.core/return
+   prpr.promise.platform/pr-context
+   value))
+
 (defn error-pr
   "creates an errored promise encoding the error-variant"
   ([[tag value]] (error-pr tag value))
@@ -93,6 +100,19 @@
    (platform/pr-timeout p timeout-ms))
   ([p timeout-ms timeout-val]
    (platform/pr-timeout p timeout-ms timeout-val)))
+
+(defn capture-pr-atom
+  "debug fn which may be useful in environments where
+   promise values can't be inspected - returns an atom
+   which will receive a variant with the eventual value
+   or error of the promise"
+  [p]
+  (let [r (atom ::none)]
+    (branch-pr
+     p
+     #(reset! r [:ok %])
+     #(reset! r [:error %]))
+    r))
 
 (defn decode-error-value
   "decodes an error value to a variant. if the error-value
@@ -152,6 +172,19 @@
      `(catchall
        (chain-pr ~pr (fn [r#] [:ok r#]))
        decode-error-value)))
+
+#?(:clj
+   (defmacro catchall-log-variant
+     "leakproof catch, logging any error and
+      returning an
+     [:ok <result>] or
+     [<error-tag> <error-desc>] variant"
+     [pr errordesc]
+     `(catchall
+       (chain-pr ~pr (fn [r#] [:ok r#]))
+       (fn [e]
+         (error e errordesc)
+         (decode-error-value e)))))
 
 #?(:clj
    (defmacro catchall-rethrowable

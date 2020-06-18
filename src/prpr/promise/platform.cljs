@@ -34,8 +34,15 @@
 (defn pr-branch
   [p success-fn error-fn]
   (-> p
-      (pr-catch error-fn)
-      (pr-chain success-fn)))
+      (pr-catch
+       (fn [e]
+         [::branch-error (error-fn e)]))
+      (pr-chain
+       (fn [v]
+         (if (and (vector? v)
+                  (= ::branch-error (first v)))
+           (second v)
+           (success-fn v))))))
 
 (def pr-delay
   promesa.core/delay)

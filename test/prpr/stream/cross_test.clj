@@ -8,7 +8,7 @@
    [clojure.test :as t :refer [deftest testing is]]
    [linked.core :as linked]
    [prpr.util.test :refer [with-log-level]]
-   [taoensso.timbre :refer [info warn error]]
+   [taoensso.timbre :as log :refer [info warn error]]
    [prpr.promise :as pr]
    [prpr.stream :as pr.st])
   (:import
@@ -667,7 +667,7 @@
         (let [[k v] (some-> v2 :error ex-data pr/decode-error-value)]
           (is (= ::sut/cross-streams-error k))))))
 
-  (with-log-level :fatal
+  (log/with-config {} ;; disable logging completely to prevent exception being printed
     (testing "errors on derived streams don't cause hangs"
       ;; like they used to during participant-stream processing
       (let [s0 (s/stream)

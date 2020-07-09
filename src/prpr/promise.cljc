@@ -53,7 +53,15 @@
 
 (defn error-ex
   "encodes an error-variant on to an ex-info"
-  ([[tag value]] (error-ex tag value))
+  ([error]
+   (cond
+     (vector? error) (let [[tag value cause] error]
+                       (error-ex tag value cause))
+     (vnt/is-map-variant? error) (ex-info
+                                  (-> error :tag str)
+                                  error)
+     (keyword? error) (error-ex error nil nil)
+     :else (error-ex ::unknown-error error nil)))
   ([tag value] (error-ex tag value nil))
   ([tag value cause]
    (ex-info (str tag)
@@ -75,7 +83,10 @@
 
 (defn error-pr
   "creates an errored promise encoding the error-variant"
-  ([[tag value]] (error-pr tag value))
+  ([error]
+   (if (vector? error)
+     (apply error-pr error)
+     (platform/pr-error error)))
   ([tag value] (error-pr tag value nil))
   ([tag value cause]
    (platform/pr-error (error-ex tag value cause))))
@@ -231,6 +242,7 @@
    (defmacro catch
      "catches any errors and returns the result of
       applying the error-handler to the error-value"
+     {:style/indent [0]}
      [error-handler & body]
      `(prpr.promise.platform/pr-catch
        (prpr.util.macro/try-catch

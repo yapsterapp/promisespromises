@@ -22,18 +22,43 @@
   (is (not (sut/exception? :foo))))
 
 (deftest error-ex-test
-  (let [ex (sut/error-ex [:foo :bar])
-        ex2 (sut/error-ex :foo :bar)]
-    (is (= {:tag :foo :value :bar} (ex-data ex)))
-    (is (= {:tag :foo :value :bar} (ex-data ex2)))))
+  (testing "vector variant"
+    (let [ex (sut/error-ex [:foo :bar])]
+      (is (= ":foo" (.getMessage ex)))
+      (is (= {:tag :foo :value :bar} (ex-data ex)))))
+  (testing "map variant"
+    (let [ex (sut/error-ex {:tag :foo :value :bar})]
+      (is (= ":foo" (.getMessage ex)))
+      (is (= {:tag :foo :value :bar} (ex-data ex)))))
+  (testing "tag and value"
+    (let [ex (sut/error-ex :foo :bar)]
+      (is (= ":foo" (.getMessage ex)))
+      (is (= {:tag :foo :value :bar} (ex-data ex)))))
+  (testing "just a tag"
+    (let [ex (sut/error-ex :blargh)]
+      (is (= ":blargh" (.getMessage ex)))
+      (is (= {:tag :blargh
+              :value nil} (ex-data ex)))))
+  (testing "anything else"
+    (let [ex (sut/error-ex 100)]
+      (is (= ":prpr.promise/unknown-error" (.getMessage ex)))
+      (is (= {:tag ::sut/unknown-error
+              :value 100} (ex-data ex))))
+    (let [ex (sut/error-ex nil)]
+      (is (= ":prpr.promise/unknown-error" (.getMessage ex)))
+      (is (= {:tag ::sut/unknown-error
+              :value nil} (ex-data ex))))))
 
 (deftest error-pr-test
   (let [pr (sut/error-pr [:foo :bar])
-        pr2 (sut/error-pr :foo :bar)]
+        pr2 (sut/error-pr :foo :bar)
+        pr3 (sut/error-pr (sut/error-ex :foo :bar))]
     (is (= {:tag :foo :value :bar}
            (ex-data (d/error-value pr nil))))
     (is (= {:tag :foo :value :bar}
-           (ex-data (d/error-value pr2 nil))))))
+           (ex-data (d/error-value pr2 nil))))
+    (is (= {:tag :foo :value :bar}
+           (ex-data (d/error-value pr3 nil))))))
 
 (deftest decode-error-value-test
   (is (= [:foo :bar] (sut/decode-error-value [:foo :bar])))
@@ -264,12 +289,13 @@
            (ex-data x)))))
 
 (deftest handle-safe
-  (is (= 3 (sut/handle-safe {:foo inc} :default [:foo 2])))
-  (is (= [:foobar 100]
-         (sut/handle-safe {:foo inc} [:foobar 100] [:bar 2])))
-  (is (= [:bar 3]
-         (sut/handle-safe {:foo inc} (fn [[t v]]
-                                       [t (inc v)]) [:bar 2]))))
+  (with-log-level :error
+    (is (= 3 (sut/handle-safe {:foo inc} :default [:foo 2])))
+    (is (= [:foobar 100]
+           (sut/handle-safe {:foo inc} [:foobar 100] [:bar 2])))
+    (is (= [:bar 3]
+           (sut/handle-safe {:foo inc} (fn [[t v]]
+                                         [t (inc v)]) [:bar 2])))))
 
 (deftest catch-handle
   (is (= 3 @(sut/catch-handle
@@ -285,17 +311,18 @@
            (ex-data x)))))
 
 (deftest catch-handle-safe
-  (is (= 3 @(sut/catch-handle-safe
+  (with-log-level :error
+    (is (= 3 @(sut/catch-handle-safe
+               {:foo inc}
+               :default
+               (d/success-deferred [:foo 2]))))
+    (is (= [:foobar 100]
+           @(sut/catch-handle-safe
              {:foo inc}
-             :default
-             (d/success-deferred [:foo 2]))))
-  (is (= [:foobar 100]
-         @(sut/catch-handle-safe
-           {:foo inc}
-           [:foobar 100]
-           (d/success-deferred [:bar 2]))))
-  (is (= [:bar 3]
-         @(sut/catch-handle-safe
-           {:foo inc}
-           (fn [[t v]] [t (inc v)])
-           (d/success-deferred [:bar 2])))))
+             [:foobar 100]
+             (d/success-deferred [:bar 2]))))
+    (is (= [:bar 3]
+           @(sut/catch-handle-safe
+             {:foo inc}
+             (fn [[t v]] [t (inc v)])
+             (d/success-deferred [:bar 2]))))))

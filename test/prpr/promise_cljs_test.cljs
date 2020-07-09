@@ -29,7 +29,8 @@
 
 (deftest error-pr-test
   (let [pr (sut/error-pr [:foo :bar])
-        pr2 (sut/error-pr :foo :bar)]
+        pr2 (sut/error-pr :foo :bar)
+        pr3 (sut/error-ex :foo :bar)]
     (async done
            (-> pr
                (p/catch (fn [e] [:error (ex-data e)]))
@@ -38,6 +39,12 @@
                          (done)))))
     (async done
            (-> pr2
+               (p/catch (fn [e] [:error (ex-data e)]))
+               (p/then (fn [v]
+                         (is (= [:error {:tag :foo :value :bar}] v))
+                         (done)))))
+    (async done
+           (-> pr3
                (p/catch (fn [e] [:error (ex-data e)]))
                (p/then (fn [v]
                          (is (= [:error {:tag :foo :value :bar}] v))

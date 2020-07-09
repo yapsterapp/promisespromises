@@ -15,6 +15,7 @@
   (enable-console-print!)
 
   (t/run-tests
+   'prpr.schema-cljs-test
    'prpr.promise-cljs-test
    'prpr.cats.monoid-test
    'prpr.cats.prws-test

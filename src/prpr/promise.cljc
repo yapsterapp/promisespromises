@@ -1,5 +1,6 @@
 (ns prpr.promise
-  #?(:cljs (:require-macros [prpr.promise :refer [ddo]]))
+  #?(:cljs (:require-macros [prpr.promise :refer [ddo]]
+                            [schema.macros :as s.macros]))
   (:require
    [taoensso.timbre
     #?@(:clj [:refer [debug info warn error]]
@@ -12,7 +13,10 @@
         :cljs [:refer-macros [with-context]])]
    [prpr.promise.platform :as platform]
    [prpr.util.variant :as vnt]
-   #?(:clj [prpr.util.macro])))
+   #?(:clj [prpr.util.macro])
+   [schema.core :as s]
+   #?(:clj [schema.macros :as s.macros])
+   [schema.utils :as s.utils]))
 
 (defn exception?
   "true if the arg is a platform exception"
@@ -22,6 +26,9 @@
 (defn promise?
   [v]
   (platform/pr? v))
+
+(s/defschema Promise
+  (s/pred promise? 'promise?))
 
 ;; for convenience
 (def return cats.core/return)
@@ -393,3 +400,78 @@
            (if (prpr.promise.platform/pr? r#)
              r#
              (cats.core/return r#)))))))
+
+#?(:clj
+   (defmacro ddefn
+     "Like schema.core/defn, except that the fn will *always* be expected to
+     return a promise and any given output schema will be validated against the
+     value returned *inside* of that promise.
+
+     ## Example Use
+
+     ```clojure
+     (require '[prpr.promise :as pr])
+     (require '[schema.core :as s])
+
+     (defn double-if-int [x] (if (int? x) (* x x) x))
+
+     (pr/ddefn promise-test-fn
+       :- s/Int
+       [x]
+       (if (= :dont-defer x)
+         x
+         (pr/always-pr
+           (double-if-int x))))
+
+     (s/set-fn-validation! true)
+
+     @(promise-test-fn 2)
+     ;;=> 4
+
+     @(promise-test-fn \"2\")
+     ;;=> error! \"not integer\"
+
+     (promise-test-fn :dont-defer)
+     ;;=> error! \"not a promise\"
+     ```
+
+     ## Notes
+
+     Behind the scenes the macro creates *three* functions and chains them
+     together to achieve the desired validation:
+
+     1. `<fn-name>-call-validate-as-promise` – has the provided fn body and
+        *always* validates its output as being a `Promise`.
+     2. `<fn-name>-validate-realized-value` – essentially an `identity` fn that
+        will validate the given value as matching the specified fn output schema
+        (but only when the normal schema validation rules indicate it should.)
+     3. `<fn-name>` – an ordinary `defn` that calls and chains the `*-call-*` fn
+        through the `*-validate-*` fn.
+
+     As noted above the ‘inner’ promise producing fn will always validate its
+     output. If you tag the `ddefn` with `^:always-validate` then the ‘outer’ value
+     validation fn will also always validate to the provided value schema
+     (otherwise it will only valdate when schema fn validation is turned on.)
+
+     If a docstring is provided it will be used for the `<fn-name>` def."
+     {:style/indent :defn}
+     [& defn-args]
+     (let [[name & fn-args] (s.macros/normalized-defn-args &env defn-args)
+           {always-validate? :always-validate} (meta name)
+           output-schema (s.macros/extract-schema-form name)
+           {arglists :arglists} (s.macros/process-fn- &env name fn-args)
+           call-and-validate-promise-name (with-meta
+                                            (symbol (str name "-call-and-validate-as-promise"))
+                                            {:always-validate true})
+           validate-realized-value-name (with-meta
+                                          (symbol (str name "-validate-realized-value"))
+                                          {:always-validate always-validate?})]
+       `(do
+          (s/defn ~call-and-validate-promise-name :- Promise ~@fn-args)
+          (s/defn ~validate-realized-value-name :- ~output-schema [v#] v#)
+          (defn ~name
+            {:arglists (quote ~arglists)}
+            [& args#]
+            (chain-pr
+             (apply ~call-and-validate-promise-name args#)
+             ~validate-realized-value-name))))))

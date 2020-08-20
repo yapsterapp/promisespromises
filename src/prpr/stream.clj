@@ -515,11 +515,23 @@
   "uniform interface to all the concurrency options - map a fn
    (which returns a deferred result) over a stream,
    ensuring that there are a
-   maximum of con unrealized results at any one time"
-  [con f s]
-  (case con
-    1 (map-serially f s)
-    2 (map-concurrency-two f s)
-    (->> s
-         (map f)
-         (buffer-concurrency con))))
+   maximum of con unrealized results at any one time
+
+  Supported options
+  - :timeout-ms - (optional, number) time bound for processing
+                  each item in the stream."
+  ([con f s] (map-concurrently {} con f s))
+  ([options con f s]
+   (let [{timeout-ms :timeout-ms} options
+         f (cond
+             (nil? timeout-ms) f
+             (number? timeout-ms) (fn f-with-timeout [item]
+                                    (d/timeout! (f item)
+                                                timeout-ms)))]
+     (case con
+       1 (map-serially f s)
+       2 (map-concurrency-two f s)
+       (->> s
+            (map f)
+            (buffer-concurrency con))))))
+

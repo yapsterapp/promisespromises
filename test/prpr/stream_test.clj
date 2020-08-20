@@ -695,4 +695,13 @@
       (is (= 30 (count @active-history-a)))
       (is (= 5 (->> @active-history-a
                     (map count)
-                    (reduce max)))))))
+                    (reduce max))))))
+  (testing "timeout option"
+    (let [result-stream (->> (sut/->source (range 4))
+                             (sut/map-concurrently {:timeout-ms 50}
+                                               2
+                                               (fn [_] (d/future (Thread/sleep 100))))
+                             (s/stream->seq))]
+      (is (= 4 (count result-stream)))
+      (is (= #{StreamError}
+             (into #{} (map type result-stream)))))))

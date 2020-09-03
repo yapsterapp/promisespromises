@@ -399,6 +399,8 @@
       [v out]))))
 
 (defn realize-stream
+  "Returns a deferred of a vector of realized items from stream
+  or deferred of the passed value if it's not a stream."
   [v]
   (if-not (st/stream? v)
     (return deferred-context v)

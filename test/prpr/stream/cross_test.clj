@@ -218,6 +218,18 @@
       (is (= ek ::sut/stream-not-sorted))
       (is (= err {:stream-key :foo
                   :this [1 [1]]
+                  :next [0 [0]]}))))
+
+  (testing "exception during key-compare reports buffers"
+    (let [[ek err] @(pr/catch-error
+                     (sut/buffer-values
+                      (fn [a b] (throw (ex-info "boo" {})))
+                      :foo
+                      (s/->source [0])
+                      [1 [1]]))]
+      (is (= ek ::sut/key-compare-error))
+      (is (= err {:stream-key :foo
+                  :this [1 [1]]
                   :next [0 [0]]})))))
 
 (deftest init-stream-buffers-test

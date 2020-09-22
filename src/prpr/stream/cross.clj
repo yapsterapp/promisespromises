@@ -200,13 +200,30 @@
          ;; no more values with the key
          :else
          (do
-           (let [nk (-key stream v)]
+           (let [nk (-key stream v)
+                 [cv x] (try
+                          [(key-compare-fn k nk) nil]
+                          (catch Exception x
+                            [nil x]))]
+
              ;;              (warn "compare" k nk)
-             (when (> (key-compare-fn k nk) 0)
+
+             (when (some? x)
                (throw
-                (pr/error-ex ::stream-not-sorted {:stream-key stream-key
-                                                  :this [k buf]
-                                                  :next [nk [v]]})))
+                (pr/error-ex
+                 ::key-compare-error
+                 {:stream-key stream-key
+                  :this [k buf]
+                  :next [nk [v]]})))
+
+             (when (> cv 0)
+               (throw
+                (pr/error-ex
+                 ::stream-not-sorted
+                 {:stream-key stream-key
+                  :this [k buf]
+                  :next [nk [v]]})))
+
              [[k buf] [nk [v]]])))))))
 
 (defn init-stream-buffers

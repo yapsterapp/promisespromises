@@ -422,7 +422,7 @@
               realize-each
               (reduce conj [])))))
 
-(defn map-serially*
+(defn ^:deprecated map-serially*
   "apply a function f to each of the values in
    stream s, strictly serially - only one application of f will
    be in progress at a time
@@ -434,7 +434,13 @@
 
    internally makes direct use of manifold's reduce fn, which
    passes a deferred reduce result straight to the next
-   reduce iteration"
+   reduce iteration
+
+   WARNING: this implementation seems to have a bug and can
+            fail leaving streams incompletely consumed
+
+   a new implementation is required
+  "
   [description f s]
   (let [out (stream)]
     (d/chain
@@ -453,7 +459,7 @@
        (close! out)))
     out))
 
-(defmacro map-serially
+(defmacro ^:deprecated map-serially
   [f s]
   (let [ns# *ns*
         {l# :line

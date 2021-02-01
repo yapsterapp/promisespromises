@@ -215,8 +215,7 @@
     (fn [v]
       (when (and (stream-error? v)
                  (<= (swap! error-count-atom inc) n))
-        (warn "got a StreamError")
-        (warn (:error v) description))
+        (warn (:error v) (str "got a StreamError: "  description)))
       v)))
 
 (defn filter-log-stream-errors
@@ -261,6 +260,7 @@
                   fv))
               no-val
               source)))
+
 
 (defn divert-stream-errors
   "kinda awkward - adapted from connect-via... takes src and

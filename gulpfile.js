@@ -10,7 +10,7 @@ const {opt,
        DEV_REDIRECT_URL} = require('../build/gulp/config');
 const {expandShadowTemplate} = require('../build/gulp/shadow_template');
 const {makeShadowTaskCreators} = require('../build/gulp/shadow_task');
-const {makeCopyTargetCreator} = require('../build/gulp/copy_target');
+const {createCopyTargetTask} = require('../build/gulp/copy_target');
 
 expandShadowTemplate("../project.clj", "shadow-cljs.template.edn", "shadow-cljs.edn");
 
@@ -27,8 +27,6 @@ const TARGET_CONFIG = {
 
 const {createShadowTask,
        createShadowReportTask} = makeShadowTaskCreators(TARGET_CONFIG);
-
-const createCopyTargetTask = makeCopyTargetCreator(TARGET_CONFIG);
 
 function outPath(target) {
   return path.join(__dirname, 'target', target);

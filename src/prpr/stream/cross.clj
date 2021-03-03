@@ -16,7 +16,7 @@
    [manifold.stream :as stream])
   (:import
    [linked.map LinkedMap]
-   [manifold.stream.core IEventSource]))
+   [manifold.stream.core IEventSource IEventStream]))
 
 (defprotocol ISortedStream
   "defines how to handle values on a sorted stream"
@@ -56,6 +56,18 @@
   (connector [_ sink]
     (fn [_ sink options]
       (stream/connect stream sink options)))
+
+  IEventStream
+  (description [_]
+    (.description ^IEventStream stream))
+  (isSynchronous [_]
+    (.isSynchronous ^IEventStream stream))
+  (downstream [_]
+    (.downstream ^IEventStream stream))
+  (close [_]
+    (.close ^IEventStream stream))
+  (weakHandle [_ ref-queue]
+    (.weakHandle ^IEventStream stream ref-queue))
 
   ISortedStream
   (-stream [_] stream)

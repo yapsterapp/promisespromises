@@ -19,6 +19,9 @@
   ;; (testing "creates SortedStreams"
   ;;   (is (instance? sut/SortedStream
   ;;                  (sut/sorted-stream (s/stream) identity merge))))
+  (testing "SortedStreams are streams"
+    (is (pr.st/stream? (sut/sorted-stream identity (s/stream)))))
+
   (testing "ISortedStream ops work correctly"
     (let [s (s/stream)
           _ (s/put! s {:foo 10})

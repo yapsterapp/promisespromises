@@ -322,6 +322,8 @@
 
 #?(:clj
    (defmacro catch-error-log
+     "If body is an error, logs a warning and returns the decoded error
+  variant"
      [description body]
      `(prpr.promise.platform/pr-catch
        (prpr.util.macro/try-catch

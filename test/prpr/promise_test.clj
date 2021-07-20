@@ -64,10 +64,11 @@
   (is (= [:foo :bar] (sut/decode-error-value [:foo :bar])))
   (is (= [:foo :bar] (sut/decode-error-value {:tag :foo :value :bar})))
   (is (= [:foo :bar] (sut/decode-error-value (sut/error-ex :foo :bar))))
-  (let [[tag value] (sut/decode-error-value (ex-info "foo" {}))]
+  (let [[tag value :as variant] (sut/decode-error-value (ex-info "foo" {}))]
     (is (= ::sut/unknown-error tag))
     (is (string? (:error value)))
-    (is (re-matches #"(?s)^#error .*" (:error value)))))
+    (is (re-matches #"(?s)^#error .*" (:error value)))
+    (is (instance? Throwable (sut/error-variant-exception variant)))))
 
 (deftest finally-test
   (testing "calls the callback when successful"

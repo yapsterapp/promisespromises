@@ -133,15 +133,26 @@
     r))
 
 (defn decode-error-value
-  "decodes an error value to a variant. if the error-value
-   is already a variant, or an ex-info with a variant,
-   it returns that directly, otherwise you will get an
-   [::unknown-error] variant"
+  "Decodes an error value to a variant: [tag value].
+
+   If the error-value is already a variant, or an ex-info with a
+  variant, it returns that directly, otherwise you will get an
+   [::unknown-error] variant. 
+
+  If the input is an Exception/Error, it'll be attached to the
+  variant's value metadata under :exception key.
+
+  See [[error-variant-exception]]."
   [v]
-  (let [exd (ex-data v)]
+  (let [exd (ex-data v)
+        vary-meta* (fn [value]
+                     (if (map? value)
+                       (vary-meta value assoc :exception v)
+                       value))]
     (cond
       (and exd (vnt/is-map-variant? exd))
-      (vnt/convert-map-variant-to-vector exd)
+      (-> (vnt/convert-map-variant-to-vector exd)
+          (update 1 vary-meta*))
 
       (vnt/is-variant? v)
       v
@@ -149,10 +160,22 @@
       (vnt/is-map-variant? v)
       (vnt/convert-map-variant-to-vector v)
 
-      ;; we print any error to avoid getting
-      ;; undeserializable #error tags in the EDN
+      ;; we hide the error in meta data to avoid 
+      ;; accidental leak of stacktraces to clients
       :else
-      [::unknown-error {:error (with-out-str (print v))}])))
+      [::unknown-error
+       (cond-> {:error  (if (= :schema.core/error (:type exd))
+                          "#error Input does not match schema"
+                          "#error Unknown Error")}
+         #?(:clj (instance? Throwable v)
+            :cljs (instance? js/Error v))
+         (vary-meta assoc :exception v))])))
+
+(defn error-variant-exception
+  "Returns an exception attached to the error variant if possible, otherwise nil."
+  [v]
+  (when (and (vnt/is-variant? v) (map? (second v)))
+    (-> v (nth 1) meta :exception)))
 
 #?(:clj
    (defmacro finally

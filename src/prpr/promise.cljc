@@ -204,6 +204,29 @@
             (prpr.promise.platform/pr-error x#)))
        (fn [e#] (~error-handler e#)))))
 
+(defn handle-tag
+  "if the tag-handlers have a handler for the err's tag,
+   return the application of that handler to the err,
+   otherwise rethrow the err
+
+   we apply the handler to the err rather than the err's value
+   so that information encoded in the err (stack, message) is
+   available"
+  [tag-handlers err]
+  (let [[tag _data] (decode-error-value err)]
+    (if (contains? tag-handlers tag)
+      ((get tag-handlers tag) err)
+      (throw err))))
+
+#?(:clj
+   (defmacro catch-tag
+     "leakproof catch of specific tags for promises. un-handled errors
+      will continue to propagate"
+     [pr tag-handlers]
+     `(catchall
+       ~pr
+       (partial handle-tag ~tag-handlers))))
+
 #?(:clj
    (defmacro catchall-variant
      "leakproof catch, returning an

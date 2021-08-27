@@ -157,6 +157,35 @@
                 (sut/chain-pr inc)
                 (sut/catchall sut/decode-error-value))))))
 
+(deftest handle-tag-test
+  (testing "rethrows an unhandled exception"
+    (is (thrown-with-msg?
+         Exception
+         #"blah"
+         (sut/handle-tag nil (ex-info "blah" {})))))
+  (testing "handles an exception"
+    (is (= [::caught {:foo 100}]
+           (sut/handle-tag
+            {::bloop (fn [err]
+                       (let [[_tag val] (sut/decode-error-value err)]
+                         [::caught val]))}
+            (sut/error-ex ::bloop {:foo 100}))))))
+
+(deftest catch-tag-test
+  (testing "does not catch an unhandled exception"
+    (is (thrown-with-msg?
+         Exception
+         #"boo!"
+         @(sut/catch-tag
+           (d/error-deferred
+            (ex-info "boo!" {}))
+           {}))))
+  (testing "handles an exception"
+    (is (= {:foo 100}
+           @(sut/catch-tag
+             (d/error-deferred (sut/error-ex ::bloop {:foo 100}))
+             {::bloop (comp second sut/decode-error-value)})))))
+
 (deftest catchall-variant-test
   (testing "returns successes wrapped in :ok"
     (is (= [:ok :foo]

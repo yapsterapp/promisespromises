@@ -9,6 +9,20 @@
   (:import
    [prpr.stream StreamError]))
 
+(deftest map-test
+  (testing "single stream"
+    (is (= [2 3 4 5]
+           @(->> [1 2 3 4]
+                 (sut/->source)
+                 (sut/map inc)
+                 (sut/reduce conj [])))))
+  (testing "multiple streams"
+    (is (= [[1 :foo] [2 :bar] [3 :baz]]
+           @(->> (sut/map vector
+                          (sut/->source [1 2 3 4])
+                          (sut/->source [:foo :bar :baz]))
+                 (sut/reduce conj []))))))
+
 (deftest s-first-test
   (testing "empty stream"
     (let [s (s/stream)

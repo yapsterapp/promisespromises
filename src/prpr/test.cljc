@@ -3,16 +3,17 @@
              [prpr.util.macro :refer [if-cljs]]
              [clojure.test :as t]
              [prpr.promise :as prpr]
-             [taoensso.timbre :refer [warn]])]
+             [taoensso.timbre :as timbre :refer [warn]])]
       :cljs [(:require
               [prpr.promise :as prpr]
-              [cljs.test])
+              [cljs.test]
+              [taoensso.timbre :as timbre])
              (:require-macros
               prpr.test
               [prpr.util.macro :refer [if-cljs]]
               [cljs.test :refer [deftest async]]
               [prpr.promise :refer [catch-error-log ddo]]
-              [taoensso.timbre :refer [warn]])]))
+              [taoensso.timbre :as timbre :refer [warn]])]))
 
 ;; lord help me
 #?(:clj
@@ -113,3 +114,15 @@
        (cljs.test/testing ~@body)
        (with-test-binding-frame
          (clojure.test/testing ~@body)))))
+
+#?(:clj
+   (defmacro with-log-level
+     "set the log-level while executing the body"
+     [log-level & body]
+     `(let [cl# (or (:level timbre/*config*)
+                    :info)]
+        (try
+          (timbre/set-level! ~log-level)
+          ~@body
+          (finally
+            (timbre/set-level! cl#))))))

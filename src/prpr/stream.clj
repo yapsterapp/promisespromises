@@ -65,6 +65,24 @@
   [v]
   (instance? StreamError v))
 
+(defn errored-if-error
+  [v]
+  (if (stream-error? v)
+    (d/error-deferred (:error v))
+    (d/success-deferred v)))
+
+(defn err-take!
+  "take! which recognizes StreamErrors ... should really replace take!
+   but that seems a bit dangerous"
+  ([source]
+   (d/chain
+    (st/take! source)
+    errored-if-error))
+  ([source default-val]
+   (d/chain
+    (st/take! source default-val)
+    errored-if-error)))
+
 (defmacro catch-stream-error
   "catch any errors and put them in a StreamError marker"
   [& body]
@@ -95,19 +113,22 @@
 (defn map
   "Equivalent to Manifold's `map` for single streams but with any errors caught
   and added to the stream as StreamErrors"
-  [f s]
-  (st/map
-   (fn [msg]
-     (if (stream-error? msg)
-       msg
-       (try
-         (let [x (f msg)]
-           (if (d/deferred? x)
-             (d/catch x #(->StreamError %))
-             x))
-         (catch Throwable e
-           (->StreamError e)))))
-   s))
+  ([f s]
+   (st/map
+    (fn [msg]
+      (if (stream-error? msg)
+        msg
+        (try
+          (let [x (f msg)]
+            (if (d/deferred? x)
+              (d/catch x #(->StreamError %))
+              x))
+          (catch Throwable e
+            (->StreamError e)))))
+    s))
+  ([f s & rest]
+   (map #(apply f %)
+        (apply st/zip s rest))))
 
 (defn mapcat
   "Equivalent to Manifold's `mapcat` but with errors caught and added to the
@@ -398,15 +419,27 @@
      (return
       [v out]))))
 
-(defn realize-stream
+(defmacro ^:deprecated realize-stream
   "Returns a deferred of vector with all items from the stream realized.
-  If the argument value is not a stream, returns a deferred of that value."
+  If the argument value is not a stream, returns a deferred of that value.
+
+  now a macro so that the reduce gets a useful macro context for error
+  reporting
+
+  deprecated because the macro context that reduce gets does not have line-no
+  information, so using
+    (->> ... realize-each (reduce conj []))
+  is materially better at reporting errors"
   [v]
-  (if-not (st/stream? v)
-    (return deferred-context v)
-    (->> v
-         realize-each
-         (reduce conj []))))
+  `(let [v# ~v]
+     (if (st/stream? v#)
+
+       (prpr.stream/reduce
+        clojure.core/conj
+        []
+        (prpr.stream/realize-each v#))
+
+       (return deferred-context v#))))
 
 (defn test-realize-stream
   "given a possibly deferred stream,
@@ -419,8 +452,8 @@
        (if-not (st/stream? v)
          (return deferred-context v)
          (->> v
-              realize-each
-              (reduce conj [])))))
+              prpr.stream/realize-each
+              (prpr.stream/reduce conj [])))))
 
 (defn ^:deprecated map-serially*
   "apply a function f to each of the values in
@@ -540,3 +573,30 @@
        (->> s
             (map f)
             (buffer-concurrency con))))))
+
+(defn ^:private coerce-seq
+  "if the value is not seqable, wrap it in a vector
+   so that it can be concatenated to the value stream"
+  [v]
+  (if (sequential? v) v [v]))
+
+(defn concat-seq-s
+  "concat a stream of seqs onto a stream of plain values
+
+   we tried using:
+
+   (stream/transform (mapcat identity) <stream>)
+
+   but that seems to memory leak
+   https://github.com/clj-commons/manifold/issues/197
+
+   whereas this approach does not"
+  [stream-s]
+  (let [out (st/stream)]
+
+    (st/connect-via
+     stream-s
+     #(st/put-all! out (coerce-seq %))
+     out)
+
+    out))

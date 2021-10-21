@@ -137,7 +137,7 @@
 
    If the error-value is already a variant, or an ex-info with a
   variant, it returns that directly, otherwise you will get an
-   [::unknown-error] variant. 
+   [::unknown-error] variant.
 
   If the input is an Exception/Error, it'll be attached to the
   variant's value metadata under :exception key.
@@ -160,7 +160,7 @@
       (vnt/is-map-variant? v)
       (vnt/convert-map-variant-to-vector v)
 
-      ;; we hide the error in meta data to avoid 
+      ;; we hide the error in meta data to avoid
       ;; accidental leak of stacktraces to clients
       :else
       [::unknown-error
@@ -226,6 +226,16 @@
      `(catchall
        ~pr
        (partial handle-tag ~tag-handlers))))
+
+#?(:clj
+   (defmacro catchall-log
+     "catchall, with some logging"
+     [pr error-handler errordesc]
+     `(catchall
+       ~pr
+       (fn [e#]
+         (error e# ~errordesc)
+         (~error-handler e#)))))
 
 #?(:clj
    (defmacro catchall-variant

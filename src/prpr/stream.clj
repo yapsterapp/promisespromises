@@ -600,3 +600,24 @@
      out)
 
     out))
+
+(defn take-n
+  "clojure.core/take for streams...
+   avoids a transducer and maybe a memory leak"
+  [n s]
+  (let [out (st/stream)
+        cnt (atom n)
+        take-n-f (fn [v]
+                   (if (<= (swap! cnt dec) 0)
+                     (d/chain
+                      (st/put! out v)
+                      (fn [_]
+                        (st/close! out)
+                        false))
+                     (st/put! out v)))]
+    (st/connect-via
+     s
+     take-n-f
+     out)
+
+    out))

@@ -719,3 +719,18 @@
       (is (= 4 (count result-stream)))
       (is (= #{StreamError}
              (into #{} (map type result-stream)))))))
+
+(deftest take-n-test
+  (testing "takes from the stream"
+    (is (= [1 2 3]
+           (s/stream->seq
+            (sut/take-n 3 (s/->source [1 2 3 4 5 6]))))))
+
+  (testing "downstream closes when upstream is closed"
+    (let [in-s (s/stream)
+          out-s (sut/take-n 3 in-s)
+          _ @(s/put! in-s 1)
+          _ (s/close! in-s)
+
+          out (s/stream->seq out-s)]
+      (is (= [1] out)))))

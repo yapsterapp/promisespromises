@@ -31,6 +31,12 @@
 (def pr-factory
   promesa.core/create)
 
+(def pr-deferred
+  promesa.core/deferred)
+
+(def pr-resolve!
+  promesa.core/resolve!)
+
 (defn pr-branch
   [p success-fn error-fn]
   (-> p

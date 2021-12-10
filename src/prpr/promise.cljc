@@ -97,6 +97,14 @@
   [factory-cb]
   (platform/pr-factory factory-cb))
 
+(defn deferred-pr
+  []
+  (platform/pr-deferred))
+
+(defn resolve!-pr
+  [p v]
+  (platform/pr-resolve! p v))
+
 (defn chain-pr
   [p & fs]
   (apply platform/pr-chain p fs))

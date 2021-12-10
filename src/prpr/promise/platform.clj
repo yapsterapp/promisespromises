@@ -39,6 +39,9 @@
      #(manifold.deferred/error! d %))
     d))
 
+(def pr-deferred manifold.deferred/deferred)
+(def pr-resolve! manifold.deferred/success!)
+
 (defn pr-branch
   [p success-fn error-fn]
   (-> p

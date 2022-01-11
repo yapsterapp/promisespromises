@@ -23,6 +23,34 @@
          :as _router} (sut/create-router test-app-ctx {})]
     (is (stream/stream? event-s))))
 
+(deftest reg-global-interceptor-test
+  (let [{global-interceptors-a schema/a-frame-router-global-interceptors-a
+         :as router} (sut/create-router test-app-ctx {schema/a-frame-router-global-interceptors [{:id ::foo}]})]
+    (is (= [{:id ::foo}]
+           @global-interceptors-a))
+    (testing "registering a new global interceptor"
+      (sut/reg-global-interceptor router {:id ::bar})
+      (is (= [{:id ::foo}
+              {:id ::bar}]
+             @global-interceptors-a)))
+    (testing "registering a replacement global interceptor"
+      (sut/reg-global-interceptor router {:id ::bar :stuff ::things})
+      (is (= [{:id ::foo}
+              {:id ::bar :stuff ::things}]
+             @global-interceptors-a)))))
+
+(deftest clear-global-interceptor-test
+  (testing "clearing all global interceptors"
+    (let [{global-interceptors-a schema/a-frame-router-global-interceptors-a
+           :as router} (sut/create-router test-app-ctx {schema/a-frame-router-global-interceptors [{:id ::foo}]})]
+      (sut/clear-global-interceptors router)
+      (is (= [] @global-interceptors-a))))
+  (testing "clearing a single global interceptor"
+    (let [{global-interceptors-a schema/a-frame-router-global-interceptors-a
+           :as router} (sut/create-router test-app-ctx {schema/a-frame-router-global-interceptors [{:id ::foo} {:id ::bar}]})]
+      (sut/clear-global-interceptors router ::bar)
+      (is (= [{:id ::foo}] @global-interceptors-a)))))
+
 (deftest coerce-extended-event-test
   (is (= {schema/a-frame-event [::foo 100]}
          (sut/coerce-extended-event [::foo 100])))
@@ -82,6 +110,33 @@
             (sut/coerce-extended-event [::handle-event-test-success]))]
 
       (is (= {::bar 100} effects))))
+
+  (testing "applies global interceptors"
+    (let [intc {:id ::foo
+                :leave (fn [ctx] (assoc ctx ::intc ::ok))}
+          router (sut/create-router
+                  test-app-ctx
+                  {schema/a-frame-router-global-interceptors [intc]})
+
+          _ (registry/register-handler
+             schema/a-frame-kind-event
+             ::handle-event-test-success
+             [(std-interceptors/fx-handler->interceptor
+               (fn [app cofx event-v]
+                 (is (= test-app-ctx app))
+                 (is (= {schema/a-frame-coeffect-event event-v} cofx))
+                 (is (= [::handle-event-test-success] event-v))
+                 {::bar 100}))])
+
+          {effects schema/a-frame-effects
+           interceptor-result ::intc}
+          @(sut/handle-event
+            router
+            false
+            (sut/coerce-extended-event [::handle-event-test-success]))]
+
+      (is (= {::bar 100} effects))
+      (is (= ::ok interceptor-result))))
 
   (testing "handles an extended-event with coeffects"
     (let [router (sut/create-router test-app-ctx {})

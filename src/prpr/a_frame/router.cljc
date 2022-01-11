@@ -6,7 +6,7 @@
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.events :as events]
    [schema.core :as s]
-   [taoensso.timbre :refer [info warn error]]))
+   [taoensso.timbre :refer [debug info warn error]]))
 
 ;; use a record so we can
 ;; override the print-method to hide the app-context
@@ -23,29 +23,76 @@
 
 (s/defn create-router :- schema/Router
   [app
-   {executor schema/a-frame-router-executor
+   {global-interceptors schema/a-frame-router-global-interceptors
+    executor schema/a-frame-router-executor
     buffer-size schema/a-frame-router-buffer-size
     :or {buffer-size 100}
     :as opts}]
-  #?(:clj
-     (merge
-      (->AFrameRouter)
-      opts
-      {schema/a-frame-app-ctx app
-       schema/a-frame-router-event-stream (stream/stream buffer-size nil executor)})
+  (let [opts (dissoc opts schema/a-frame-router-global-interceptors)]
+    #?(:clj
+       (merge
+        (->AFrameRouter)
+        opts
+        {schema/a-frame-router-global-interceptors-a (atom (vec global-interceptors))
+         schema/a-frame-app-ctx app
+         schema/a-frame-router-event-stream (stream/stream buffer-size nil executor)})
 
-     :cljs
-     (throw (ex-info "not implemented" {:app app
-                                        :executor executor
-                                        :buffer-size buffer-size
-                                        :opts opts}))))
+       :cljs
+       (throw (ex-info "not implemented" {:app app
+                                          :global-interceptors global-interceptors
+                                          :executor executor
+                                          :buffer-size buffer-size
+                                          :opts opts})))))
+
+(defn -replace-global-interceptor
+  [global-interceptors
+   {interceptor-id :id
+    :as interceptor}]
+  (reduce
+    (fn [ret existing-interceptor]
+      (if (= interceptor-id
+             (:id existing-interceptor))
+        (do
+          (debug "a-frame: replacing duplicate global interceptor id: " (:id interceptor))
+          (conj ret interceptor))
+        (conj ret existing-interceptor)))
+    []
+    global-interceptors))
+
+(defn reg-global-interceptor
+  [{global-interceptors-a schema/a-frame-router-global-interceptors-a
+    :as _router}
+   {interceptor-id :id
+    :as interceptor}]
+  (swap!
+   global-interceptors-a
+   (fn [global-interceptors]
+     (let [ids (map :id global-interceptors)]
+       (if (some #{interceptor-id} ids)
+         ;; If the id already exists we replace it in-place to maintain the ordering of
+         ;; global interceptors esp during hot-code reloading in development.
+         (-replace-global-interceptor global-interceptors interceptor)
+         (conj global-interceptors interceptor))))))
+
+(defn clear-global-interceptors
+  ([{global-interceptors-a schema/a-frame-router-global-interceptors-a
+     :as _router}]
+   (reset! global-interceptors-a []))
+
+  ([{global-interceptors-a schema/a-frame-router-global-interceptors-a
+     :as _router}
+    id]
+   (swap!
+    global-interceptors-a
+    (fn [global-interceptors]
+      (into [] (remove #(= id (:id %)) global-interceptors))))))
 
 (s/defn coerce-extended-event
-  "Event|ExtendedEvent -> ExtendedEvent"
-  [event-or-extended-event :- schema/EventOrExtendedEvent]
-  (if (map? event-or-extended-event)
-    event-or-extended-event
-    {schema/a-frame-event event-or-extended-event}))
+     "Event|ExtendedEvent -> ExtendedEvent"
+     [event-or-extended-event :- schema/EventOrExtendedEvent]
+     (if (map? event-or-extended-event)
+       event-or-extended-event
+       {schema/a-frame-event event-or-extended-event}))
 
 (s/defn dispatch
   "dispatch an Event or ExtendedEvent"
@@ -78,6 +125,7 @@
 
 (s/defn handle-event
   [{app schema/a-frame-app-ctx
+    global-interceptors-a schema/a-frame-router-global-interceptors-a
     :as router} :- schema/Router
    catch? :- s/Bool
    extended-ev :- schema/ExtendedEvent]
@@ -87,15 +135,20 @@
          :as _router-ev} extended-ev
 
         init-ctx {schema/a-frame-router router
-                  schema/a-frame-coeffects init-coeffects}]
+                  schema/a-frame-coeffects init-coeffects}
+
+        handle-arg {schema/a-frame-app-ctx app
+                    schema/a-frame-interceptor-init-ctx init-ctx
+                    schema/a-frame-router-global-interceptors @global-interceptors-a
+                    schema/a-frame-event event}]
     (if catch?
       (prpr/catchall
-       (events/handle init-ctx app event)
+       (events/handle handle-arg)
        (fn [err]
          (warn err "handle-event")
          err))
 
-      (events/handle init-ctx app event))))
+      (events/handle handle-arg))))
 
 (s/defn handle-event-stream
   "handle a regular, infinite, event-stream"

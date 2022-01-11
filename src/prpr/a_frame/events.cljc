@@ -21,17 +21,23 @@
 
 
 (defn handle
-  ([app event-v] (handle {} app event-v))
+  ([app event-v]
+   (handle
+    {schema/a-frame-app-ctx app
+     schema/a-frame-event event-v}))
 
-  ([init-ctx
-    app
-    [event-id & _event-args :as event-v]]
+  ([{app schema/a-frame-app-ctx
+     init-ctx schema/a-frame-interceptor-init-ctx
+     global-interceptors schema/a-frame-router-global-interceptors
+     [event-id & _event-args :as event-v] schema/a-frame-event}]
+
    (let [interceptors (registry/get-handler
                        schema/a-frame-kind-event
                        event-id)]
 
      (if (some? interceptors)
-       (let [init-ctx (-> {schema/a-frame-effects {}}
+       (let [interceptors (into (vec global-interceptors) interceptors)
+             init-ctx (-> {schema/a-frame-effects {}}
 
                           (merge init-ctx)
 

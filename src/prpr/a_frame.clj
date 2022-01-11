@@ -46,6 +46,20 @@
   [router events]
   (router/dispatch-n-sync router events))
 
+(defn reg-global-interceptor
+  "register a global interceptor for the router instance - all events
+   dispatched to this router will have global interceptors prepended to
+   the interceptor chain declared with the handler"
+  ([router interceptor]
+   (router/reg-global-interceptor router interceptor)))
+
+(defn clear-global-interceptors
+  "clear all or one global interceptors"
+  ([router]
+   (router/clear-global-interceptors router))
+  ([router id]
+   (router/clear-global-interceptors router id)))
+
 (defn reg-event-fx
   "register an event-handler expected to return a (promise of a) seq of fx
 
@@ -121,21 +135,6 @@
    (registry/unregister-handler schema/a-frame-kind-cofx))
   ([id]
    (registry/unregister-handler schema/a-frame-kind-cofx id)))
-
-(defn reg-global-interceptor
-  ([interceptor]
-   (registry/register-handler
-    schema/a-frame-kind-global-interceptor
-    interceptor)))
-
-(defn clear-global-interceptor
-  ([]
-   (registry/unregister-handler
-    schema/a-frame-kind-global-interceptor))
-  ([id]
-   (registry/unregister-handler
-    schema/a-frame-kind-global-interceptor
-    id)))
 
 (defn ->interceptor
   [{id :id

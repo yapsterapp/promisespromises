@@ -123,10 +123,10 @@
             h-r-coeffects schema/a-frame-coeffects
             h-r-effects schema/a-frame-effects
             :as _h-r} (sut/handle
-                       {::ctx-val ::blahblah
-                        schema/a-frame-coeffects {::cofx-init 550}}
-                       ::app
-                       [::handle-test-init-ctx 100])]
+                       {schema/a-frame-app-ctx ::app
+                        schema/a-frame-interceptor-init-ctx {::ctx-val ::blahblah
+                                                             schema/a-frame-coeffects {::cofx-init 550}}
+                        schema/a-frame-event [::handle-test-init-ctx 100]})]
 
        (is (= ::blahblah h-r-ctx-val))
        (is (= ::app h-r-app-ctx))

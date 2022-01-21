@@ -18,6 +18,9 @@
 (def a-frame-events :a-frame/events)
 (def a-frame-event-transitive-coeffects? :a-frame.event/transitive-coeffects?)
 
+(def a-frame-event-modify-interceptor-chain
+  :a-frame.event/modify-interceptor-chain)
+
 (def a-frame-interceptor-init-ctx :a-frame.events.interceptor/init-ctx)
 
 (def a-frame-effects :a-frame/effects)
@@ -78,7 +81,8 @@
 (s/defschema ExtendedEvent
   {a-frame-event Event
    (s/optional-key a-frame-coeffects) Coeffects
-   (s/optional-key a-frame-event-transitive-coeffects?) s/Bool})
+   (s/optional-key a-frame-event-transitive-coeffects?) s/Bool
+   (s/optional-key a-frame-event-modify-interceptor-chain) (s/pred fn?)})
 
 (s/defschema EventOrExtendedEvent
   (s/conditional

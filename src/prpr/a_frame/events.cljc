@@ -20,6 +20,8 @@
    (flatten-and-remove-nils id interceptors)))
 
 
+;; TODO should make this work with ExtendedEvents,
+;; since the router already does - it would be easier
 (defn handle
   ([app event-v]
    (handle
@@ -29,6 +31,7 @@
   ([{app schema/a-frame-app-ctx
      init-ctx schema/a-frame-interceptor-init-ctx
      global-interceptors schema/a-frame-router-global-interceptors
+     modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain
      [event-id & _event-args :as event-v] schema/a-frame-event}]
 
    (let [interceptors (registry/get-handler
@@ -37,6 +40,11 @@
 
      (if (some? interceptors)
        (let [interceptors (into (vec global-interceptors) interceptors)
+
+             interceptors (if (some? modify-interceptor-chain)
+                            (modify-interceptor-chain interceptors)
+                            interceptors)
+
              init-ctx (-> {schema/a-frame-effects {}}
 
                           (merge init-ctx)

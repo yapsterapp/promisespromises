@@ -2,7 +2,7 @@
   (:require
    #?(:clj [manifold.deferred :as d])
    #?(:clj [prpr.stream :as stream])
-   [prpr.promise :as prpr :refer [ddo]]
+   [prpr.promise :as prpr #?@(:clj [:refer [ddo]])]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.events :as events]
    [schema.core :as s]
@@ -33,16 +33,21 @@
        (merge
         (->AFrameRouter)
         opts
-        {schema/a-frame-router-global-interceptors-a (atom (vec global-interceptors))
+        {schema/a-frame-router-global-interceptors-a
+         (atom (vec global-interceptors))
+
          schema/a-frame-app-ctx app
-         schema/a-frame-router-event-stream (stream/stream buffer-size nil executor)})
+
+         schema/a-frame-router-event-stream
+         (stream/stream buffer-size nil executor)})
 
        :cljs
-       (throw (ex-info "not implemented" {:app app
-                                          :global-interceptors global-interceptors
-                                          :executor executor
-                                          :buffer-size buffer-size
-                                          :opts opts})))))
+       (throw (ex-info "not implemented"
+                       {:app app
+                        :global-interceptors global-interceptors
+                        :executor executor
+                        :buffer-size buffer-size
+                        :opts opts})))))
 
 (defn -replace-global-interceptor
   [global-interceptors
@@ -53,7 +58,8 @@
       (if (= interceptor-id
              (:id existing-interceptor))
         (do
-          (debug "a-frame: replacing duplicate global interceptor id: " (:id interceptor))
+          (debug "a-frame: replacing duplicate global interceptor id: "
+                 (:id interceptor))
           (conj ret interceptor))
         (conj ret existing-interceptor)))
     []
@@ -69,8 +75,9 @@
    (fn [global-interceptors]
      (let [ids (map :id global-interceptors)]
        (if (some #{interceptor-id} ids)
-         ;; If the id already exists we replace it in-place to maintain the ordering of
-         ;; global interceptors esp during hot-code reloading in development.
+         ;; If the id already exists we replace it in-place to maintain the
+         ;; ordering of global interceptors esp during hot-code reloading
+         ;; in development.
          (-replace-global-interceptor global-interceptors interceptor)
          (conj global-interceptors interceptor))))))
 
@@ -100,11 +107,14 @@
     :as _router} :- schema/Router
    event-or-extended-event :- schema/EventOrExtendedEvent]
 
+  (info "dispatch" event-or-extended-event)
+
   #?(:clj
      (stream/put! event-s (coerce-extended-event event-or-extended-event))
      :cljs
-     (throw (ex-info "not implemented" {:event-s event-s
-                                        :event-or-stream-event event-or-extended-event}))))
+     (throw (ex-info "not implemented"
+                     {:event-s event-s
+                      :event-or-stream-event event-or-extended-event}))))
 
 (s/defn dispatch-n
   "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
@@ -120,8 +130,9 @@
             true))))
 
      :cljs
-     (throw (ex-info "not implemented" {:router router
-                                        :events-or-extended-events events-or-extended-events}))))
+     (throw (ex-info "not implemented"
+                     {:router router
+                      :events-or-extended-events events-or-extended-events}))))
 
 (s/defn handle-event
   [{app schema/a-frame-app-ctx
@@ -132,6 +143,7 @@
 
   (let [{event schema/a-frame-event
          init-coeffects schema/a-frame-coeffects
+         modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain
          :as _router-ev} extended-ev
 
         init-ctx {schema/a-frame-router router
@@ -139,7 +151,13 @@
 
         handle-arg {schema/a-frame-app-ctx app
                     schema/a-frame-interceptor-init-ctx init-ctx
-                    schema/a-frame-router-global-interceptors @global-interceptors-a
+
+                    schema/a-frame-router-global-interceptors
+                    @global-interceptors-a
+
+                    schema/a-frame-event-modify-interceptor-chain
+                    modify-interceptor-chain
+
                     schema/a-frame-event event}]
     (if catch?
       (prpr/catchall
@@ -228,18 +246,22 @@
      ;; create a temp event-stream, with same buffer-size
      ;; and executor as the original
      (ddo [:let [{tmp-event-s schema/a-frame-router-event-stream
-                  :as tmp-router} (create-router app (dissoc router schema/a-frame-router))]
+                  :as tmp-router} (create-router
+                                   app (dissoc router schema/a-frame-router))]
 
            _ (stream/put!
               tmp-event-s
               (coerce-extended-event event-or-extended-event))]
 
-       (handle-sync-event-stream tmp-router))
+          (info "dispatch-sync" event-or-extended-event)
+
+          (handle-sync-event-stream tmp-router))
 
      :cljs
-     (throw (ex-info "not implemented" {:app app
-                                        :router router
-                                        :event-or-extended-event event-or-extended-event}))))
+     (throw (ex-info "not implemented"
+                     {:app app
+                      :router router
+                      :event-or-extended-event event-or-extended-event}))))
 
 (s/defn dispatch-n-sync
   "puts events onto a temporary stream, handles events from
@@ -251,20 +273,25 @@
 
   #?(:clj
 
-     (let [extended-events (map coerce-extended-event events-or-extended-events)]
+     (let [extended-events (map coerce-extended-event
+                                events-or-extended-events)]
        ;; create a temp event-stream, with same buffer-size
        ;; and executor as the original
        (ddo [:let [{tmp-event-s schema/a-frame-router-event-stream
-                    :as tmp-router} (create-router app (dissoc router schema/a-frame-router))]
+                    :as tmp-router} (create-router
+                                     app (dissoc router schema/a-frame-router))]
 
              _ (stream/put-all! tmp-event-s extended-events)]
+
+            (info "dispatch-n-sync" events-or-extended-events)
 
          (handle-sync-event-stream tmp-router)))
 
      :cljs
-     (throw (ex-info "not implemented" {:app app
-                                        :router router
-                                        :events-or-extended-events events-or-extended-events}))))
+     (throw (ex-info "not implemented"
+                     {:app app
+                      :router router
+                      :events-or-extended-events events-or-extended-events}))))
 
 (s/defn run-a-frame-router
   [router :- schema/Router]

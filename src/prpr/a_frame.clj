@@ -4,8 +4,10 @@
    [prpr.a-frame.events :as events]
    [prpr.a-frame.fx :as fx]
    [prpr.a-frame.cofx :as cofx]
-   [prpr.a-frame.std-interceptors :refer [fx-handler->interceptor
-                                          ctx-handler->interceptor]]
+   [prpr.a-frame.std-interceptors
+    :refer [fx-handler->interceptor
+            ctx-handler->interceptor
+            modify-interceptors-for-coeffects]]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.router :as router]
    [taoensso.timbre :refer [info]]))
@@ -29,22 +31,74 @@
 
      [router #(router/stop-a-frame-router router)])))
 
+(defn add-init-coeffects
+  "add some initial coeffects to an event"
+  [event init-coeffects]
+  (assoc
+     (router/coerce-extended-event event)
+     schema/a-frame-coeffects init-coeffects))
+
 (defn dispatch
-  "dispatch an event"
-  [router event]
-  (router/dispatch router event))
+  "dispatch a single event"
+  ([router event]
+   (router/dispatch router event))
+  ([router init-coeffects event]
+   (dispatch
+    router
+    (add-init-coeffects event init-coeffects))))
 
 (defn dispatch-n
-  [router events]
-  (router/dispatch-n router events))
+  "dispatch a vector of events"
+  ([router events]
+   (router/dispatch-n router events))
+
+  ([router init-coeffects events]
+   (dispatch-n
+    router
+    (map #(add-init-coeffects % init-coeffects)
+         events))))
 
 (defn dispatch-sync
-  [router event]
-  (router/dispatch-sync router event))
+  "dispatch a single event and await the completion of its
+   processing (all cofx, event and fx will complete before
+   the result promise returns)"
+  ([router event]
+   (router/dispatch-sync router event))
+
+  ([router init-coeffects event]
+   (dispatch-sync
+    router
+    (add-init-coeffects event init-coeffects))))
 
 (defn dispatch-n-sync
-  [router events]
-  (router/dispatch-n-sync router events))
+  "dispatch-sync a vector of events"
+  ([router events]
+   (router/dispatch-n-sync router events))
+
+  ([router init-coeffects events]
+   (dispatch-n-sync
+    router
+    (map #(add-init-coeffects % init-coeffects)
+         events))))
+
+(defn repl-dispatch-sync->coeffects
+  "return the coeffects for an event
+
+   processes all the :enter interceptor fns of the event's chain,
+   but skips the event-handler and any :leave or :error fns
+
+   n - the number of handlers to drop from he end of
+       the interceptor chain. default 1"
+  ([n router event]
+   (router/dispatch-sync
+    router
+    (assoc
+     (router/coerce-extended-event event)
+
+     schema/a-frame-event-modify-interceptor-chain
+     (partial modify-interceptors-for-coeffects n))))
+  ([router event]
+   (repl-dispatch-sync->coeffects 1 router event)))
 
 (defn reg-global-interceptor
   "register a global interceptor for the router instance - all events

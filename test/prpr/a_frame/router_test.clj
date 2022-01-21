@@ -120,12 +120,12 @@
 
           _ (registry/register-handler
              schema/a-frame-kind-event
-             ::handle-event-test-success
+             ::applies-global-interceptors
              [(std-interceptors/fx-handler->interceptor
                (fn [app cofx event-v]
                  (is (= test-app-ctx app))
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
-                 (is (= [::handle-event-test-success] event-v))
+                 (is (= [::applies-global-interceptors] event-v))
                  {::bar 100}))])
 
           {effects schema/a-frame-effects
@@ -133,10 +133,76 @@
           @(sut/handle-event
             router
             false
-            (sut/coerce-extended-event [::handle-event-test-success]))]
+            (sut/coerce-extended-event [::applies-global-interceptors]))]
 
       (is (= {::bar 100} effects))
       (is (= ::ok interceptor-result))))
+
+  (testing "implements interceptor-chain modification"
+    (let [router (sut/create-router test-app-ctx {})
+
+          intcs [{:id ::foo
+                  :enter (fn [ctx]
+                           (assoc-in
+                            ctx
+                            [schema/a-frame-coeffects
+                             ::foo-enter]
+                            true))
+                  :leave (fn [ctx]
+                           (assoc-in
+                            ctx
+                            [schema/a-frame-coeffects
+                             ::foo-leave]
+                            true))}
+                 {:id ::bar
+                  :enter (fn [ctx]
+                           (assoc-in
+                            ctx
+                            [schema/a-frame-coeffects
+                             ::bar-enter]
+                            true))
+                  :leave (fn [ctx]
+                           (assoc-in
+                            ctx
+                            [schema/a-frame-coeffects
+                             ::bar-leave]
+                            true))}]
+
+          _ (registry/register-handler
+             schema/a-frame-kind-event
+             ::implements-interceptor-chain-mods
+             (conj
+              intcs
+              (std-interceptors/fx-handler->interceptor
+               (fn [app cofx event-v]
+                 (is (= test-app-ctx app))
+                 (is (= {schema/a-frame-coeffect-event event-v} cofx))
+                 (is (= [::implements-interceptor-chain-mods] event-v))
+                 {::event-handler true}))))
+
+          {effects schema/a-frame-effects
+           foo-enter ::foo-enter
+           foo-leave ::foo-leave
+           bar-enter ::bar-enter
+           bar-leave ::bar-leave
+           :as _coeffects}
+          @(sut/handle-event
+            router
+            false
+            (assoc
+             (sut/coerce-extended-event [::implements-interceptor-chain-mods])
+
+             ;; this interceptor-chain modifier removes
+             ;; event-handler, and all :leave and :error fns, before
+             ;; adding an initial interceptor which extracts coeffects
+             ;; from the context
+             schema/a-frame-event-modify-interceptor-chain
+             (partial std-interceptors/modify-interceptors-for-coeffects 1)))]
+
+      (is foo-enter)
+      (is (not foo-leave))
+      (is bar-enter)
+      (is (not bar-leave))))
 
   (testing "handles an extended-event with coeffects"
     (let [router (sut/create-router test-app-ctx {})

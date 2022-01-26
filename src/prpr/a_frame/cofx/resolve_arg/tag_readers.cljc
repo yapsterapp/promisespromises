@@ -19,7 +19,9 @@
 
        (defn read-cofx-path
          [path]
-         (->CofxPath path))))
+         ;; if we eval the path then we can use var symbols
+         ;; in the path. this will only work on clj
+         (->CofxPath (eval path)))))
 
 #?(:clj
    (if-cljs
@@ -31,7 +33,7 @@
        (defn read-event-path
          "the event is always in the cofx at a known key"
          [path]
-         (->CofxPath (into [af.schema/a-frame-coeffect-event] path)))))
+         (->CofxPath (into [af.schema/a-frame-coeffect-event] (eval path))))))
 
 #?(:cljs
    (defn ^:export read-cofx-path

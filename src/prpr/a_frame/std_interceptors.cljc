@@ -8,10 +8,9 @@
   {:id :fx-handler
    :enter (fn fx-handler-fn
             [context]
-            (let [{app-ctx schema/a-frame-app-ctx
-                   {event schema/a-frame-coeffect-event
+            (let [{{event schema/a-frame-coeffect-event
                     :as coeffects} schema/a-frame-coeffects} context
-                  effects (handler-fn app-ctx coeffects event)]
+                  effects (handler-fn coeffects event)]
               (assoc context schema/a-frame-effects effects)))})
 
 (defn ctx-handler->interceptor

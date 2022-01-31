@@ -59,8 +59,7 @@
                     [fx/do-fx
                      (cofx/inject-cofx ::cofx-bar 100)
                      (std-interceptors/fx-handler->interceptor
-                      (fn [app coeffects event]
-                        (is (= ::app app))
+                      (fn [coeffects event]
                         (is (= {schema/a-frame-coeffect-event event
                                 ::cofx-bar 200}
                                coeffects))
@@ -107,8 +106,7 @@
                     ::handle-test-init-ctx
                     [fx/do-fx
                      (std-interceptors/fx-handler->interceptor
-                      (fn [app coeffects event]
-                        (is (= ::app app))
+                      (fn [coeffects event]
                         (is (= {schema/a-frame-coeffect-event event
                                 ::cofx-init 550}
                                coeffects))

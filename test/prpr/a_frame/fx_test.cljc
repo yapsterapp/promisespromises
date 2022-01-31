@@ -228,8 +228,7 @@
                       ::dispatch-fx-test-without-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
                           ;; only the first event should have the ::BAR coeffect
                           (if (= 0 n)
                             (is (= {schema/a-frame-coeffect-event event-v
@@ -263,8 +262,7 @@
                       ::dispatch-fx-test-with-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
 
                           ;; all events should have the ::BAR coeffect
                           (is (= {schema/a-frame-coeffect-event event-v
@@ -300,8 +298,7 @@
                       ::dispatch-sync-fx-test-without-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
                           ;; only the first event should have the ::BAR coeffect
                           (if (= 0 n)
                             (is (= {schema/a-frame-coeffect-event event-v
@@ -336,8 +333,7 @@
                       ::dispatch-sync-fx-test-with-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
 
                           ;; all events should have the ::BAR coeffect
                           (is (= {schema/a-frame-coeffect-event event-v
@@ -372,8 +368,7 @@
                       ::dispatch-n-fx-test-without-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
                           ;; only the first event should have the ::BAR coeffect
                           (if (= 0 n)
                             (is (= {schema/a-frame-coeffect-event event-v
@@ -407,8 +402,7 @@
                       ::dispatch-n-fx-test-with-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
 
                           ;; all events should have the ::BAR coeffect
                           (is (= {schema/a-frame-coeffect-event event-v
@@ -444,8 +438,7 @@
                       ::dispatch-n-sync-fx-test-without-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
                           ;; only the first event should have the ::BAR coeffect
                           (if (= 0 n)
                             (is (= {schema/a-frame-coeffect-event event-v
@@ -480,8 +473,7 @@
                       ::dispatch-n-sync-fx-test-with-transitive-coeffects
                       [sut/do-fx
                        (std-interceptors/fx-handler->interceptor
-                        (fn [app cofx [_ n :as event-v]]
-                          (is (= test-app-ctx app))
+                        (fn [cofx [_ n :as event-v]]
 
                           ;; all events should have the ::BAR coeffect
                           (is (= {schema/a-frame-coeffect-event event-v

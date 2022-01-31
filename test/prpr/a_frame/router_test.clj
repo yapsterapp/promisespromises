@@ -97,8 +97,7 @@
              schema/a-frame-kind-event
              ::handle-event-test-success
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx event-v]
-                 (is (= test-app-ctx app))
+               (fn [cofx event-v]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
                  (is (= [::handle-event-test-success] event-v))
                  {::bar 100}))])
@@ -122,8 +121,7 @@
              schema/a-frame-kind-event
              ::applies-global-interceptors
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx event-v]
-                 (is (= test-app-ctx app))
+               (fn [cofx event-v]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
                  (is (= [::applies-global-interceptors] event-v))
                  {::bar 100}))])
@@ -174,8 +172,7 @@
              (conj
               intcs
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx event-v]
-                 (is (= test-app-ctx app))
+               (fn [cofx event-v]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
                  (is (= [::implements-interceptor-chain-mods] event-v))
                  {::event-handler true}))))
@@ -213,8 +210,7 @@
              schema/a-frame-kind-event
              ::handle-event-test-extended-event-with-coeffects
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx event-v]
-                 (is (= test-app-ctx app))
+               (fn [cofx event-v]
                  (is (= org-event-v event-v))
                  (is (= {schema/a-frame-coeffect-event event-v
                          ::foo 1000} cofx))
@@ -237,8 +233,7 @@
                schema/a-frame-kind-event
                ::foo
                [(std-interceptors/fx-handler->interceptor
-                 (fn [app cofx event-v]
-                   (is (= test-app-ctx app))
+                 (fn [cofx event-v]
                    (is (= {schema/a-frame-coeffect-event event-v} cofx))
                    (is (= [::foo] event-v))
 
@@ -256,8 +251,7 @@
                schema/a-frame-kind-event
                ::foo
                [(std-interceptors/fx-handler->interceptor
-                 (fn [app cofx event-v]
-                   (is (= test-app-ctx app))
+                 (fn [cofx event-v]
                    (is (= {schema/a-frame-coeffect-event event-v} cofx))
                    (is (= [::foo] event-v))
 
@@ -286,8 +280,7 @@
                schema/a-frame-kind-event
                ::foo
                [(std-interceptors/fx-handler->interceptor
-                 (fn [app cofx event-v]
-                   (is (= test-app-ctx app))
+                 (fn [cofx event-v]
                    (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                    (stream/put! out-s event-v)
@@ -297,8 +290,7 @@
                schema/a-frame-kind-event
                ::bar
                [(std-interceptors/fx-handler->interceptor
-                 (fn [app cofx event-v]
-                   (is (= test-app-ctx app))
+                 (fn [cofx event-v]
                    (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                    (stream/put! out-s event-v)
@@ -321,8 +313,7 @@
                  schema/a-frame-kind-event
                  ::foo
                  [(std-interceptors/fx-handler->interceptor
-                   (fn [app cofx [_ n :as event-v]]
-                     (is (= test-app-ctx app))
+                   (fn [cofx [_ n :as event-v]]
                      (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                      (if (odd? n)
@@ -350,8 +341,7 @@
              schema/a-frame-kind-event
              ::handle-sync-event-stream-test-no-dispatch
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -375,8 +365,7 @@
              ::handle-sync-event-stream-test-with-dispatch
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -402,8 +391,7 @@
              schema/a-frame-kind-event
              ::dispatch-sync-test-no-dispatch
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -432,8 +420,7 @@
              ::dispatch-sync-test-with-dispatch
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -466,8 +453,7 @@
              ::dispatch-sync-test-with-dispatch-sync-cofx
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -502,8 +488,7 @@
              schema/a-frame-kind-event
              ::dispatch-sync-test-propagates-error
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -548,8 +533,7 @@
              ::dispatch-sync-propagates-error-from-nested-dispatch
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -597,8 +581,7 @@
              schema/a-frame-kind-event
              ::handle-n-sync-event-stream-test-no-dispatch
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -623,8 +606,7 @@
              ::handle-n-sync-event-stream-test-with-dispatch
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -655,8 +637,7 @@
              ::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects
              [fx/do-fx
               (std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
-                 (is (= test-app-ctx app))
+               (fn [cofx [_ n :as event-v]]
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (swap! out-a conj n)
@@ -691,9 +672,8 @@
              schema/a-frame-kind-event
              ::foo
              [(std-interceptors/fx-handler->interceptor
-               (fn [app cofx [_ n :as event-v]]
+               (fn [cofx [_ n :as event-v]]
                  ;; (prn "entering" event-v)
-                 (is (= test-app-ctx app))
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (if (<= n 100)

@@ -1,6 +1,7 @@
 (ns prpr.a-frame.schema
   (:require
    [schema.core :as s]
+   [prpr.schema :as prpr.s]
    #?(:clj [prpr.stream :as stream])))
 
 (def a-frame-state :a-frame/state)
@@ -31,9 +32,60 @@
 (def a-frame-kind-cofx :a-frame.kind/cofx)
 (def a-frame-kind-event :a-frame.kind/event)
 
+;; an event as dispatched by applications
+(s/defschema Event
+  [(s/one s/Keyword :event-kw)
+   s/Any])
 
-(s/defschema Coeffects
+(s/defschema Events
+  [Event])
+
+;; these are initial coeffects which can be given to a dispatch
+;; they don't yet have the Event associated with them
+(s/defschema InitialCoeffects
   {s/Keyword s/Any})
+
+;; an event along with any initial coeffects
+(s/defschema ExtendedEvent
+  {a-frame-event Event
+   (s/optional-key a-frame-coeffects) InitialCoeffects
+   (s/optional-key a-frame-event-transitive-coeffects?) s/Bool
+   (s/optional-key a-frame-event-modify-interceptor-chain) (s/pred fn?)})
+
+(s/defschema EventOrExtendedEvent
+  (s/conditional
+   vector? Event
+   map? ExtendedEvent))
+
+(s/defschema EventsOrExtendedEvents
+  [EventOrExtendedEvent])
+
+;; these are the Coeffects that a handler will see
+(s/defschema Coeffects
+  {a-frame-coeffect-event Event
+   s/Keyword s/Any})
+
+(defn derive-coeffects-schema
+  "given some expected coeffects, derive
+   a Coeffects schema from the base schema
+   (always including the event, with a lax schema if no
+    stricter schema is given)
+
+   - strict? : true to prevent additional coeffect keys. false by default
+   - event-schema : a more restrictive schema for the event
+   - expected-coeffects-schema : a map schema for exepcted coeffects"
+  ([strict? event-schema expected-coeffects-schema]
+   (prpr.s/merge-map-schemas
+    (if (some? event-schema)
+     {a-frame-coeffect-event event-schema}
+     {a-frame-coeffect-event Event})
+    expected-coeffects-schema
+    (when-not strict?
+      {s/Keyword s/Any})))
+  ([expected-coeffects-schema]
+   (derive-coeffects-schema false nil expected-coeffects-schema))
+  ([event-schema expected-coeffects-schema]
+   (derive-coeffects-schema false event-schema expected-coeffects-schema)))
 
 (s/defschema EffectsMap
   {s/Keyword s/Any})
@@ -68,29 +120,6 @@
    a-frame-router-global-interceptors-a s/Any
    (s/optional-key a-frame-router-executor) s/Any
    (s/optional-key a-frame-router-buffer-size) s/Int})
-
-;; an event as dispatched by applications
-(s/defschema Event
-  [(s/one s/Keyword :event-kw)
-   s/Any])
-
-(s/defschema Events
-  [Event])
-
-;; an event along with any initial coeffects
-(s/defschema ExtendedEvent
-  {a-frame-event Event
-   (s/optional-key a-frame-coeffects) Coeffects
-   (s/optional-key a-frame-event-transitive-coeffects?) s/Bool
-   (s/optional-key a-frame-event-modify-interceptor-chain) (s/pred fn?)})
-
-(s/defschema EventOrExtendedEvent
-  (s/conditional
-   vector? Event
-   map? ExtendedEvent))
-
-(s/defschema EventsOrExtendedEvents
-  [EventOrExtendedEvent])
 
 (s/defschema HandleEventInterceptorCtx
   {a-frame-router Router

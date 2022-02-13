@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "description": "promisespromises",
   "dependencies": {
+    "bluebird": "^3.7.2",
     "core-js": "^3.6.4",
-    "bluebird": "^3.7.2"
+    "fs-sync": "^1.0.6"
   },
   "devDependencies": {
-    "gulp": "^4.0.2",
     "concurrently": "5.0.2",
+    "gulp": "^4.0.2",
     "node-repl": "^2.0.2",
     "shadow-cljs": "^2.8.94"
   },

@@ -1,10 +1,10 @@
 (defproject employeerepublic/promisespromises "_"
   :description "a lib for working with promises and streams"
-  :url "https://github.com/employeerepublic/promisespromises"
+  :url "https://github.com/yapsterapp/promisespromises"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
-  :plugins [[lein-modules-bpk/lein-modules "0.3.13.bpk-20160816.002513-1"]]
+  :plugins []
 
   :pedantic? :abort
 
@@ -12,14 +12,14 @@
                org.clojure/tools.logging
                org.clojure/tools.reader]
 
-  :dependencies [[org.clojure/clojure "_"]
-                 [org.clojure/clojurescript "_"]
-                 [org.clojure/tools.reader "_"]
+  :dependencies [[org.clojure/clojure "1.10.1"]
+                 [org.clojure/clojurescript "1.10.339"]
+                 [org.clojure/tools.reader "1.3.2"]
                  [org.clojure/tools.namespace "0.2.11"]
                  [org.clojure/tools.macro "0.1.5"]
 
                  ;; wow, such logging
-                 [org.clojure/tools.logging "_"]
+                 [org.clojure/tools.logging "0.4.1"]
                  [com.taoensso/timbre "4.10.0"]
                  [org.slf4j/slf4j-api "1.7.25"]
                  [employeerepublic/slf4j-timbre "0.5.0"]

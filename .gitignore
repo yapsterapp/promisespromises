@@ -17,3 +17,4 @@ pom.xml
 /.lein-env
 /phantom/unit-test-js
 /shadow-cljs.edn
+/node_modules

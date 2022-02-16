@@ -3,7 +3,7 @@
    [manifold.deferred :as d]
    [taoensso.timbre :refer [warn]]))
 
-(defn retry
+(defn retry-n
   "given a 0-args fn f which yields a promise,
    execute that fn repeatedly until it succeds
    - f - a 0-args function yielding a promise
@@ -15,13 +15,13 @@
    max-retries
    delay-ms]
 
-  (d/loop [p (f)
-           n max-retries]
+  (d/loop [n 0
+           p (f 0)]
     (d/catch
         p
         (fn [e]
 
-          (if (> n 0)
+          (if (< n max-retries)
 
             (do
               ;; only warn in the retry case - the exception
@@ -34,7 +34,18 @@
                 ::timeout)
                (fn [_]
                  (d/recur
-                  (f)
-                  (dec n)))))
+                  (inc n)
+                  (f (inc n))))))
 
             (throw e))))))
+
+(defn retry
+  [f
+   log-description
+   max-retries
+   delay-ms]
+  (retry-n
+   (fn [_n] (f))
+   log-description
+   max-retries
+   delay-ms))

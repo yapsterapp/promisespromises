@@ -117,7 +117,7 @@
 (defn reg-event-fx
   "register an event-handler expected to return a (promise of a) seq of fx
 
-   (<handler> app cofx event) -> Promise<[{<fx-id> <fx-args>}]>
+   (<handler> cofx event) -> Promise<[{<fx-id> <fx-args>}]>
 
    the seq of fx will be processed sequentially - maps with multiple fx
    entries may be processed concurrently

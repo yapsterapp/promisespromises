@@ -253,7 +253,7 @@
               tmp-event-s
               (coerce-extended-event event-or-extended-event))]
 
-          (info "dispatch-sync" event-or-extended-event)
+          ;;(info "dispatch-sync" event-or-extended-event)
 
           (handle-sync-event-stream tmp-router))
 

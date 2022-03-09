@@ -1,9 +1,11 @@
 (ns prpr.a-frame.events
   (:require
+   [schema.core :as s]
    [prpr.promise :as prpr]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
-   [prpr.interceptor-chain :as interceptor-chain]
+   [prpr.a-frame.std-interceptors :as std-interceptors]
+   [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [taoensso.timbre :refer [warn]]))
 
 (defn flatten-and-remove-nils
@@ -13,56 +15,116 @@
        (remove nil?)))
 
 (defn register
+  "register an interceptor chain for an event - this should terminate
+   in an interceptor which has a data-reference to the pure event-handler
+   fn for the event"
   [id interceptors]
   (registry/register-handler
    schema/a-frame-kind-event
    id
    (flatten-and-remove-nils id interceptors)))
 
+(defn register-pure
+  "register a pure event-handler fn"
+  [id pure-handler-fn]
+  (registry/register-handler
+   schema/a-frame-kind-event-pure
+   id
+   pure-handler-fn))
 
-;; TODO should make this work with ExtendedEvents,
-;; since the router already does - it would be easier
+(defn reg-event-fx
+  ([id handler]
+   (reg-event-fx id nil handler))
+
+  ([id
+    interceptors
+    handler]
+   (register-pure id handler)
+   (register
+    id
+    [::std-interceptors/unhandled-error-report
+     :prpr.a-frame.fx/do-fx
+     interceptors
+     (std-interceptors/fx-handler->interceptor id)])))
+
+(defn reg-event-ctx
+  ([id handler]
+   (reg-event-ctx id nil handler))
+
+  ([id
+    interceptors
+    handler]
+   (register-pure id handler)
+   (register
+    id
+    [::std-interceptors/unhandled-error-report
+     :prpr.a-frame.fx/do-fx
+     interceptors
+     (std-interceptors/ctx-handler->interceptor id)])))
+
+(defn clear-event
+  ([]
+   (registry/unregister-handler
+    schema/a-frame-kind-event-pure)
+   (registry/unregister-handler
+    schema/a-frame-kind-event))
+
+  ([id]
+   (registry/unregister-handler
+    schema/a-frame-kind-event-pure
+    id)
+   (registry/unregister-handler
+    schema/a-frame-kind-event
+    id)))
+
+(s/defn coerce-extended-event
+  "Event|ExtendedEvent -> ExtendedEvent"
+  [event-or-extended-event :- schema/EventOrExtendedEvent]
+  (if (map? event-or-extended-event)
+    event-or-extended-event
+    {schema/a-frame-event event-or-extended-event}))
+
 (defn handle
-  ([app event-v]
-   (handle
-    {schema/a-frame-app-ctx app
-     schema/a-frame-event event-v}))
+  [{app-ctx schema/a-frame-app-ctx
+    a-frame-router schema/a-frame-router
+    global-interceptors schema/a-frame-router-global-interceptors}
 
-  ([{app schema/a-frame-app-ctx
-     init-ctx schema/a-frame-interceptor-init-ctx
-     global-interceptors schema/a-frame-router-global-interceptors
-     modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain
-     [event-id & _event-args :as event-v] schema/a-frame-event}]
+   event-or-extended-ev]
 
-   (let [interceptors (registry/get-handler
-                       schema/a-frame-kind-event
-                       event-id)]
+  (let [{[event-id & _event-args :as event-v] schema/a-frame-event
+         init-coeffects schema/a-frame-coeffects
+         modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain
+         :as _router-ev} (coerce-extended-event event-or-extended-ev)
 
-     (if (some? interceptors)
-       (let [interceptors (into (vec global-interceptors) interceptors)
+        interceptors (registry/get-handler
+                      schema/a-frame-kind-event
+                      event-id)]
 
-             interceptors (if (some? modify-interceptor-chain)
-                            (modify-interceptor-chain interceptors)
-                            interceptors)
+    (if (some? interceptors)
+      (let [interceptors (into (vec global-interceptors) interceptors)
 
-             init-ctx (-> {schema/a-frame-effects {}}
+            interceptors (if (some? modify-interceptor-chain)
+                           (modify-interceptor-chain interceptors)
+                           interceptors)
 
-                          (merge init-ctx)
+            init-ctx (-> {schema/a-frame-coeffects init-coeffects
+                          schema/a-frame-effects {}}
 
-                          ;; don't let init-ctx override the app-ctx
-                          ;; or the event coeffect
+                         (assoc schema/a-frame-app-ctx app-ctx)
 
-                          (assoc schema/a-frame-app-ctx app)
+                         ;; add the event to any init-ctx coeffects ...
+                         ;; so cofx handlers can access it
+                         (assoc-in [schema/a-frame-coeffects
+                                    schema/a-frame-coeffect-event]
+                                   event-v))]
 
-                          ;; add the event to any init-ctx coeffects ...
-                          ;; so cofx handlers can access it
-                          (assoc-in [schema/a-frame-coeffects
-                                     schema/a-frame-coeffect-event]
-                                    event-v))]
+        (interceptor-chain/execute
+         app-ctx
+         a-frame-router
+         interceptors
+         init-ctx))
 
-         (interceptor-chain/execute interceptors init-ctx))
-
-       (throw
-        (prpr/error-ex
-         ::no-event-handler
-         {:event-v event-v}))))))
+      (throw
+       (prpr/error-ex
+        ::no-event-handler
+        {:event-v event-v})))))

@@ -54,16 +54,16 @@
    {interceptor-id :id
     :as interceptor}]
   (reduce
-    (fn [ret existing-interceptor]
-      (if (= interceptor-id
-             (:id existing-interceptor))
-        (do
-          (debug "a-frame: replacing duplicate global interceptor id: "
-                 (:id interceptor))
-          (conj ret interceptor))
-        (conj ret existing-interceptor)))
-    []
-    global-interceptors))
+   (fn [ret existing-interceptor]
+     (if (= interceptor-id
+            (:id existing-interceptor))
+       (do
+         (debug "a-frame: replacing duplicate global interceptor id: "
+                (:id interceptor))
+         (conj ret interceptor))
+       (conj ret existing-interceptor)))
+   []
+   global-interceptors))
 
 (defn reg-global-interceptor
   [{global-interceptors-a schema/a-frame-router-global-interceptors-a
@@ -94,13 +94,6 @@
     (fn [global-interceptors]
       (into [] (remove #(= id (:id %)) global-interceptors))))))
 
-(s/defn coerce-extended-event
-     "Event|ExtendedEvent -> ExtendedEvent"
-     [event-or-extended-event :- schema/EventOrExtendedEvent]
-     (if (map? event-or-extended-event)
-       event-or-extended-event
-       {schema/a-frame-event event-or-extended-event}))
-
 (s/defn dispatch
   "dispatch an Event or ExtendedEvent"
   [{event-s schema/a-frame-router-event-stream
@@ -110,7 +103,7 @@
   (info "dispatch" event-or-extended-event)
 
   #?(:clj
-     (stream/put! event-s (coerce-extended-event event-or-extended-event))
+     (stream/put! event-s (events/coerce-extended-event event-or-extended-event))
      :cljs
      (throw (ex-info "not implemented"
                      {:event-s event-s
@@ -141,32 +134,19 @@
    catch? :- s/Bool
    extended-ev :- schema/ExtendedEvent]
 
-  (let [{event schema/a-frame-event
-         init-coeffects schema/a-frame-coeffects
-         modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain
-         :as _router-ev} extended-ev
+  (let [handle-opts {schema/a-frame-app-ctx app
+                     schema/a-frame-router router
 
-        init-ctx {schema/a-frame-router router
-                  schema/a-frame-coeffects init-coeffects}
-
-        handle-arg {schema/a-frame-app-ctx app
-                    schema/a-frame-interceptor-init-ctx init-ctx
-
-                    schema/a-frame-router-global-interceptors
-                    @global-interceptors-a
-
-                    schema/a-frame-event-modify-interceptor-chain
-                    modify-interceptor-chain
-
-                    schema/a-frame-event event}]
+                     schema/a-frame-router-global-interceptors
+                     @global-interceptors-a}]
     (if catch?
       (prpr/catchall
-       (events/handle handle-arg)
+       (events/handle handle-opts extended-ev)
        (fn [err]
          (warn err "handle-event")
          err))
 
-      (events/handle handle-arg))))
+      (events/handle handle-opts extended-ev))))
 
 (s/defn handle-event-stream
   "handle a regular, infinite, event-stream"
@@ -251,7 +231,7 @@
 
            _ (stream/put!
               tmp-event-s
-              (coerce-extended-event event-or-extended-event))]
+              (events/coerce-extended-event event-or-extended-event))]
 
           ;;(info "dispatch-sync" event-or-extended-event)
 
@@ -267,13 +247,13 @@
   "puts events onto a temporary stream, handles events from
    the stream, and returns when the stream is empty"
   [{app schema/a-frame-app-ctx
-     :as router} :- schema/Router
+    :as router} :- schema/Router
 
    events-or-extended-events :- schema/EventsOrExtendedEvents]
 
   #?(:clj
 
-     (let [extended-events (map coerce-extended-event
+     (let [extended-events (map events/coerce-extended-event
                                 events-or-extended-events)]
        ;; create a temp event-stream, with same buffer-size
        ;; and executor as the original
@@ -285,7 +265,7 @@
 
             (info "dispatch-n-sync" events-or-extended-events)
 
-         (handle-sync-event-stream tmp-router)))
+            (handle-sync-event-stream tmp-router)))
 
      :cljs
      (throw (ex-info "not implemented"

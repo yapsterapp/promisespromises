@@ -1,19 +1,21 @@
 (ns prpr.test
   #?@(:clj [(:require
-             [prpr.util.macro :refer [if-cljs]]
-             [clojure.test :as t]
-             [prpr.promise :as prpr]
+             [clojure.test]
+             [prpr.util.macro]
+             [prpr.promise]
              [taoensso.timbre :as timbre :refer [warn]])]
-      :cljs [(:require
-              [prpr.promise :as prpr]
+
+      :cljs [(:require-macros
               [cljs.test]
-              [taoensso.timbre :as timbre])
-             (:require-macros
-              prpr.test
-              [prpr.util.macro :refer [if-cljs]]
-              [cljs.test :refer [deftest async]]
-              [prpr.promise :refer [catch-error-log ddo]]
-              [taoensso.timbre :as timbre :refer [warn]])]))
+              [prpr.util.macro]
+              [prpr.promise]
+              [taoensso.timbre :refer [warn]]
+              [prpr.test])
+             (:require
+              [cljs.test]
+              [prpr.util.macro]
+              [prpr.promise]
+              [taoensso.timbre :as timbre])]))
 
 ;; lord help me
 #?(:clj
@@ -61,7 +63,7 @@
 #?(:clj
    (defmacro use-fixtures
      [& body]
-     `(if-cljs
+     `(prpr.util.macro/if-cljs
        (cljs.test/use-fixtures ~@body)
        (clojure.test/use-fixtures ~@body))))
 
@@ -70,7 +72,7 @@
 #?(:clj
    (defmacro test-async
      [& ps]
-     `(if-cljs
+     `(prpr.util.macro/if-cljs
           (cljs.test/async
            done#
 
@@ -95,14 +97,14 @@
 #?(:clj
    (defmacro deftest
      [& body]
-     `(if-cljs
+     `(prpr.util.macro/if-cljs
        (cljs.test/deftest ~@body)
        (clojure.test/deftest ~@body))))
 
 #?(:clj
    (defmacro is
      [& body]
-     `(if-cljs
+     `(prpr.util.macro/if-cljs
        (cljs.test/is ~@body)
        (with-test-binding-frame
          (clojure.test/is ~@body)))))
@@ -110,7 +112,7 @@
 #?(:clj
    (defmacro testing
      [& body]
-     `(if-cljs
+     `(prpr.util.macro/if-cljs
        (cljs.test/testing ~@body)
        (with-test-binding-frame
          (clojure.test/testing ~@body)))))
@@ -126,3 +128,19 @@
           ~@body
           (finally
             (timbre/set-level! cl#))))))
+
+
+(defn compose-fixtures
+  [f1 f2]
+  #?(:clj (clojure.test/compose-fixtures f1 f2)
+
+     :cljs (let [{f1-before :before
+                  f1-after :after} (if (map? f1)
+                                     f1
+                                     {:before f1})
+                 {f2-before :before
+                  f2-after :after} (if (map? f2)
+                                     f2
+                                     {:before f2})]
+             {:before (cljs.test/compose-fixtures f1-before f2-before)
+              :after (cljs.test/compose-fixtures f1-after f2-after)})))

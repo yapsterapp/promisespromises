@@ -5,9 +5,7 @@
    [prpr.a-frame.fx :as fx]
    [prpr.a-frame.cofx :as cofx]
    [prpr.a-frame.std-interceptors
-    :refer [fx-handler->interceptor
-            ctx-handler->interceptor
-            modify-interceptors-for-coeffects]]
+    :refer [modify-interceptors-for-coeffects]]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.router :as router]
    [taoensso.timbre :refer [info]]))
@@ -35,7 +33,7 @@
   "add some initial coeffects to an event"
   [event init-coeffects]
   (assoc
-     (router/coerce-extended-event event)
+     (events/coerce-extended-event event)
      schema/a-frame-coeffects init-coeffects))
 
 (defn dispatch
@@ -93,7 +91,7 @@
    (router/dispatch-sync
     router
     (assoc
-     (router/coerce-extended-event event)
+     (events/coerce-extended-event event)
 
      schema/a-frame-event-modify-interceptor-chain
      (partial modify-interceptors-for-coeffects n))))
@@ -129,11 +127,7 @@
   ([id
     interceptors
     handler]
-   (events/register
-    id
-    [fx/do-fx
-     interceptors
-     (fx-handler->interceptor handler)])))
+   (events/reg-event-fx id interceptors handler)))
 
 (defn reg-event-ctx
   "register an event-handler expected to return a (promise of an) updated
@@ -147,17 +141,13 @@
   ([id
     interceptors
     handler]
-   (events/register
-    id
-    [fx/do-fx
-     interceptors
-     (ctx-handler->interceptor handler)])))
+   (events/reg-event-ctx id interceptors handler)))
 
 (defn clear-event
   ([]
-   (registry/unregister-handler schema/a-frame-kind-event))
+   (events/clear-event))
   ([id]
-   (registry/unregister-handler schema/a-frame-kind-event id)))
+   (events/clear-event id)))
 
 (defn reg-fx
   "register an fx handler

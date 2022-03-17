@@ -1,12 +1,13 @@
 (ns prpr.a-frame.cofx-test
-  #?(:cljs (:require-macros [prpr.test :refer [deftest test-async is testing use-fixtures]]))
+  #?(:cljs (:require-macros
+            [prpr.test :refer [deftest test-async is testing use-fixtures]]))
   (:require
    #?(:clj [prpr.test :refer [deftest test-async is testing use-fixtures]])
    [prpr.promise :as prpr :refer [ddo]]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]
-   [prpr.interceptor-chain :as interceptor-chain]
+   [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [prpr.a-frame.cofx :as sut]))
 
 (use-fixtures :each registry.test/reset-registry)
@@ -28,18 +29,21 @@
                                             (is (= ::app app))
                                             (assoc cofx cofx-key 100)))
 
-                 init-int-ctx {schema/a-frame-app-ctx ::app}]
+                 init-int-ctx {}
+
+                 interceptors  [(sut/inject-cofx cofx-key)]]
 
            int-r (interceptor-chain/execute
-                  [(sut/inject-cofx cofx-key)]
+                  ::app
+                  ::a-frame
+                  interceptors
                   init-int-ctx)]
 
-       (is (= (assoc
-               init-int-ctx
-               :interceptor/queue []
-               :interceptor/stack '()
-               schema/a-frame-coeffects {cofx-key 100})
-              int-r))))
+
+          (is (= (assoc
+                  init-int-ctx
+                  schema/a-frame-coeffects {cofx-key 100})
+                 (apply dissoc int-r interceptor-chain/context-keys)))))
 
    (testing "1-arg cofx"
      (ddo [:let [cofx-key ::inject-cofx-test-1-arg
@@ -47,18 +51,18 @@
                                             (is (= ::app app))
                                             (assoc cofx cofx-key arg)))
 
-                 init-int-ctx {schema/a-frame-app-ctx ::app}]
+                 init-int-ctx {}]
 
            int-r (interceptor-chain/execute
+                  ::app
+                  ::a-frame
                   [(sut/inject-cofx cofx-key 100)]
                   init-int-ctx)]
 
        (is (= (assoc
                init-int-ctx
-               :interceptor/queue []
-               :interceptor/stack '()
                schema/a-frame-coeffects {cofx-key 100})
-              int-r))))
+              (apply dissoc int-r interceptor-chain/context-keys)))))
 
    (testing "1-arg cofx with resolver"
      (ddo [:let [static-cofx-key ::inject-cofx-1-arg-resolver-static
@@ -81,11 +85,11 @@
                  init-coeffects {schema/a-frame-coeffect-event
                                  [::foo {:event-data :val}]}
 
-                 init-int-ctx {schema/a-frame-app-ctx ::app
-
-                               schema/a-frame-coeffects init-coeffects}]
+                 init-int-ctx {schema/a-frame-coeffects init-coeffects}]
 
            int-r (interceptor-chain/execute
+                  ::app
+                  ::a-frame
                   [(sut/inject-cofx static-cofx-key)
                    (sut/inject-cofx resolved-cofx-key {:a #cofx/path [::inject-cofx-1-arg-resolver-static]
                                                        :b #cofx/event-path [1]})]
@@ -93,8 +97,6 @@
 
        (is (= (assoc
                init-int-ctx
-               :interceptor/queue []
-               :interceptor/stack '()
 
                schema/a-frame-coeffects
                (merge
@@ -103,4 +105,4 @@
                  resolved-cofx-key {:a ::static-val
                                     :b {:event-data :val}}}))
 
-              int-r))))))
+              (apply dissoc int-r interceptor-chain/context-keys)))))))

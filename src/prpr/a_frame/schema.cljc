@@ -13,7 +13,11 @@
 (def a-frame-router-global-interceptors :a-frame.router/global-interceptors)
 (def a-frame-router-global-interceptors-a :a-frame.router/global-interceptors-a)
 
+;; a system-map
 (def a-frame-app-ctx :a-frame/app-ctx)
+
+;; a timbre with-context map for logging
+(def a-frame-log-ctx :a-frame/log-ctx)
 
 (def a-frame-event :a-frame/event)
 (def a-frame-events :a-frame/events)
@@ -30,7 +34,12 @@
 
 (def a-frame-kind-fx :a-frame.kind/fx)
 (def a-frame-kind-cofx :a-frame.kind/cofx)
+
+;; the event-handler interceptor chain
 (def a-frame-kind-event :a-frame.kind/event)
+
+;; the pure event handler
+(def a-frame-kind-event-pure :a-frame.kind/event-pure)
 
 ;; an event as dispatched by applications
 (s/defschema Event

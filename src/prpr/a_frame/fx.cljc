@@ -3,7 +3,9 @@
    [prpr.a-frame.schema :as schema]
    [prpr.promise :as prpr :refer [ddo return]]
    [prpr.a-frame.registry :as registry]
+   [prpr.a-frame.events :as events]
    [prpr.a-frame.router :as router]
+   [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [schema.core :as s]
    [taoensso.timbre :refer [warn]]
    #?(:clj [manifold.deferred :as p]
@@ -69,19 +71,25 @@
    (fn [[results _remaining]]
      results)))
 
-;; an interceptor which will execute all effects from the
-;; :a-frame/effects key of the interceptor context
-(def do-fx
-  {:id :do-fx
-   :leave (fn do-fx-leave
-            [{_app schema/a-frame-app-ctx
-              effects schema/a-frame-effects
-              :as context}]
+(def do-fx-interceptor
+  "an interceptor which will execute all effects from the
+  :a-frame/effects key of the interceptor context "
+  {::interceptor-chain/name ::do-fx
 
-            (ddo [_ (if (map? effects)
-                      (do-map-of-effects context effects)
-                      (do-seq-of-effects context effects))]
-              context))})
+   ::interceptor-chain/leave
+   (fn do-fx-leave
+     [{_app schema/a-frame-app-ctx
+       effects schema/a-frame-effects
+       :as context}]
+
+     (ddo [_ (if (map? effects)
+               (do-map-of-effects context effects)
+               (do-seq-of-effects context effects))]
+          context))})
+
+(interceptor-chain/register-interceptor
+ ::do-fx
+ do-fx-interceptor)
 
 (defn apply-transitive-coeffects?
   [default-transitive-coeffects?
@@ -101,7 +109,7 @@
    event-or-extended-event]
   (let [{_ev schema/a-frame-event
          ev-coeffects schema/a-frame-coeffects
-         :as extended-event} (router/coerce-extended-event
+         :as extended-event} (events/coerce-extended-event
                               event-or-extended-event)
         transitive-coeffects? (apply-transitive-coeffects?
                                default-transitive-coeffects?

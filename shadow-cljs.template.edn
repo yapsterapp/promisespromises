@@ -15,8 +15,7 @@
   [org.clojure/clojure "_"]
   [org.clojure/tools.reader "_"]
 
-  [employeerepublic/promisespromises "_"]
-  ]
+  [employeerepublic/promisespromises "_"]]
 
  :builds
  {:node-test {:target    :node-test

@@ -21,8 +21,13 @@
                  ;; wow, such logging
                  [org.clojure/tools.logging "0.4.1"]
                  [com.taoensso/timbre "4.10.0"]
+                 ;; timbre 5.1.2 is causing cljs compile
+                 ;; errors, so sticking with 4.1.0
+                 ;; [com.taoensso/timbre "5.1.2"
+                 ;;  :exclusions [com.taoensso/encore]]
+                 ;; [com.taoensso/encore "3.21.0"]
                  [org.slf4j/slf4j-api "1.7.25"]
-                 [employeerepublic/slf4j-timbre "0.5.0"]
+                 [employeerepublic/slf4j-timbre "0.5.1"]
                  [org.slf4j/jcl-over-slf4j "1.7.25"]
                  [org.slf4j/log4j-over-slf4j "1.7.25"]
                  [org.slf4j/jul-to-slf4j "1.7.25"]
@@ -35,7 +40,10 @@
                  [potemkin "0.4.5"
                   :exclusions [riddley]]
                  [org.clojure/math.combinatorics "0.1.4"]
-                 [frankiesardo/linked "1.3.0"]]
+                 [frankiesardo/linked "1.3.0"]
+
+                 [danlentz/clj-uuid "0.1.7"]
+                 [com.lucasbradstreet/cljs-uuid-utils "1.0.2"]]
 
   :profiles {:repl {:pedantic? :ranges}
              :test {:resource-paths ["test-resources" "resources"]}})

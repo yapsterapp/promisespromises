@@ -1,17 +1,20 @@
 (ns prpr.a-frame.fx-test
-  #?(:cljs (:require-macros [prpr.test :refer [deftest test-async is testing use-fixtures]]))
+  #?(:cljs (:require-macros
+            [prpr.test :refer [deftest test-async is testing use-fixtures]]))
   (:require
    #?(:clj [prpr.test :refer [deftest test-async is testing use-fixtures]])
-   [prpr.promise :as prpr :refer [ddo return]]
+   [prpr.util.test :refer [ with-log-level-fixture]]
+   [prpr.promise :as prpr :refer [ddo]]
    #?(:clj [prpr.stream :as stream])
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]
-   [prpr.interceptor-chain :as interceptor-chain]
+   #?(:clj[prpr.a-frame.events :as events])
+   [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [prpr.a-frame.fx :as sut]
-   [prpr.a-frame.router :as router]
-   [prpr.a-frame.std-interceptors :as std-interceptors]))
+   #?(:clj [prpr.a-frame.router :as router])))
 
+(use-fixtures :once (with-log-level-fixture :warn))
 (use-fixtures :each registry.test/reset-registry)
 
 (deftest reg-fx-test
@@ -76,7 +79,7 @@
            _ fx-r-pr]
 
 
-       (is (= ::foo-data @r-a))))))
+          (is (= ::foo-data @r-a))))))
 
 (deftest do-map-of-effects-test
   (test-async
@@ -98,10 +101,10 @@
                  {foo-fx-key 3
                   bar-fx-key 2})]
 
-       (is (= 4 @foo-a))
-       (is (= 11 @bar-a))
-       (is (= {foo-fx-key 4
-               bar-fx-key 11} fx-r))))))
+          (is (= 4 @foo-a))
+          (is (= 11 @bar-a))
+          (is (= {foo-fx-key 4
+                  bar-fx-key 11} fx-r))))))
 
 (deftest do-seq-of-effects-test
   (test-async
@@ -123,12 +126,12 @@
                  [{foo-fx-key ::foo-val}
                   {bar-fx-key ::bar-val}])]
 
-       (is (= [::foo-val ::bar-val]
-              @r-a))
+          (is (= [::foo-val ::bar-val]
+                 @r-a))
 
-       (is (= [{foo-fx-key [::foo-val]}
-               {bar-fx-key [::foo-val ::bar-val]}]
-              fx-r))))
+          (is (= [{foo-fx-key [::foo-val]}
+                  {bar-fx-key [::foo-val ::bar-val]}]
+                 fx-r))))
 
    (testing "calls multiple maps of fx handlers with multiple fx"
      (ddo [:let [r-a (atom {})
@@ -158,15 +161,15 @@
                     bar-fx-key ::bar-val}
                    {blah-fx-key ::blah-val}]))]
 
-       (is (= {::foo ::foo-val
-               ::bar ::bar-val
-               ::blah ::blah-val}
-              @r-a))
+          (is (= {::foo ::foo-val
+                  ::bar ::bar-val
+                  ::blah ::blah-val}
+                 @r-a))
 
-       (is (= [{foo-fx-key ::foo-val
-                bar-fx-key ::bar-val}
-               {blah-fx-key ::blah-val}]
-              fx-r))))))
+          (is (= [{foo-fx-key ::foo-val
+                   bar-fx-key ::bar-val}
+                  {blah-fx-key ::blah-val}]
+                 fx-r))))))
 
 (deftest do-fx-test
   (test-async
@@ -189,27 +192,25 @@
                                              (swap! r-a assoc ::blah data)
                                              (prpr/return-pr data)))
 
-                 init-int-ctx {schema/a-frame-app-ctx ::app
-                               schema/a-frame-effects [{foo-fx-key ::foo-val
+                 init-int-ctx {schema/a-frame-effects [{foo-fx-key ::foo-val
                                                         bar-fx-key ::bar-val}
                                                        {blah-fx-key ::blah-val}]}]
 
            int-r (interceptor-chain/execute
-                  [sut/do-fx]
+                  ::app
+                  ::a-frame
+                  [::sut/do-fx]
                   init-int-ctx)]
 
-       ;; performs the side-effects
-       (is (= {::foo ::foo-val
-               ::bar ::bar-val
-               ::blah ::blah-val}
-              @r-a))
+          ;; performs the side-effects
+          (is (= {::foo ::foo-val
+                  ::bar ::bar-val
+                  ::blah ::blah-val}
+                 @r-a))
 
-       ;; leaves the context untouched
-       (is (= (assoc
-               init-int-ctx
-               :interceptor/queue []
-               :interceptor/stack '())
-              int-r))))))
+          ;; leaves the context untouched
+          (is (= init-int-ctx
+                 (apply dissoc int-r interceptor-chain/context-keys)))))))
 
 (def test-app-ctx {::FOO "foo"})
 
@@ -223,28 +224,28 @@
                     :as router} (router/create-router test-app-ctx {})
                    out-a (atom [])
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
+                   _ (events/reg-event-fx
                       ::dispatch-fx-test-without-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
-                          ;; only the first event should have the ::BAR coeffect
-                          (if (= 0 n)
-                            (is (= {schema/a-frame-coeffect-event event-v
-                                    ::BAR "bar"} cofx))
-                            (is (= {schema/a-frame-coeffect-event event-v} cofx)))
+                      (fn [cofx [_ n :as event-v]]
+                        ;; only the first event should have the ::BAR coeffect
+                        (if (= 0 n)
+                          (is (= {schema/a-frame-coeffect-event event-v
+                                  ::BAR "bar"} cofx))
+                          (is (= {schema/a-frame-coeffect-event event-v} cofx)))
 
-                          (swap! out-a conj n)
+                        (swap! out-a conj n)
 
-                          (when (<= n 3)
+                        (when (<= n 3)
 
-                            {:a-frame/dispatch
-                             [::dispatch-fx-test-without-transitive-coeffects (+ n 2)]})))])]
+                          {:a-frame/dispatch
+                           [::dispatch-fx-test-without-transitive-coeffects
+                            (+ n 2)]})))]
 
                @(router/dispatch-sync
                  router
-                 {schema/a-frame-event [::dispatch-fx-test-without-transitive-coeffects 0]
+                 {schema/a-frame-event
+                  [::dispatch-fx-test-without-transitive-coeffects 0]
+
                   schema/a-frame-coeffects {::BAR "bar"}})
 
                (is (= [0 2 4] @out-a))
@@ -257,28 +258,30 @@
                     :as router} (router/create-router test-app-ctx {})
                    out-a (atom [])
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
+                   _ (events/reg-event-fx
                       ::dispatch-fx-test-with-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
+                      (fn [cofx [_ n :as event-v]]
 
-                          ;; all events should have the ::BAR coeffect
-                          (is (= {schema/a-frame-coeffect-event event-v
-                                  ::BAR "bar"} cofx))
+                        ;; all events should have the ::BAR coeffect
+                        (is (= {schema/a-frame-coeffect-event event-v
+                                ::BAR "bar"} cofx))
 
-                          (swap! out-a conj n)
+                        (swap! out-a conj n)
 
-                          (when (<= n 3)
+                        (when (<= n 3)
 
-                            {:a-frame/dispatch
-                             {schema/a-frame-event [::dispatch-fx-test-with-transitive-coeffects (+ n 2)]
-                              schema/a-frame-event-transitive-coeffects? true}})))])]
+                          {:a-frame/dispatch
+                           {schema/a-frame-event
+                            [::dispatch-fx-test-with-transitive-coeffects
+                             (+ n 2)]
+
+                            schema/a-frame-event-transitive-coeffects? true}})))]
 
                @(router/dispatch-sync
                  router
-                 {schema/a-frame-event [::dispatch-fx-test-with-transitive-coeffects 0]
+                 {schema/a-frame-event
+                  [::dispatch-fx-test-with-transitive-coeffects 0]
+
                   schema/a-frame-coeffects {::BAR "bar"}})
 
                (is (= [0 2 4] @out-a))
@@ -286,212 +289,218 @@
                ;; main stream should not be closed
                (is (not (stream/closed? event-s))))))))
 
-#?(:clj (deftest dispatch-sync-fx-test
-          (test-async
-           (testing "dispatches without transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+#?(:clj
+   (deftest dispatch-sync-fx-test
+     (test-async
+      (testing "dispatches without transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-sync-fx-test-without-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
-                          ;; only the first event should have the ::BAR coeffect
-                          (if (= 0 n)
-                            (is (= {schema/a-frame-coeffect-event event-v
-                                    ::BAR "bar"} cofx))
-                            (is (= {schema/a-frame-coeffect-event event-v} cofx)))
+              _ (events/reg-event-fx
+                 ::dispatch-sync-fx-test-without-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
+                   ;; only the first event should have the ::BAR coeffect
+                   (if (= 0 n)
+                     (is (= {schema/a-frame-coeffect-event event-v
+                             ::BAR "bar"} cofx))
+                     (is (= {schema/a-frame-coeffect-event event-v} cofx)))
 
-                          (swap! out-a conj n)
+                   (swap! out-a conj n)
 
-                          (when (<= n 3)
+                   (when (<= n 3)
 
-                            {:a-frame/dispatch-sync
-                             {schema/a-frame-event [::dispatch-sync-fx-test-without-transitive-coeffects (+ n 2)]
-                              schema/a-frame-event-transitive-coeffects? false}})))])]
+                     {:a-frame/dispatch-sync
+                      {schema/a-frame-event
+                       [::dispatch-sync-fx-test-without-transitive-coeffects
+                        (+ n 2)]
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-sync-fx-test-without-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                       schema/a-frame-event-transitive-coeffects? false}})))]
 
-               (is (= [0 2 4] @out-a))
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-sync-fx-test-without-transitive-coeffects 0]
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s)))))
+             schema/a-frame-coeffects {::BAR "bar"}})
 
-           (testing "dispatches with transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+          (is (= [0 2 4] @out-a))
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-sync-fx-test-with-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s)))))
 
-                          ;; all events should have the ::BAR coeffect
-                          (is (= {schema/a-frame-coeffect-event event-v
-                                  ::BAR "bar"} cofx))
+      (testing "dispatches with transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                          (swap! out-a conj n)
+              _ (events/reg-event-fx
+                 ::dispatch-sync-fx-test-with-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
 
-                          (when (<= n 3)
+                   ;; all events should have the ::BAR coeffect
+                   (is (= {schema/a-frame-coeffect-event event-v
+                           ::BAR "bar"} cofx))
 
-                            {:a-frame/dispatch-sync
-                             {schema/a-frame-event [::dispatch-sync-fx-test-with-transitive-coeffects (+ n 2)]}})))])]
+                   (swap! out-a conj n)
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-sync-fx-test-with-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                   (when (<= n 3)
 
-               (is (= [0 2 4] @out-a))
+                     {:a-frame/dispatch-sync
+                      {schema/a-frame-event
+                       [::dispatch-sync-fx-test-with-transitive-coeffects
+                        (+ n 2)]}})))]
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s))))))))
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-sync-fx-test-with-transitive-coeffects 0]
+             schema/a-frame-coeffects {::BAR "bar"}})
 
-#?(:clj (deftest dispatch-n-fx-test
-          (test-async
-           (testing "dispatches without transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+          (is (= [0 2 4] @out-a))
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-n-fx-test-without-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
-                          ;; only the first event should have the ::BAR coeffect
-                          (if (= 0 n)
-                            (is (= {schema/a-frame-coeffect-event event-v
-                                    ::BAR "bar"} cofx))
-                            (is (= {schema/a-frame-coeffect-event event-v} cofx)))
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s))))))))
 
-                          (swap! out-a conj n)
+#?(:clj
+   (deftest dispatch-n-fx-test
+     (test-async
+      (testing "dispatches without transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                          (when (<= n 3)
+              _ (events/reg-event-fx
+                 ::dispatch-n-fx-test-without-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
+                     ;; only the first event should have the ::BAR coeffect
+                     (if (= 0 n)
+                       (is (= {schema/a-frame-coeffect-event event-v
+                               ::BAR "bar"} cofx))
+                       (is (= {schema/a-frame-coeffect-event event-v} cofx)))
 
-                            {:a-frame/dispatch-n
-                             [[::dispatch-n-fx-test-without-transitive-coeffects (+ n 2)]]})))])]
+                     (swap! out-a conj n)
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-n-fx-test-without-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                     (when (<= n 3)
 
-               (is (= [0 2 4] @out-a))
+                       {:a-frame/dispatch-n
+                        [[::dispatch-n-fx-test-without-transitive-coeffects
+                          (+ n 2)]]})))]
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s)))))
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-n-fx-test-without-transitive-coeffects 0]
+             schema/a-frame-coeffects {::BAR "bar"}})
 
-           (testing "dispatches with transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+          (is (= [0 2 4] @out-a))
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-n-fx-test-with-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s)))))
 
-                          ;; all events should have the ::BAR coeffect
-                          (is (= {schema/a-frame-coeffect-event event-v
-                                  ::BAR "bar"} cofx))
+      (testing "dispatches with transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                          (swap! out-a conj n)
+              _ (events/reg-event-fx
+                 ::dispatch-n-fx-test-with-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
 
-                          (when (<= n 3)
+                     ;; all events should have the ::BAR coeffect
+                     (is (= {schema/a-frame-coeffect-event event-v
+                             ::BAR "bar"} cofx))
 
-                            {:a-frame/dispatch-n
-                             [{schema/a-frame-event [::dispatch-n-fx-test-with-transitive-coeffects (+ n 2)]
-                               schema/a-frame-event-transitive-coeffects? true}]})))])]
+                     (swap! out-a conj n)
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-n-fx-test-with-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                     (when (<= n 3)
 
-               (is (= [0 2 4] @out-a))
+                       {:a-frame/dispatch-n
+                        [{schema/a-frame-event
+                          [::dispatch-n-fx-test-with-transitive-coeffects
+                           (+ n 2)]
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s))))))))
+                          schema/a-frame-event-transitive-coeffects? true}]})))]
 
-#?(:clj (deftest dispatch-n-sync-fx-test
-          (test-async
-           (testing "dispatches without transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-n-fx-test-with-transitive-coeffects 0]
+             schema/a-frame-coeffects {::BAR "bar"}})
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-n-sync-fx-test-without-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
-                          ;; only the first event should have the ::BAR coeffect
-                          (if (= 0 n)
-                            (is (= {schema/a-frame-coeffect-event event-v
-                                    ::BAR "bar"} cofx))
-                            (is (= {schema/a-frame-coeffect-event event-v} cofx)))
+          (is (= [0 2 4] @out-a))
 
-                          (swap! out-a conj n)
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s))))))))
 
-                          (when (<= n 3)
+#?(:clj
+   (deftest dispatch-n-sync-fx-test
+     (test-async
+      (testing "dispatches without transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                            {:a-frame/dispatch-n-sync
-                             [{schema/a-frame-event [::dispatch-n-sync-fx-test-without-transitive-coeffects (+ n 2)]
-                               schema/a-frame-event-transitive-coeffects? false}]})))])]
+              _ (events/reg-event-fx
+                 ::dispatch-n-sync-fx-test-without-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
+                     ;; only the first event should have the ::BAR coeffect
+                     (if (= 0 n)
+                       (is (= {schema/a-frame-coeffect-event event-v
+                               ::BAR "bar"} cofx))
+                       (is (= {schema/a-frame-coeffect-event event-v} cofx)))
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-n-sync-fx-test-without-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                     (swap! out-a conj n)
 
-               (is (= [0 2 4] @out-a))
+                     (when (<= n 3)
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s)))))
+                       {:a-frame/dispatch-n-sync
+                        [{schema/a-frame-event
+                          [::dispatch-n-sync-fx-test-without-transitive-coeffects
+                           (+ n 2)]
 
-           (testing "dispatches with transitive coeffects"
-             (let [{event-s schema/a-frame-router-event-stream
-                    :as router} (router/create-router test-app-ctx {})
-                   out-a (atom [])
+                          schema/a-frame-event-transitive-coeffects? false}]})))]
 
-                   _ (registry/register-handler
-                      schema/a-frame-kind-event
-                      ::dispatch-n-sync-fx-test-with-transitive-coeffects
-                      [sut/do-fx
-                       (std-interceptors/fx-handler->interceptor
-                        (fn [cofx [_ n :as event-v]]
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-n-sync-fx-test-without-transitive-coeffects 0]
+             schema/a-frame-coeffects {::BAR "bar"}})
 
-                          ;; all events should have the ::BAR coeffect
-                          (is (= {schema/a-frame-coeffect-event event-v
-                                  ::BAR "bar"} cofx))
+          (is (= [0 2 4] @out-a))
 
-                          (swap! out-a conj n)
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s)))))
 
-                          (when (<= n 3)
+      (testing "dispatches with transitive coeffects"
+        (let [{event-s schema/a-frame-router-event-stream
+               :as router} (router/create-router test-app-ctx {})
+              out-a (atom [])
 
-                            {:a-frame/dispatch-n-sync
-                             [{schema/a-frame-event [::dispatch-n-sync-fx-test-with-transitive-coeffects (+ n 2)]}]})))])]
+              _ (events/reg-event-fx
+                 ::dispatch-n-sync-fx-test-with-transitive-coeffects
+                 (fn [cofx [_ n :as event-v]]
 
-               @(router/dispatch-sync
-                 router
-                 {schema/a-frame-event [::dispatch-n-sync-fx-test-with-transitive-coeffects 0]
-                  schema/a-frame-coeffects {::BAR "bar"}})
+                     ;; all events should have the ::BAR coeffect
+                     (is (= {schema/a-frame-coeffect-event event-v
+                             ::BAR "bar"} cofx))
 
-               (is (= [0 2 4] @out-a))
+                     (swap! out-a conj n)
 
-               ;; main stream should not be closed
-               (is (not (stream/closed? event-s))))))))
+                     (when (<= n 3)
+
+                       {:a-frame/dispatch-n-sync
+                        [{schema/a-frame-event
+                          [::dispatch-n-sync-fx-test-with-transitive-coeffects
+                           (+ n 2)]}]})))]
+
+          @(router/dispatch-sync
+            router
+            {schema/a-frame-event
+             [::dispatch-n-sync-fx-test-with-transitive-coeffects 0]
+             schema/a-frame-coeffects {::BAR "bar"}})
+
+          (is (= [0 2 4] @out-a))
+
+          ;; main stream should not be closed
+          (is (not (stream/closed? event-s))))))))

@@ -8,7 +8,7 @@
    [promesa.protocols :as promise.p])
   (:import
    [manifold.stream.default Stream]
-   [manifold.deferred Deferred SuccessDeferred ErrorDeferred]))
+   [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]))
 
 (deftype StreamFactory []
   p/IStreamFactory
@@ -168,6 +168,49 @@
      (-> d (->promesa) (promise.p/-thenErr f executor))))
 
   ErrorDeferred
+  (-bind
+    ([d f]
+     (-> d (->promesa) (promise.p/-bind f)))
+    ([d f executor]
+    (-> d (->promesa) (promise.p/-bind f executor))))
+
+  (-finally
+    ([d f]
+     (-> d (->promesa) (promise.p/-finally f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-finally f executor))))
+
+  (-handle
+    ([d f]
+     (-> d (->promesa) (promise.p/-handle f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-handle f executor))))
+
+  (-map
+    ([d f]
+     (-> d (->promesa) (promise.p/-map f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-map f executor))))
+
+  (-mapErr
+    ([d f]
+     (-> d (->promesa) (promise.p/-mapErr f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-mapErr f executor))))
+
+  (-then
+    ([d f]
+     (-> d (->promesa) (promise.p/-then f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-then f executor))))
+
+  (-thenErr
+    ([d f]
+     (-> d (->promesa) (promise.p/-thenErr f)))
+    ([d f executor]
+     (-> d (->promesa) (promise.p/-thenErr f executor))))
+
+  LeakAwareDeferred
   (-bind
     ([d f]
      (-> d (->promesa) (promise.p/-bind f)))

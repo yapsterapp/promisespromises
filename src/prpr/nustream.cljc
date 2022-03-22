@@ -6,7 +6,7 @@
    [prpr.stream.error :as error]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]
-   [promesa.core :as promise]
+   [promesa.core :as pr]
    #?(:clj [prpr.stream.manifold :as stream.manifold]))
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
@@ -56,15 +56,49 @@
 
 (def stream impl/stream)
 
+(defn close!
+  [s]
+  (pt/-close! s))
+
 (defn put!
   "put a value onto a stream with backpressure - returns
    Promise<true|false> which eventually resolves to:
     - true when the value was accepted onto the stream
     - false if the stream was closed"
   ([sink val]
-   (put! sink val nil nil))
+   (pt/-put! sink val))
   ([sink val timeout timeout-val]
    (pt/-put! sink val timeout timeout-val)))
+
+(defn error!
+  "mark a stream as errored
+
+  puts an marker wrapper with the error on to the stream,
+  and then closes it. consuming fns will throw an error
+  when they encounter it, so errors are always propagated"
+  [sink err]
+  (pt/-error! sink err))
+
+(defn put-all!
+  "put all values onto a stream with backpressure
+   returns Promise<true|false> yielding true if all
+   values were accepted onto the stream, false otherwise"
+  [sink vals]
+  (pr/loop [vals vals]
+    (if (empty? vals)
+      true
+      (pr/chain
+       (pt/-put! sink (first vals))
+       (fn [result]
+         (if result
+           (pr/recur (rest vals))
+           false))))))
+
+(defn throw-if-error
+  [v]
+  (if (error/stream-error? v)
+    (throw (pt/-error v))
+    v))
 
 (defn take!
   "take a value from a stream - returns Promise<value|error>
@@ -75,19 +109,26 @@
    - an error if the stream errored (i.e. an error occurred
      during some upstream operation)"
   ([source]
-   (take! source nil nil nil))
+   (pr/chain
+    (pt/-take! source)
+    throw-if-error))
   ([source default-val]
-   (take! source default-val nil nil))
+   (pr/chain
+    (pt/-take! source default-val)
+    throw-if-error))
   ([source default-val timeout timeout-val]
-   (->
+   (pr/chain
     (pt/-take! source default-val timeout timeout-val)
-    (promise/chain
-     (fn [v]
-       (if (error/stream-error? v)
-         (throw (pt/-error v))
-         v))))))
+    throw-if-error)))
 
 (defn connect-via
+  "feed all messages from src into callback on the
+   understanding that they will eventually propagate into
+   dst
+
+   the return value of callback should be a promise yielding
+   either true or false. when false the downstream sink
+   is assumed to be closed and the connection is severed"
   ([source f sink]
    (pt/-connect-via source f sink nil))
   ([source f sink opts]
@@ -102,13 +143,13 @@
      (fn [v]
        (cond
 
-         (promise/promise? v)
-         (promise/chain
+         (pr/promise? v)
+         (pr/chain
           v
           #(put! s' %))
 
          (chunk/stream-chunk? v)
-         (promise/chain
+         (pr/chain
           (pt/-flatten v)
           #(put! s' %))
 
@@ -135,13 +176,13 @@
           (pt/-error! s' v)
 
           (chunk/stream-chunk? v)
-          (pt/-put!
+          (put!
            s'
            (chunk/stream-chunk
             (mapv f (pt/-chunk-values v))))
 
           :else
-          (pt/-put! s' (f v))))
+          (put! s' (f v))))
       s')
      s'))
 
@@ -155,16 +196,113 @@
    (apply consumer/chunk-zip a rest)))
 
 (defn mapcat
-  ([f s])
-  ([f s & rest]))
+  ([f s]
+   (let [s' (impl/stream)]
+     (connect-via
+      s
+      (fn [v]
+        (cond
+          (error/stream-error? v)
+          (error! s' v)
+
+          (chunk/stream-chunk? v)
+          (put-all!
+           s'
+           (chunk/stream-chunk
+            (mapcat f (pt/-chunk-values v))))
+
+          :else
+          (put-all! s' (f v))))
+      s')
+     s'))
+  ([f s & rest]
+   (->> (apply consumer/chunk-zip s rest)
+        (mapcat #(apply f %)))))
 
 (defn concat
-  [s])
+  [s]
+  )
+
+(defn filter
+  [pred s]
+  (let [s' (impl/stream)]
+    (connect-via
+     s
+     (fn [v]
+       (if (pred v)
+         (put! s' v)
+         true))
+     s')))
 
 (defn reductions
   ([f s])
   ([f initial-val s]))
 
+(defn rreduce
+  "alt-version of seq-reduce which returns any
+   reduced value still in its wrapper, which is
+   helpful for supporting reduction of chunks"
+  ([f coll]
+   (if-let [s (seq coll)]
+     (rreduce f (first s) (next s))
+     (f)))
+  ([f val coll]
+   (loop [val val, coll (seq coll)]
+     (if coll
+       (let [nval (f val (first coll))]
+         (if (reduced? nval)
+           nval
+           (recur nval (next coll))))
+       val))))
+
 (defn reduce
-  ([f s])
-  ([f initial-val s]))
+  "reduce, but for streams. returns a Promise of the reduced value
+
+   the reducing function is *not* async - it must return a plain
+   value and not a promise"
+  ([f s]
+   (reduce f ::none s))
+  ([f initial-val s]
+   (-> (if (identical? ::none initial-val)
+         (take! s ::none)
+         (pr/promise initial-val))
+
+       (pr/chain
+        (fn [initial-val]
+          (cond
+
+            (identical? ::none initial-val)
+            (f)
+
+            (error/stream-error? initial-val)
+            (throw (pt/-error initial-val))
+
+            :else
+            (pr/loop [val initial-val]
+              (let [val (if (chunk/stream-chunk? initial-val)
+                          (rreduce f (pt/-chunk-values initial-val))
+                          val)]
+
+                (if (reduced? val)
+                  (deref val)
+
+                  (-> (take! s ::none)
+                      (pr/chain (fn [x]
+                                  (cond
+
+                                    (identical? ::none x) val
+
+                                    (error/stream-error? x)
+                                    (throw (pt/-error x))
+
+                                    (chunk/stream-chunk? x)
+                                    (let [r (rreduce f val (pt/-chunk-values x))]
+                                      (if (reduced? r)
+                                        (deref r)
+                                        (pr/recur r)))
+
+                                    :else
+                                    (let [r (f val x)]
+                                      (if (reduced? r)
+                                        (deref r)
+                                        (pr/recur r))))))))))))))))

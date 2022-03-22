@@ -7,15 +7,16 @@
   ]
 
  :dependencies
- [[org.clojure/clojurescript "_"
+ [[org.clojure/clojurescript "1.10.339"
    :exclusions [com.cognitect/transit-clj
                 com.google.code.findbugs/jsr305
                 com.google.errorprone/error_prone_annotations
                 com.google.guava/guava]]
-  [org.clojure/clojure "_"]
-  [org.clojure/tools.reader "_"]
+  [org.clojure/clojure "1.10.1"]
+  [org.clojure/tools.reader "1.3.2"]
+  [org.clojure/core.async "1.5.648"]
 
-  [employeerepublic/promisespromises "_"]]
+  [yapsterapp/promisespromises "3.0.0-nustreams-SNAPSHOT"]]
 
  :builds
  {:node-test {:target    :node-test

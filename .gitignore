@@ -16,5 +16,6 @@ pom.xml
 /checkouts/
 /.lein-env
 /phantom/unit-test-js
-/shadow-cljs.edn
 /node_modules
+/.shadow-cljs
+/.clj-kondo/.cache

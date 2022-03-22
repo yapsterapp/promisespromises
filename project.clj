@@ -1,4 +1,4 @@
-(defproject employeerepublic/promisespromises "_"
+(defproject yapsterapp/promisespromises "3.0.0-nustreams-SNAPSHOT"
   :description "a lib for working with promises and streams"
   :url "https://github.com/yapsterapp/promisespromises"
   :license {:name "Eclipse Public License"
@@ -17,6 +17,7 @@
                  [org.clojure/tools.reader "1.3.2"]
                  [org.clojure/tools.namespace "0.2.11"]
                  [org.clojure/tools.macro "0.1.5"]
+                 [org.clojure/core.async "1.5.648"]
 
                  ;; wow, such logging
                  [org.clojure/tools.logging "0.4.1"]

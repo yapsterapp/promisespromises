@@ -1,55 +1,70 @@
 (ns prpr.nustream
   (:require
-   [clojure.core :as clj]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
    [prpr.stream.error :as error]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]
-   [promesa.core :as pr]
-   #?(:clj [prpr.stream.manifold :as stream.manifold]))
+   [promesa.core :as pr])
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
 
-;; manifold higher (map,reduce ops) are implemented
-;; with put!, take! and connect... we can implement
-;; put!, take! and connect for core.async
+;; manifold's stream API (map,filter,transform,reduce ops) is
+;; implemented with put!, take! and connect...
 ;;
-;; sink for connect can be a Callback that fakes
-;; being a sink... and feeds vals through a function
+;; we have had good success in rewriting the top-level stream API
+;; to propagate errors on clj, but we can go further...
 ;;
-;; core.async has pipeline and pipeline-async
+;; and add chunking support. we can also implement put!, take!
+;; and connect for core.async and potentially get a cross-platform
+;; streams lib
+;;
+;; so the idea is to use manifold streams and core.async
+;; channels as low-level message transports with
+;; backpressure, and then to add
+;;
+;; 1. error-propagation
+;;    any errors in applying map/filter/reduce fns to stream values
+;;    are wrapped in a marker and propagated downstream,
+;;    thereafter immediately closing the downwards stream. reducing
+;;    fns
+;; 2. (mostly) transparent chunking
+;;    any chunks on a stream are transparently processed as if
+;;    they were values on the stream
+;;
+;; to implementations of (roughly) the manifold streams
+;; API - map / filter / transform / reduce / realize-each with a
+;; similar promise-based to manifold. we're using promesa rather
+;; than manifold's own deferred because it's cross-platform
 ;;
 ;; layer 0 - transport
-;;           manifold/stream or core.async
+;;           manifold/stream.clj || core/async.cljs
 ;;
-;;           simple graphs of streams. operations, with a stream
+;;           graphs of streams with a promise-based interaction
 ;;           interface
 ;;
-;;           (put! sink val)
-;;           (put! sink val timeout timeout-val)
+;;           (put! sink val) -> Promise<true|false>
+;;           (put! sink val timeout timeout-val) -> Promise<true|false|timeout-val>
 ;;
-;;           (take! source)
-;;           (take! source default-val)
-;;           (take! source defaul-val timeout timeout-val)
+;;           (take! source) -> Promise<val|nil>
+;;           (take! source default-val) -> Promise<val|default-val>
+;;           (take! source defaul-val timeout timeout-val) ->
+;;             Promise<val|default-val|timeout-val>
 ;;
-;;           (connect source sink close-timeout-opts)
+;;           (connect-via source f sink close-timeout-opts)
+;;           feed messages from source into function f on the
+;;           understanding that they will propagate eventually
+;;           to sink (it's up to f to do this)
 ;;
 ;;           (error! ex) - puts an error wrapper onto the
 ;;           stream transport and thereafter immediately
 ;;           closes it
 ;;
-;; layer 1 - error propagation.
-;;           - take! returns a promise, which is failed
-;;           when the error wrapper is encountered
-;;
-;; layer 2 - chunking
-;;           handle streams of chunks equivalently to
-;;           streams of plain values - have a chunk interface
-;;           for common ops ?
-;;
-;; layer 3 - ops
+;; layer 1 - higher level ops - propagate errors and
+;;           handle chunks transparently and present a similar
+;;           promise-based interface to manifold
 ;;           map
+;;           zip
 ;;           reduce
 ;;           transform
 ;;           realize

@@ -5,7 +5,8 @@
    [prpr.stream.error :as error]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]
-   [promesa.core :as pr])
+   [promesa.core :as pr]
+   [taoensso.timbre :refer [error]])
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
 
@@ -251,13 +252,48 @@
      s')))
 
 (defn reductions
-  ([f s])
-  ([f initial-val s]))
+  "like clojure.core/reductions but for streams"
+  ([f s]
+   (reductions f ::none s))
+  ([f initial-val s]
+   (let [s' (impl/stream)
+         val (atom initial-val)]
+     (pr/chain
+      (if (identical? ::none initial-val)
+        true
+        (put! s' initial-val))
 
-(defn rreduce
-  "alt-version of seq-reduce which returns any
-   reduced value still in its wrapper, which is
-   helpful for supporting reduction of chunks"
+      (fn [_]
+        (connect-via
+         s
+         (fn [v]
+           (if (identical? ::none @val)
+             (do
+               (reset! val v)
+               (put! s' v))
+
+             (-> v
+                 (pr/chain
+                  #(f @val %)
+                  (fn [x]
+                    (if (reduced? x)
+                      (do
+                        (reset! val @x)
+                        (put! s' @x)
+                        false)
+                      (do
+                        (reset! val x)
+                        (put! s' x)))))
+                 (pr/catch
+                     (fn [e]
+                       (error! s' e)
+                       false)))))
+         s'))))))
+
+(defn- rreduce
+  "alt-version of @#'clojure.core/seq-reduce which returns any
+   reduced? value still in its wrapper, which is
+   helpful for supporting (reduced) in reduction of chunks"
   ([f coll]
    (if-let [s (seq coll)]
      (rreduce f (first s) (next s))

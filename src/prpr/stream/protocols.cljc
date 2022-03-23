@@ -25,6 +25,14 @@
   (-chunk-values [this])
   (-flatten [this] "flatten any nested promises returning Promise<value>"))
 
+(defprotocol IStreamChunkBuilder
+  (-start-chunk [_])
+  (-add-to-chunk [_ val])
+  (-finish-chunk [_ rf result])
+  (-discard-chunk [_])
+  (-building? [_])
+  (-chunk-state [_]))
+
 (defprotocol IStreamError
   (-error [_]))
 

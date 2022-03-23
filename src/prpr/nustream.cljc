@@ -6,7 +6,8 @@
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]
    [promesa.core :as pr]
-   [taoensso.timbre :refer [error]])
+   [taoensso.timbre :refer [error]]
+   [clojure.core :as clj])
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
 
@@ -174,10 +175,73 @@
          (put! s' v)))
      s')))
 
+(defn throw-errors-preserve-reduced
+  "wrap a reducing fn to reduce chunks
+   - any StreamErrors in the chunk will be immediately thrown
+   - a reduced value will be wrapped in another reduced, so that
+     it gets returned to the outer reduction
+   (modelled on clojure.core/preserving-reduced)"
+  [rf]
+  (fn [result input]
+    (if (error/stream-error? input)
+      (throw (pt/-error input))
+      (let [r (rf result input)]
+        (if (reduced? r)
+          (reduced r)
+          r)))))
+
+(defn stream-error-capturing-stream-xform
+  "Returns a transducing xform that wraps the given `xform` but captures errors
+  raised when invoking any arity and passes them to the upstream `xf` fn wrapped
+  in `StreamError` markers"
+  [xform]
+  (let [cb (chunk/stream-chunk-builder)
+        c-xform (partial chunk/chunker-xform cb)
+        xform (comp xform c-xform)]
+    (fn [xf]
+      (let [xff (xform xf)]
+        (fn
+          ([]
+           (try
+             (xff)
+             (catch Throwable e
+               (xf (xf) (error/stream-error e)))))
+          ([rs]
+           (try
+             (xff rs)
+             (catch Throwable e
+               (xf (xf rs (error/stream-error e))))))
+          ([rs msg]
+           (cond
+             (error/stream-error? msg)
+             (xf rs msg)
+
+             (chunk/stream-chunk? msg)
+             (try
+               (pt/-start-chunk cb)
+               (let [_ (clojure.core/reduce
+                          (throw-errors-preserve-reduced xff)
+                          rs
+                          (pt/-chunk-values msg))]
+                 (pt/-finish-chunk cb xf rs))
+               (catch Throwable e
+                 (xf rs (error/stream-error e)))
+               (finally
+                 (pt/-discard-chunk cb)))
+
+             :else
+             (try
+               (xff rs msg)
+               (catch Throwable e
+                 (xf rs (error/stream-error e)))))))))))
+
 (defn transform
   "apply transform to a stream"
-  ([xf s])
-  ([xf buffer-size s]))
+  ([xform s]
+   (transform xform 0 s))
+  ([xform buffer-size s]
+   (let [s' (stream buffer-size xform)]
+     (connect-via s #(put! s' %) s'))))
 
 (declare zip)
 
@@ -236,11 +300,8 @@
    (->> (apply consumer/chunk-zip s rest)
         (mapcat #(apply f %)))))
 
-(defn concat
-  [s]
-  )
-
 (defn filter
+  "TODO add error and chunk support"
   [pred s]
   (let [s' (impl/stream)]
     (connect-via
@@ -252,7 +313,9 @@
      s')))
 
 (defn reductions
-  "like clojure.core/reductions but for streams"
+  "like clojure.core/reductions but for streams
+
+   TODO add error and chunk support"
   ([f s]
    (reductions f ::none s))
   ([f initial-val s]
@@ -290,23 +353,6 @@
                        false)))))
          s'))))))
 
-(defn- rreduce
-  "alt-version of @#'clojure.core/seq-reduce which returns any
-   reduced? value still in its wrapper, which is
-   helpful for supporting (reduced) in reduction of chunks"
-  ([f coll]
-   (if-let [s (seq coll)]
-     (rreduce f (first s) (next s))
-     (f)))
-  ([f val coll]
-   (loop [val val, coll (seq coll)]
-     (if coll
-       (let [nval (f val (first coll))]
-         (if (reduced? nval)
-           nval
-           (recur nval (next coll))))
-       val))))
-
 (defn reduce
   "reduce, but for streams. returns a Promise of the reduced value
 
@@ -332,7 +378,9 @@
             :else
             (pr/loop [val initial-val]
               (let [val (if (chunk/stream-chunk? initial-val)
-                          (rreduce f (pt/-chunk-values initial-val))
+                          (clj/reduce
+                           (@#'clj/preserving-reduced f)
+                           (pt/-chunk-values initial-val))
                           val)]
 
                 (if (reduced? val)
@@ -348,7 +396,10 @@
                                     (throw (pt/-error x))
 
                                     (chunk/stream-chunk? x)
-                                    (let [r (rreduce f val (pt/-chunk-values x))]
+                                    (let [r (clj/reduce
+                                             (@#'clj/preserving-reduced f)
+                                             val
+                                             (pt/-chunk-values x))]
                                       (if (reduced? r)
                                         (deref r)
                                         (pr/recur r)))

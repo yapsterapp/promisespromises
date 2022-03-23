@@ -26,8 +26,9 @@
 ;; 1. error-propagation
 ;;    any errors in applying map/filter/reduce fns to stream values
 ;;    are wrapped in a marker and propagated downstream,
-;;    thereafter immediately closing the downwards stream. reducing
-;;    fns
+;;    thereafter immediately closing the downwards stream. take! then
+;;    turns any error marker into an errored promise and error
+;;    propagation happens
 ;; 2. (mostly) transparent chunking
 ;;    any chunks on a stream are transparently processed as if
 ;;    they were values on the stream

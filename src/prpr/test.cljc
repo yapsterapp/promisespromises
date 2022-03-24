@@ -2,20 +2,19 @@
   #?@(:clj [(:require
              [clojure.test]
              [prpr.util.macro]
-             [prpr.promise]
-             [taoensso.timbre :as timbre :refer [warn]])]
+             [promesa.core]
+             [taoensso.timbre])]
 
       :cljs [(:require-macros
               [cljs.test]
               [prpr.util.macro]
-              [prpr.promise]
-              [taoensso.timbre :refer [warn]]
+              [promesa.core]
               [prpr.test])
              (:require
               [cljs.test]
               [prpr.util.macro]
-              [prpr.promise]
-              [taoensso.timbre :as timbre])]))
+              [promesa.core]
+              [taoensso.timbre])]))
 
 ;; lord help me
 #?(:clj
@@ -53,12 +52,25 @@
 ;; in clj or cljs... some just reference the underlying clojure.test
 ;; macros, but are here to make ns :require forms simpler...
 ;; since it's cljc no reader conditionals are required, though we
-;; may have to add more macros here to support further
+;; may have to add more macros here if we need to support further
 ;; clojure.test/cljs.test macros
 (comment
   (ns some.ns
     (:require
-     [prpr.test :refer [deftest test-async is testing]])))
+     [prpr.test :refer [defprtest is testing]]))
+
+  ;; this is more complex - but gives better editor support
+  ;; with CIDER, which only recognizes tests by the `deftest` form
+  (ns other.ns
+    (:require
+     #?(:clj [prpr.test
+              :refer [defprtest testing is]
+              :rename {defprtest deftest}]
+        :cljs [prpr.test
+               :include-macros true
+               :refer-macros [defprtest testing is]
+               :rename-macros {defprtest deftest}])
+     [prpr.nustream :as sut])))
 
 #?(:clj
    (defmacro use-fixtures
@@ -76,21 +88,20 @@
           (cljs.test/async
            done#
 
-           ;; with just catch - promise/finally is currently broken on cljs
-           (prpr.promise/catch
+           (promesa.core/catch
                (fn [e#]
                  (taoensso.timbre/warn e#)
                  (cljs.test/report {:type :error
                                     :message (str e#)
                                     :error e#})
                  (done#))
-               (prpr.promise/ddo [:let [ps# [~@ps]]
-                                  r# (prpr.promise.platform/pr-all ps#)]
-                 (done#))))
+               (promesa.core/let [ps# [~@ps]
+                                  r# (promesa.core/all ps#)]
+                                 (done#))))
 
         (let [body# (fn []
                       (with-test-binding-frame
-                        (prpr.promise/all-pr ~@ps)))]
+                        (promesa.core/all [~@ps])))]
           (record-test-binding-frame
            @(body#))))))
 
@@ -118,6 +129,15 @@
          (clojure.test/testing ~@body)))))
 
 #?(:clj
+   (defmacro defprtest
+     "define a test whose body yields a list of promises, which will
+      be resolved before proceeding"
+     [name & body]
+     `(prpr.test/deftest ~name
+        (prpr.test/test-async
+         ~@body))))
+
+#?(:clj
    (defmacro with-log-level
      "set the log-level while executing the body"
      [log-level & body]
@@ -131,6 +151,7 @@
 
 
 (defn compose-fixtures
+  "deals properly with cljs async map fixtures"
   [f1 f2]
   #?(:clj (clojure.test/compose-fixtures f1 f2)
 

@@ -2,7 +2,7 @@
   (:require
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
-   [prpr.stream.error :as error]
+   [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]
    [promesa.core :as pr]
@@ -114,7 +114,7 @@
 
 (defn throw-if-error
   [v]
-  (if (error/stream-error? v)
+  (if (types/stream-error? v)
     (throw (pt/-error v))
     v))
 
@@ -183,7 +183,7 @@
    (modelled on clojure.core/preserving-reduced)"
   [rf]
   (fn [result input]
-    (if (error/stream-error? input)
+    (if (types/stream-error? input)
       (throw (pt/-error input))
       (let [r (rf result input)]
         (if (reduced? r)
@@ -198,49 +198,65 @@
   (let [cb (chunk/stream-chunk-builder)
         c-xform (partial chunk/chunker-xform cb)
         xform (comp xform c-xform)]
-    (fn [xf]
-      (let [xff (xform xf)]
+    (fn [rf]
+      (let [rff (xform rf)]
         (fn
           ([]
            (try
-             (xff)
-             (catch Throwable e
-               (xf (xf) (error/stream-error e)))))
+             (rff)
+             (catch #?(:clj Throwable :cljs :default) e
+               ;; init with the underlying rf and
+               ;; then immediately call the reduce arity with
+               ;; the StreamError
+               (rf (rf) (types/stream-error e)))))
           ([rs]
            (try
-             (xff rs)
-             (catch Throwable e
-               (xf (xf rs (error/stream-error e))))))
+             (rff rs)
+             (catch #?(:clj Throwable :cljs :default) e
+               ;; first call the reduce arity of the rf
+               ;; with the StreamError, and then finalize
+               (rf (rf rs (types/stream-error e))))))
           ([rs msg]
            (cond
-             (error/stream-error? msg)
-             (xf rs msg)
+             (types/stream-error? msg)
+             (rf rs msg)
 
              (chunk/stream-chunk? msg)
              (try
                (pt/-start-chunk cb)
                (let [_ (clojure.core/reduce
-                          (throw-errors-preserve-reduced xff)
+                          (throw-errors-preserve-reduced rff)
                           rs
                           (pt/-chunk-values msg))]
-                 (pt/-finish-chunk cb xf rs))
-               (catch Throwable e
-                 (xf rs (error/stream-error e)))
+                 (pt/-finish-chunk cb rf rs))
+               (catch #?(:clj Throwable :cljs :default) e
+                 (rf rs (types/stream-error e)))
                (finally
                  (pt/-discard-chunk cb)))
 
              :else
              (try
-               (xff rs msg)
-               (catch Throwable e
-                 (xf rs (error/stream-error e)))))))))))
+               (rff rs msg)
+               (catch #?(:clj Throwable :cljs :default) e
+                 (rf rs (types/stream-error e)))))))))))
 
 (defn transform
-  "apply transform to a stream"
+  "apply transform to a stream
+
+  TODO
+   as it stands the modified transform will put all reducing function
+   errors on to the result stream, but will not error the result stream.
+   possible solutions...
+
+   - pass the result stream to the xform so that it can error the stream...
+   - change to use an intermediate with the transform, and downstream of
+    the intermediate, error the result stream at the first error and
+    close the intermediate - necessary because the xform wrapper can't
+    terminate the result stream itself, it can "
   ([xform s]
    (transform xform 0 s))
   ([xform buffer-size s]
-   (let [s' (stream buffer-size xform)]
+   (let [s' (stream buffer-size (stream-error-capturing-stream-xform xform))]
      (connect-via s #(put! s' %) s'))))
 
 (declare zip)
@@ -249,11 +265,12 @@
   "(map f Stream<val>) -> Stream<(f val)>"
   ([f s]
    (let [s' (impl/stream)]
+
      (connect-via
       s
       (fn [v]
         (cond
-          (error/stream-error? v)
+          (types/stream-error? v)
           (pt/-error! s' v)
 
           (chunk/stream-chunk? v)
@@ -283,7 +300,7 @@
       s
       (fn [v]
         (cond
-          (error/stream-error? v)
+          (types/stream-error? v)
           (error! s' v)
 
           (chunk/stream-chunk? v)
@@ -372,7 +389,7 @@
             (identical? ::none initial-val)
             (f)
 
-            (error/stream-error? initial-val)
+            (types/stream-error? initial-val)
             (throw (pt/-error initial-val))
 
             :else
@@ -392,7 +409,7 @@
 
                                     (identical? ::none x) val
 
-                                    (error/stream-error? x)
+                                    (types/stream-error? x)
                                     (throw (pt/-error x))
 
                                     (chunk/stream-chunk? x)

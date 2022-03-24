@@ -1,8 +1,6 @@
 (ns prpr.stream.impl
   (:require
-   [clojure.core :as clj]
    [prpr.stream.protocols :as pt]
-   [promesa.core :as promise]
    #?(:clj [prpr.stream.manifold :as stream.manifold]
       :cljs [prpr.stream.core-async :as stream.async]))
   (:refer-clojure

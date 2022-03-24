@@ -6,7 +6,7 @@
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
    [prpr.stream.chunk :as chunk]
-   [prpr.stream.error :as error]
+   [prpr.stream.types :as types]
    [taoensso.timbre :refer [info error]]))
 
 ;; maintains some state
@@ -30,7 +30,7 @@
 
             ;; terminal conditions
             (or (= :prpr.stream/end v)
-                (error/stream-error? v))
+                (types/stream-error? v))
             (do
               (swap! buf-a conj v)
               v)
@@ -55,7 +55,7 @@
 
           ;; terminal conditions
           (or (= :prpr.stream/end fv)
-              (error/stream-error? fv))
+              (types/stream-error? fv))
           fv
 
           ;; take first val from buf
@@ -69,7 +69,7 @@
 
             ;; terminal conditions
             (or (= :prpr.stream/end v)
-                (error/stream-error? v))
+                (types/stream-error? v))
             (do
               (swap! buf-a conj v)
               v)
@@ -105,7 +105,7 @@
 
           ;; terminal conditions
           (or (= :prpr.stream/end fv)
-              (error/stream-error? fv))
+              (types/stream-error? fv))
           fv
 
           ;; return first val from buf
@@ -119,7 +119,7 @@
 
             ;; terminal conditions
             (or (= :prpr.stream/end v)
-                (error/stream-error? v))
+                (types/stream-error? v))
             (do
               (swap! buf-a conj v)
               v)
@@ -130,7 +130,7 @@
 
   (-pushback-chunk! [_ chunk-or-val]
     (when (or (= :prpr.stream/end chunk-or-val)
-              (error/stream-error? chunk-or-val))
+              (types/stream-error? chunk-or-val))
       (throw
        (ex-info "can't pushback EOS or error"
                 {:chunk-or-val chunk-or-val})))
@@ -201,7 +201,7 @@
                    end? (some #(= :prpr.stream/end %) chunk-or-vals)
 
                    ;; were there any errors ?
-                   errors? (some error/stream-error? chunk-or-vals)
+                   errors? (some types/stream-error? chunk-or-vals)
 
                    ;; did all the sources supply chunks ?
                    all-chunks? (every? chunk/stream-chunk? chunk-or-vals)
@@ -226,7 +226,7 @@
 
                  ;; one or more inputs has errored - error and close the output
                  errors?
-                 (let [first-err (->> chunk-or-vals (filter error/stream-error?) first)]
+                 (let [first-err (->> chunk-or-vals (filter types/stream-error?) first)]
                    (pr/chain
                     (pt/-error! out first-err)
                     (fn [_] (close-all))

@@ -1,6 +1,6 @@
 (ns prpr.stream.chunk
   (:require
-   [clojure.core :refer [print-method]]
+   #?(:clj [clojure.core :refer [print-method]])
    [promesa.core :as promise]
    [prpr.stream.protocols :as pt]))
 
@@ -58,14 +58,15 @@
   (-discard-chunk [_]
     (reset! records-a nil))
 
-  (-building? [_] (some? @records-a))
+  (-building-chunk? [_] (some? @records-a))
 
   (-chunk-state [_] @records-a))
 
-(defmethod print-method StreamChunkBuilder [x writer]
-  (.write writer "#prpr.stream.ChunkBuilder<")
-  (print-method (pt/-chunk-state x) writer)
-  (.write writer ">"))
+#?(:clj
+   (defmethod print-method StreamChunkBuilder [x writer]
+     (.write writer "#prpr.stream.ChunkBuilder<")
+     (print-method (pt/-chunk-state x) writer)
+     (.write writer ">")))
 
 (defn stream-chunk-builder
   []
@@ -77,11 +78,11 @@
   (fn
     ([] (rf))
     ([result]
-     (if (pt/-building? chunk-builder)
+     (if (pt/-building-chunk? chunk-builder)
        (throw (ex-info "finalisation while building a chunk!" {}))
        (rf result)))
     ([result input]
-     (if (pt/-building? chunk-builder)
+     (if (pt/-building-chunk? chunk-builder)
        (do
          (pt/-add-to-chunk chunk-builder input)
          result)

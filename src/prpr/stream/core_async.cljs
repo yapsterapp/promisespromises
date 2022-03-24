@@ -3,7 +3,7 @@
    [clojure.core.async :as async]
    [cljs.core.async.impl.channels :refer [ManyToManyChannel]]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.error :as stream.err]
+   [prpr.stream.types :as types]
    [promesa.core :as pr]))
 
 (deftype StreamFactory []
@@ -34,7 +34,7 @@
 (defn async-error!
   [sink err]
   (pr/chain
-   (pt/-put! sink (stream.err/stream-error err))
+   (pt/-put! sink (types/stream-error err))
    (fn [_]
      (pt/-close! sink))
    (fn [_]
@@ -100,6 +100,15 @@
           (pt/-error! dst e)
           (fn [_] (pt/-close! dst)))))))
 
+(defn async-wrap
+  "nils can't be put directly on core.async chans,
+   so to present a very similar API on both clj+cljs we
+   wrap nils for core.async"
+  [v]
+  (if (nil? v)
+    (types/stream-nil)
+    v))
+
 (extend-protocol pt/IStream
   ManyToManyChannel
   (-put!
@@ -119,4 +128,6 @@
 
   (-connect-via
     ([source f sink] (async-connect-via source f sink))
-    ([source f sink opts] (async-connect-via source f sink opts))))
+    ([source f sink opts] (async-connect-via source f sink opts)))
+
+  (-wrap [v] (async-wrap v)))

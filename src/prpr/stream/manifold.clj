@@ -3,7 +3,7 @@
    [manifold.deferred :as m.deferred]
    [manifold.stream :as m.stream]
    [prpr.stream.protocols :as p]
-   [prpr.stream.error :as stream.err]
+   [prpr.stream.types :as types]
    [promesa.core :as promise]
    [promesa.protocols :as promise.p])
   (:import
@@ -34,7 +34,7 @@
   (-error!
     [sink err]
     (promise/chain
-     (m.stream/put! sink (stream.err/stream-error err))
+     (m.stream/put! sink (types/stream-error err))
      (fn [_]
        (m.stream/close! sink))
      (fn [_]
@@ -56,7 +56,10 @@
     ([source f sink]
      (m.stream/connect-via source f sink))
     ([source f sink opts]
-     (m.stream/connect-via source f sink opts))))
+     (m.stream/connect-via source f sink opts)))
+
+  ;; don't need to wrap nils for manifold
+  (-wrap [v] v))
 
 (defn ->promesa
   [d]

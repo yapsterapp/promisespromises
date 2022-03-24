@@ -1,5 +1,6 @@
 (ns prpr.stream.protocols)
 
+;; cross-platform interface to build a stream
 (defprotocol IStreamFactory
   (-stream
     [_]
@@ -7,6 +8,10 @@
     [_ buffer xform]
     #?(:clj [_ buffer xform executor])))
 
+;; cross-platform stream interface.
+;; under the hood these will be regular manifold streams
+;; or core.async chans and the full manifold/core.async
+;; API will be there for more complex stream processing
 (defprotocol IStream
   (-put!
     [sing val]
@@ -19,19 +24,29 @@
   (-close! [this])
   (-connect-via
     [source f sink]
-    [source f sink opts]))
+    [source f sink opts])
+  (-wrap [_]))
 
+;; a chunk of values which can be placed on a stream and
+;; will be handled as if the values themselves were on the stream,
+;; leading to much less resource-intensive stream processing in
+;; some circumstances (where data naturally comes in chunks,
+;; e.g. pages of db-query results)
 (defprotocol IStreamChunk
   (-chunk-values [this])
   (-flatten [this] "flatten any nested promises returning Promise<value>"))
 
+;; a stateful object for efficiently accumulating chunks
 (defprotocol IStreamChunkBuilder
   (-start-chunk [_])
   (-add-to-chunk [_ val])
   (-finish-chunk [_ rf result])
   (-discard-chunk [_])
-  (-building? [_])
+  (-building-chunk? [_])
   (-chunk-state [_]))
+
+(defprotocol IStreamValue
+  (-value [_]))
 
 (defprotocol IStreamError
   (-error [_]))

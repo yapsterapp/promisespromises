@@ -1,6 +1,14 @@
 (ns prpr.stream.types
   (:require
+   [promesa.core :as pr]
    [prpr.stream.protocols :as pt]))
+
+(extend-protocol pt/IStreamValue
+  #?(:clj Object :cljs default)
+  (-unwrap-value [this] this)
+
+  nil
+  (-unwrap-value [this] nil))
 
 ;; core.async channels don't support nil values,
 ;; but we would like clj and cljs to be as similar
@@ -8,7 +16,7 @@
 ;; using core.async
 (deftype StreamNil []
   pt/IStreamValue
-  (-value [_] nil))
+  (-unwrap-value [_] nil))
 
 (defn stream-nil
   []
@@ -26,9 +34,9 @@
 ;; downstream stream also getting a wrapped error-value/closed
 (deftype StreamError [err]
   pt/IStreamError
-  (-error [_] err)
+  (-unwrap-error [_] err)
   pt/IStreamValue
-  (-value [_] (throw err)))
+  (-unwrap-value [_] (throw err)))
 
 (defn stream-error?
   [v]
@@ -39,3 +47,31 @@
   (if (stream-error? err)
     err
     (->StreamError err)))
+
+(extend-protocol pt/IStreamChunk
+  #?(:clj Object
+     :cljs default)
+  (-chunk-flatten [this] this)
+
+  nil
+  (-chunk-flatten [_] nil))
+
+(declare ->StreamChunk)
+
+(deftype StreamChunk [values]
+  pt/IStreamChunk
+
+  (-chunk-values [_] values)
+  (-chunk-flatten [_]
+    (pr/let [realized-values (pr/all values)]
+      (->StreamChunk realized-values))))
+
+(defn stream-chunk?
+  [v]
+  (instance? StreamChunk v))
+
+(defn stream-chunk
+  [values]
+  (when (<= (count values) 0)
+    (throw (ex-info "empty chunk not allowed" {})))
+  (->StreamChunk values))

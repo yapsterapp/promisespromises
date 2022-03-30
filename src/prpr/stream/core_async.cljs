@@ -4,7 +4,8 @@
    [cljs.core.async.impl.channels :refer [ManyToManyChannel]]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [promesa.core :as pr]))
+   [promesa.core :as pr]
+   [taoensso.timbre :refer [fatal]]))
 
 (deftype StreamFactory []
   pt/IStreamFactory
@@ -16,6 +17,13 @@
     (async/chan buffer xform)))
 
 (def stream-factory (->StreamFactory))
+
+(extend-protocol pt/IMaybeStream
+  ManyToManyChannel
+  (-stream? [_] true)
+
+  default
+  (-stream? [_] false))
 
 (defn async-put!
   ([sink val]
@@ -32,6 +40,7 @@
      timeout-r)))
 
 (defn async-error!
+  "this is also implemented in impl.. but circular deps..."
   [sink err]
   (pr/chain
    (pt/-put! sink (types/stream-error err))
@@ -96,11 +105,15 @@
               (pr/recur)))))
 
        (fn [e]
+         ;; the callback should catch
+         ;; all errors and error! the dst, so this
+         ;; should never happen
+         (fatal e "unexpected error")
          (pr/chain
-          (pt/-error! dst e)
+          (async-error! dst e)
           (fn [_] (pt/-close! dst)))))))
 
-(defn async-wrap
+(defn async-wrap-value
   "nils can't be put directly on core.async chans,
    so to present a very similar API on both clj+cljs we
    wrap nils for core.async"
@@ -109,14 +122,17 @@
     (types/stream-nil)
     v))
 
+(defn async-buffer
+  ([ch n]
+   (async/pipe
+    ch
+    (async/chan n))))
+
 (extend-protocol pt/IStream
   ManyToManyChannel
   (-put!
     ([sink val] (async-put! sink val))
     ([sink val timeout timeout-val] (async-put! sink val timeout timeout-val)))
-
-  (-error!
-    [sink err] (async-error! sink err))
 
   (-take!
     ([source] (async-take! source))
@@ -130,4 +146,5 @@
     ([source f sink] (async-connect-via source f sink))
     ([source f sink opts] (async-connect-via source f sink opts)))
 
-  (-wrap [v] (async-wrap v)))
+  (-wrap-value [s v] (async-wrap v))
+  (-buffer [s n] (async-buffer s n)))

@@ -4,6 +4,7 @@
    [prpr.stream.impl :as impl]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
+   [prpr.stream.concurrency :as concurrency]
    [prpr.stream.consumer :as consumer]
    [promesa.core :as pr]
    [taoensso.timbre :refer [error]]
@@ -73,84 +74,12 @@
 ;;           realize
 
 (def stream impl/stream)
-
-(defn close!
-  [s]
-  (pt/-close! s))
-
-(defn put!
-  "put a value onto a stream with backpressure - returns
-   Promise<true|false> which eventually resolves to:
-    - true when the value was accepted onto the stream
-    - false if the stream was closed"
-  ([sink val]
-   (pt/-put! sink val))
-  ([sink val timeout timeout-val]
-   (pt/-put! sink val timeout timeout-val)))
-
-(defn error!
-  "mark a stream as errored
-
-  puts an marker wrapper with the error on to the stream,
-  and then closes it. consuming fns will throw an error
-  when they encounter it, so errors are always propagated"
-  [sink err]
-  (pt/-error! sink err))
-
-(defn put-all!
-  "put all values onto a stream with backpressure
-   returns Promise<true|false> yielding true if all
-   values were accepted onto the stream, false otherwise"
-  [sink vals]
-  (pr/loop [vals vals]
-    (if (empty? vals)
-      true
-      (pr/chain
-       (pt/-put! sink (first vals))
-       (fn [result]
-         (if result
-           (pr/recur (rest vals))
-           false))))))
-
-(defn throw-if-error
-  [v]
-  (if (types/stream-error? v)
-    (throw (pt/-error v))
-    v))
-
-(defn take!
-  "take a value from a stream - returns Promise<value|error>
-   which evantually resolves to:
-   - a value when one becomes available
-   - nil or default-val if the stream closes
-   - timeout-val if no value becomes available in timeout ms
-   - an error if the stream errored (i.e. an error occurred
-     during some upstream operation)"
-  ([source]
-   (pr/chain
-    (pt/-take! source)
-    throw-if-error))
-  ([source default-val]
-   (pr/chain
-    (pt/-take! source default-val)
-    throw-if-error))
-  ([source default-val timeout timeout-val]
-   (pr/chain
-    (pt/-take! source default-val timeout timeout-val)
-    throw-if-error)))
-
-(defn connect-via
-  "feed all messages from src into callback on the
-   understanding that they will eventually propagate into
-   dst
-
-   the return value of callback should be a promise yielding
-   either true or false. when false the downstream sink
-   is assumed to be closed and the connection is severed"
-  ([source f sink]
-   (pt/-connect-via source f sink nil))
-  ([source f sink opts]
-   (pt/-connect-via source f sink opts)))
+(def close! impl/close!)
+(def put! impl/put!)
+(def error! impl/error!)
+(def put-all! impl/put-all!)
+(def take! impl/take!)
+(def connect-via impl/connect-via)
 
 (defn realize-each
   "convert a Stream<Promise<val>|val> into Stream<val>"
@@ -168,7 +97,7 @@
 
          (chunk/stream-chunk? v)
          (pr/chain
-          (pt/-flatten v)
+          (pt/-chunk-flatten v)
           #(put! s' %))
 
          :else
@@ -184,7 +113,7 @@
   [rf]
   (fn [result input]
     (if (types/stream-error? input)
-      (throw (pt/-error input))
+      (throw (pt/-unwrap-error input))
       (let [r (rf result input)]
         (if (reduced? r)
           (reduced r)
@@ -221,14 +150,17 @@
              (types/stream-error? msg)
              (rf rs msg)
 
-             (chunk/stream-chunk? msg)
+             (types/stream-chunk? msg)
              (try
                (pt/-start-chunk cb)
                (let [_ (clojure.core/reduce
                           (throw-errors-preserve-reduced rff)
                           rs
-                          (pt/-chunk-values msg))]
-                 (pt/-finish-chunk cb rf rs))
+                          (pt/-chunk-values msg))
+                     chunk (pt/-finish-chunk cb)]
+                 (if (not-empty (pt/-chunk-values chunk))
+                   (rf rs chunk)
+                   rs))
                (catch #?(:clj Throwable :cljs :default) e
                  (rf rs (types/stream-error e)))
                (finally
@@ -271,7 +203,7 @@
       (fn [v]
         (cond
           (types/stream-error? v)
-          (pt/-error! s' v)
+          (impl/error! s' v)
 
           (chunk/stream-chunk? v)
           (put!
@@ -287,6 +219,54 @@
   ([f s & rest]
    (->> (apply consumer/chunk-zip s rest)
         (map #(apply f %)))))
+
+;; alternative implementation strategy, since a concurrency
+;; limited fn isn't much faster than a stream...
+;; (3s vs 7s for 1M messages - with simple optimisation to use
+;; mutable types. it was 19s with atoms) at least,
+;; not without putting lots of optimisation effort in
+;;
+;; stream values to an intermediate steam with no chunks, but
+;; retaining chunking info
+;; [::unchunked|::chunk-start|::chunk|::chunk-end val]
+;; then use buffers to enforce concurrency, do a regular
+;; map and rechunk after the map
+;;
+;; this is vanilla stream-processing function, so less likely
+;; to have bugs than a concurrency limited function, and
+;; sorting out disposal on the concurrency limited function
+;; was also going to be difficult
+(defn mapcon
+  "like map, but limits the number of concurrent unresolved
+   promises from application of f
+
+   - f is a promise-returning async fn. the result promise
+   of f will be resolved and the resolved result placed on
+   the output.
+   - n is the maximum number of simultaneous unresolved
+   promises
+
+   this works to control concurrency even when chunks are
+   used - because using buffering to control concurrency
+   no longer works when each buffered value can be a chunk
+   or arbitrary size"
+  ([f n s]
+   (let [dechunked-f (fn [[chunk-k v]]
+                       [chunk-k (f v)])]
+     (->> s
+          (chunk/dechunk)
+          (map dechunked-f)
+          (pt/-buffer n)
+          (chunk/rechunk)))
+   (map (concurrency/concurrency-limited-fn f n) s))
+  ([f n s & rest]
+   (let [dechunked-f (fn [[chunk-k v]]
+                       [chunk-k (f v)])]
+     (->> s
+          (chunk/dechunk)
+          (apply map dechunked-f s rest)
+          (pt/-buffer n)
+          (chunk/rechunk)))))
 
 (defn zip
   ([a] (map vector a))
@@ -380,7 +360,7 @@
   ([f initial-val s]
    (-> (if (identical? ::none initial-val)
          (take! s ::none)
-         (pr/promise initial-val))
+         (pr/resolved initial-val))
 
        (pr/chain
         (fn [initial-val]
@@ -390,7 +370,7 @@
             (f)
 
             (types/stream-error? initial-val)
-            (throw (pt/-error initial-val))
+            (throw (pt/-unwrap-error initial-val))
 
             :else
             (pr/loop [val initial-val]
@@ -410,7 +390,7 @@
                                     (identical? ::none x) val
 
                                     (types/stream-error? x)
-                                    (throw (pt/-error x))
+                                    (throw (pt/-unwrap-error x))
 
                                     (chunk/stream-chunk? x)
                                     (let [r (clj/reduce

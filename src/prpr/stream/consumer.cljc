@@ -228,7 +228,7 @@
                  errors?
                  (let [first-err (->> chunk-or-vals (filter types/stream-error?) first)]
                    (pr/chain
-                    (pt/-error! out first-err)
+                    (impl/error! out first-err)
                     (fn [_] (close-all))
                     (fn [_] false)))
 
@@ -284,7 +284,7 @@
         ;; catchall cleanup
         (fn [e]
           (error e "zip error")
-          (pt/-error! out e)
+          (impl/error! out e)
           (close-all)))
 
     out))

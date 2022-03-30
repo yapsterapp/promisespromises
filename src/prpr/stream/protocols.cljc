@@ -8,6 +8,9 @@
     [_ buffer xform]
     #?(:clj [_ buffer xform executor])))
 
+(defprotocol IMaybeStream
+  (-stream? [this]))
+
 ;; cross-platform stream interface.
 ;; under the hood these will be regular manifold streams
 ;; or core.async chans and the full manifold/core.async
@@ -16,7 +19,6 @@
   (-put!
     [sing val]
     [sink val timeout timeout-val])
-  (-error! [sink err])
   (-take!
     [source]
     [source default-val]
@@ -25,7 +27,8 @@
   (-connect-via
     [source f sink]
     [source f sink opts])
-  (-wrap [_]))
+  (-wrap-value [_ v])
+  (-buffer [_ n]))
 
 ;; a chunk of values which can be placed on a stream and
 ;; will be handled as if the values themselves were on the stream,
@@ -34,22 +37,23 @@
 ;; e.g. pages of db-query results)
 (defprotocol IStreamChunk
   (-chunk-values [this])
-  (-flatten [this] "flatten any nested promises returning Promise<value>"))
+  (-chunk-flatten [this] "flatten any nested promises returning Promise<value>"))
 
 ;; a stateful object for efficiently accumulating chunks
 (defprotocol IStreamChunkBuilder
-  (-start-chunk [_])
+  (-start-chunk [_] [_ val])
   (-add-to-chunk [_ val])
-  (-finish-chunk [_ rf result])
+  (-finish-chunk [_] [_ val])
   (-discard-chunk [_])
   (-building-chunk? [_])
   (-chunk-state [_]))
 
+;; a potentially wrapped value on a stream
 (defprotocol IStreamValue
-  (-value [_]))
+  (-unwrap-value [_]))
 
 (defprotocol IStreamError
-  (-error [_]))
+  (-unwrap-error [_]))
 
 (defprotocol IChunkConsumer
   (-peek-chunk [_]

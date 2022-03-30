@@ -23,6 +23,16 @@
 
 (def stream-factory (->StreamFactory))
 
+(extend-protocol p/IMaybeStream
+  Object
+  (-stream? [v] (m.stream/stream? v)))
+
+(defn promise->deferred
+  [v]
+  (if (promise/promise? v)
+    (m.deferred/->deferred v)
+    v))
+
 (extend-protocol p/IStream
   Stream
   (-put!
@@ -30,17 +40,6 @@
      (m.stream/put! sink val))
     ([sink val timeout timeout-val]
      (m.stream/try-put! sink val timeout timeout-val)))
-
-  (-error!
-    [sink err]
-    (promise/chain
-     (m.stream/put! sink (types/stream-error err))
-     (fn [_]
-       (m.stream/close! sink))
-     (fn [_]
-       ;; return false so that -error! can be used like a put!
-       ;; in connect fns
-       false)))
 
   (-take!
     ([source]
@@ -54,12 +53,17 @@
 
   (-connect-via
     ([source f sink]
-     (m.stream/connect-via source f sink))
+     (let [f' (comp promise->deferred f)]
+       (m.stream/connect-via source f' sink)))
     ([source f sink opts]
-     (m.stream/connect-via source f sink opts)))
+     (let [f' (comp promise->deferred f)]
+       (m.stream/connect-via source f' sink opts))))
 
-  ;; don't need to wrap nils for manifold
-  (-wrap [v] v))
+  ;; don't need to wrap anything for manifold
+  (-wrap-value [_ v] v)
+
+  (-buffer [s n]
+    (m.stream/buffer s n)))
 
 (defn ->promesa
   [d]

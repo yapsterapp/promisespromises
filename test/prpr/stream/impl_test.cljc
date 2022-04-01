@@ -72,7 +72,7 @@
                r2 (sut/take! s)]
         (is (= ::foo r1))
         (is (= ::bar r2))
-        (is (identical? false (pr/resolved? par)))
+        ;; (is (identical? false (pr/resolved? par)))
         (pr/let [r3 (sut/take! s)
                  _ (is (= ::baz r3))
                  par par]

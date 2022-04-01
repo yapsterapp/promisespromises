@@ -12,6 +12,12 @@
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
 
+;; differences between manifold and core.async
+;;
+;; - put!/take! timeouts
+;;   - in manifold, timeouts cancel the operation. in core.async they
+;;     don't
+
 ;; manifold's stream API (map,filter,transform,reduce ops) is
 ;; implemented with put!, take! and connect...
 ;;

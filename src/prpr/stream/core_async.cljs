@@ -146,5 +146,5 @@
     ([source f sink] (async-connect-via source f sink))
     ([source f sink opts] (async-connect-via source f sink opts)))
 
-  (-wrap-value [s v] (async-wrap v))
+  (-wrap-value [s v] (async-wrap-value v))
   (-buffer [s n] (async-buffer s n)))

@@ -5,10 +5,12 @@
    [prpr.stream.protocols :as p]
    [prpr.stream.types :as types]
    [promesa.core :as promise]
-   [promesa.protocols :as promise.p])
+   [promesa.protocols :as promise.p]
+   [prpr.stream.protocols :as pt])
   (:import
    [manifold.stream.default Stream]
-   [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]))
+   [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]
+   [java.util.concurrent ExecutionException CompletionException]))
 
 (deftype StreamFactory []
   p/IStreamFactory
@@ -64,6 +66,12 @@
 
   (-buffer [s n]
     (m.stream/buffer s n)))
+
+(extend-protocol pt/IPlatformErrorWrapper
+  ExecutionException
+  (-unwrap-platform-error [this] (ex-cause this))
+  CompletionException
+  (-unwrap-platform-error [this] (ex-cause this)))
 
 (defn ->promesa
   [d]

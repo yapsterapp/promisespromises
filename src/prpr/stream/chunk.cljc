@@ -83,7 +83,7 @@
      s
      (fn [v]
        (cond
-         (stream-chunk? v)
+         (types/stream-chunk? v)
          (let [vals (pt/-chunk-values v)
                n (count vals)]
            (pr/chain

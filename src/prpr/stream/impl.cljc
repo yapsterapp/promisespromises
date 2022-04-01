@@ -1,4 +1,8 @@
 (ns prpr.stream.impl
+  "core implementation - covers put!ing onto and
+   take!ing from a stream, error propagation,
+   special value wrapping/unwrapping and
+   stream connection"
   (:require
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
@@ -6,7 +10,7 @@
    #?(:clj [prpr.stream.manifold :as stream.manifold]
       :cljs [prpr.stream.core-async :as stream.async]))
   (:refer-clojure
-    :exclude [map filter mapcat reductions reduce concat]))
+   :exclude [map filter mapcat reductions reduce concat]))
 
 (def stream-factory
   #?(:clj stream.manifold/stream-factory
@@ -21,7 +25,7 @@
    (pt/-stream stream-factory buffer xform))
   #?(:clj
      ([buffer xform executor]
-       (pt/-stream stream-factory buffer xform executor))))
+      (pt/-stream stream-factory buffer xform executor))))
 
 (defn stream?
   [v]
@@ -59,14 +63,15 @@
   and then closes it. consuming fns will throw an error
   when they encounter it, so errors are always propagated"
   [sink err]
-  (pr/chain
-   (pt/-put! sink (types/stream-error err))
-   (fn [_]
-     (pt/-close! sink))
-   (fn [_]
-     ;; return false so that error! can be used like a put!
-     ;; in connect fns
-     false)))
+  (let [wrapped-err (types/stream-error err)]
+    (pr/chain
+     (pt/-put! sink wrapped-err)
+     (fn [_]
+       (pt/-close! sink))
+     (fn [_]
+       ;; return false so that error! can be used like a put!
+       ;; in connect fns
+       false))))
 
 (defn put-all!
   "put all values onto a stream with backpressure
@@ -108,6 +113,12 @@
     (pt/-take! source default-val timeout timeout-val)
     pt/-unwrap-value)))
 
+(defn unwrap-platform-error
+  [x]
+  (if (satisfies? pt/IPlatformErrorWrapper x)
+    (pt/-unwrap-platform-error x)
+    x))
+
 (defn connect-via-error-fn
   "return a new connect-via fn which handles errors
    in the connect fn or from the source and error!s
@@ -125,8 +136,7 @@
          ;; non-error values
          (-> val
              (pt/-unwrap-value)
-             (f)
-             (as-> % (pt/-wrap-value sink %))))
+             (f)))
 
        (catch #?(:clj Exception :cljs :default) x
          (types/stream-error x)))
@@ -140,8 +150,18 @@
          (types/stream-error? success)
          (error! sink success)
 
+         (false? success)
+         (pr/handle
+          (close! sink)
+          (fn [_ _] false))
+
+         (true? success)
+         true
+
          :else
-         (put! sink success))))))
+         (error!
+          sink
+          (ex-info "illegal return from f" {:success success})))))))
 
 (defn connect-via
   "feed all messages from src into callback on the

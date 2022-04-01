@@ -55,6 +55,11 @@
 (defprotocol IStreamError
   (-unwrap-error [_]))
 
+;; j.u.c wraps errors in platform exceptions...
+;; this protocol helps us unwrap them
+(defprotocol IPlatformErrorWrapper
+  (-unwrap-platform-error [_]))
+
 (defprotocol IChunkConsumer
   (-peek-chunk [_]
     "peek a single chunk or value")

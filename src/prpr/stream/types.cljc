@@ -36,7 +36,9 @@
   pt/IStreamError
   (-unwrap-error [_] err)
   pt/IStreamValue
-  (-unwrap-value [_] (throw err)))
+  (-unwrap-value [_]
+    ;; (warn err "unwrapping StreamError" (ex-data err))
+    (throw err)))
 
 (defn stream-error?
   [v]

@@ -36,7 +36,7 @@
               v)
 
             ;; append all of chunk to buf
-            (chunk/stream-chunk? v)
+            (types/stream-chunk? v)
             (let [[v :as vals] (list* (pt/-chunk-values v))]
               (reset! buf-a vals)
               v)
@@ -75,7 +75,7 @@
               v)
 
             ;; append rest of chunk to buf, return first val
-            (chunk/stream-chunk? v)
+            (types/stream-chunk? v)
             (let [[v & rvs] (list* (pt/-chunk-values v))]
               (reset! buf-a rvs)
               v)
@@ -204,13 +204,13 @@
                    errors? (some types/stream-error? chunk-or-vals)
 
                    ;; did all the sources supply chunks ?
-                   all-chunks? (every? chunk/stream-chunk? chunk-or-vals)
+                   all-chunks? (every? types/stream-chunk? chunk-or-vals)
 
                    ;; the largest possible output chunk size is the
                    ;; size of the smallest source chunk
                    output-chunk-size (if all-chunks?
                                        (->> chunk-or-vals
-                                            (filter chunk/stream-chunk?)
+                                            (filter types/stream-chunk?)
                                             (map pt/-chunk-values)
                                             (map count)
                                             (apply min))
@@ -241,13 +241,13 @@
                                  (let [vals (pt/-chunk-values corv)]
                                    [(subvec vals 0 output-chunk-size)
                                     (when (> (count vals) output-chunk-size)
-                                      (chunk/stream-chunk
+                                      (types/stream-chunk
                                        (subvec vals output-chunk-size)))]))
                        vs (map first vs-rems)
                        rems (map second vs-rems)
 
                        zipped-vs (apply map vector vs)
-                       zipped-vs-chunk (chunk/stream-chunk
+                       zipped-vs-chunk (types/stream-chunk
                                         zipped-vs)]
 
                    (doseq [[consumer rem] (map vector consumers rems)]
@@ -262,9 +262,9 @@
                  ;; consumers
                  :else
                  (let [v-rems (for [corv chunk-or-vals]
-                                (if (chunk/stream-chunk? corv)
+                                (if (types/stream-chunk? corv)
                                   (let [[fv & rvs] (pt/-chunk-values corv)]
-                                    [fv (chunk/stream-chunk rvs)])
+                                    [fv (types/stream-chunk rvs)])
                                   [corv nil]))
                        vs (map first v-rems)
                        rems (map second v-rems)

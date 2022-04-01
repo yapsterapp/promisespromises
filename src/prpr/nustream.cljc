@@ -74,6 +74,7 @@
 ;;           realize
 
 (def stream impl/stream)
+(def stream? impl/stream?)
 (def close! impl/close!)
 (def put! impl/put!)
 (def error! impl/error!)
@@ -95,7 +96,7 @@
           v
           #(put! s' %))
 
-         (chunk/stream-chunk? v)
+         (types/stream-chunk? v)
          (pr/chain
           (pt/-chunk-flatten v)
           #(put! s' %))
@@ -205,10 +206,10 @@
           (types/stream-error? v)
           (impl/error! s' v)
 
-          (chunk/stream-chunk? v)
+          (types/stream-chunk? v)
           (put!
            s'
-           (chunk/stream-chunk
+           (types/stream-chunk
             (mapv f (pt/-chunk-values v))))
 
           :else
@@ -283,10 +284,10 @@
           (types/stream-error? v)
           (error! s' v)
 
-          (chunk/stream-chunk? v)
+          (types/stream-chunk? v)
           (put-all!
            s'
-           (chunk/stream-chunk
+           (types/stream-chunk
             (mapcat f (pt/-chunk-values v))))
 
           :else
@@ -374,7 +375,7 @@
 
             :else
             (pr/loop [val initial-val]
-              (let [val (if (chunk/stream-chunk? initial-val)
+              (let [val (if (types/stream-chunk? initial-val)
                           (clj/reduce
                            (@#'clj/preserving-reduced f)
                            (pt/-chunk-values initial-val))
@@ -392,7 +393,7 @@
                                     (types/stream-error? x)
                                     (throw (pt/-unwrap-error x))
 
-                                    (chunk/stream-chunk? x)
+                                    (types/stream-chunk? x)
                                     (let [r (clj/reduce
                                              (@#'clj/preserving-reduced f)
                                              val

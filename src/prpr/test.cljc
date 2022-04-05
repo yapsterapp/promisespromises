@@ -101,7 +101,6 @@
                                      [~@fs])])
               (fn [succ# e#]
                 (when (some? e#)
-                  (taoensso.timbre/warn e#)
                   (cljs.test/report {:type :error
                                      :message (str e#)
                                      :error e#}))

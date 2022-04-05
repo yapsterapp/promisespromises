@@ -19,6 +19,7 @@
               [prpr.test.reduce])]))
 
 ;; lord help me
+
 #?(:clj
    (defonce test-binding-frame (atom nil)))
 
@@ -53,9 +54,6 @@
 ;; a bunch of test macros for comparable async testing
 ;; in clj or cljs... some just reference the underlying clojure.test
 ;; macros, but are here to make ns :require forms simpler...
-;; since it's cljc no reader conditionals are required, though we
-;; may have to add more macros here if we need to support further
-;; clojure.test/cljs.test macros
 (comment
   (ns some.ns
     (:require
@@ -83,9 +81,11 @@
 
 #?(:clj
    (defmacro test-async
-     "if you make the body of test-async a form or forms that
-      each return a promise... this will serially
-      complete them"
+     "the body of test-async is a form or forms that
+      each return a plain value or a promise of a value...
+      test-async serially completes them - waiting on the
+      completion of any promises before proceeding to
+      evaluate the next form"
      [& forms]
      (let [;; wrap each form into a 0-args fn
            fs (for [form forms]
@@ -96,15 +96,15 @@
          (cljs.test/async
           done#
 
-          (promesa.core/catch
-              (fn [e#]
-                (taoensso.timbre/warn e#)
-                (cljs.test/report {:type :error
-                                   :message (str e#)
-                                   :error e#})
-                (done#))
+          (promesa.core/handle
               (promesa.core/let [r# (prpr.test.reduce/reduce-pr-fns
-                                     [~@fs])]
+                                     [~@fs])])
+              (fn [succ# e#]
+                (when (some? e#)
+                  (taoensso.timbre/warn e#)
+                  (cljs.test/report {:type :error
+                                     :message (str e#)
+                                     :error e#}))
                 (done#))))
 
          (let [body# (fn []
@@ -116,10 +116,10 @@
 
 #?(:clj
    (defmacro deftest*
-     [& body]
+     [nm & body]
      `(prpr.util.macro/if-cljs
-       (cljs.test/deftest ~@body)
-       (clojure.test/deftest ~@body))))
+       (cljs.test/deftest ~nm ~@body)
+       (clojure.test/deftest ~nm ~@body))))
 
 #?(:clj
    (defmacro deftest
@@ -130,6 +130,7 @@
       recognizes it and uses it to find tests"
      [name & body]
      `(prpr.test/deftest* ~name
+        (println "   " ~(str name))
         (prpr.test/test-async
          ~@body))))
 
@@ -143,11 +144,15 @@
 
 #?(:clj
    (defmacro testing
-     [& body]
+     [s & body]
      `(prpr.util.macro/if-cljs
-       (cljs.test/testing ~@body)
+       (do
+         (println "      " ~s)
+         (cljs.test/testing ~@body))
        (with-test-binding-frame
-         (clojure.test/testing ~@body)))))
+         (do
+           (println "      " ~s)
+           (clojure.test/testing ~s ~@body))))))
 
 #?(:clj
    (defmacro with-log-level

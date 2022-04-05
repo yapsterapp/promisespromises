@@ -12,16 +12,25 @@
                org.clojure/tools.logging
                org.clojure/tools.reader]
 
-  :dependencies [[org.clojure/clojure "1.11.0"]
+  :dependencies [[io.aviso/pretty "1.1.1"]
+
+                 ;; clojure 1.11.0 is causing issues
+                 ;; with io.aviso.pretty which is used
+                 ;; by tools.logging and timbre for
+                 ;; printing exception traces
+                 [org.clojure/clojure "1.10.3"]
+
                  [org.clojure/clojurescript "1.11.4"]
                  [org.clojure/tools.reader "1.3.6"]
                  [org.clojure/tools.namespace "1.2.0"]
                  [org.clojure/tools.macro "0.1.5"]
                  [org.clojure/core.async "1.5.648"]
 
+
                  ;; wow, such logging
                  [org.clojure/tools.logging "1.2.4"]
-                 [com.taoensso/timbre "4.10.0"]
+                 [com.taoensso/timbre "4.10.0"
+                  :exclusions [io.aviso/pretty]]
                  ;; timbre 5.1.2 is causing cljs compile
                  ;; errors, so sticking with 4.10.0
                  ;; [com.taoensso/timbre "5.1.2"

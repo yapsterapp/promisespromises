@@ -1,3 +1,4 @@
 {:lint-as
  {promesa.core/let clojure.core/let
+  promesa.core/loop clojure.core/loop
   prpr.test/deftest clojure.test/deftest}}

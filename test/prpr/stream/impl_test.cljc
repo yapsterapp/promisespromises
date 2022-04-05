@@ -286,11 +286,9 @@
           psrp (pr/chain
                 (sut/put-all!
                  s
-                 [1
-                  ;; (reify
-                  ;;   pt/IStreamValue
-                  ;;   (-unwrap-value [_] 1))
-                  ])
+                 [(reify
+                    pt/IStreamValue
+                    (-unwrap-value [_] 1))])
                 (fn [r]
                   (sut/close! s)
                   r))
@@ -300,11 +298,7 @@
                  t)]
       (pr/let [t0 (sut/take! t)
                t1 (sut/take! t ::closed)
-               psr psrp
-               ;; cvr cvrp
-               ]
+               psr psrp]
         (is (= 2 t0))
         (is (= ::closed t1))
-        (is (true? psr))
-        ;; (is (true? cvr))
-        ))))
+        (is (true? psr))))))

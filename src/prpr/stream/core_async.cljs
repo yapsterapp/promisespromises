@@ -28,7 +28,8 @@
 (defn async-put!
   ([sink val]
    (let [r (pr/deferred)]
-     (async/put! sink val #(pr/resolve! r %) true)
+     ;; (prn "async-put!" val)
+     (async/put! sink val #(pr/resolve! r %))
      r))
   ([sink val timeout timeout-val]
    (let [r (pr/deferred)
@@ -36,7 +37,7 @@
                     r
                     timeout
                     timeout-val)]
-     (async/put! sink val #(pr/resolve! r %) true)
+     (async/put! sink val #(pr/resolve! r %))
      timeout-r)))
 
 (defn async-error!
@@ -54,18 +55,18 @@
 (defn async-take!
   ([source]
      (let [r (pr/deferred)]
-       (async/take! source #(pr/resolve! r %) true)
+       (async/take! source #(pr/resolve! r %))
        r))
     ([source default-val]
      (let [r (pr/deferred)
            dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
-       (async/take! source #(pr/resolve! r %) true)
+       (async/take! source #(pr/resolve! r %))
        dr))
     ([source default-val timeout timeout-val]
      (let [r (pr/deferred)
            dr (pr/chain r (fn [v] (if (some? v) v default-val)))
            tdr (pr/timeout dr timeout timeout-val)]
-       (async/take! source #(pr/resolve! r %) true)
+       (async/take! source #(pr/resolve! r %))
        tdr)))
 
 (defn async-close!
@@ -82,36 +83,70 @@
    is assumed to be closed and the connection is severed"
   ([src callback dst]
    (async-connect-via src callback dst nil))
-  ([src callback dst _opts]
+  ([src
+    callback
+    dst
+    {close-src? :prpr.stream/upstream?
+     :as _opts}]
 
-   (pr/catch
-       (pr/loop []
-         (pr/chain
-          (pt/-take! src)
+   (pr/loop []
+         ;; (prn "async-connect-via: pre-take!")
 
-          (fn [v]
-            (if (nil? v)
+         (-> (pt/-take! src)
 
-              (do
-                (pt/-close! dst)
-                false)
+             (pr/handle
+              (fn [v err]
+                ;; (prn "async-connect-via: value" v err)
 
-              ;; callback is reponsible for putting
-              ;; messages on to dst
-              (callback v)))
+                (cond
+                  (some? err)
+                  (async-error! dst err)
 
-          (fn [result]
-            (when result
-              (pr/recur)))))
+                  (nil? v)
+                  ;; src has closed
+                  (do
+                    (pt/-close! dst)
+                    ::closed)
 
-       (fn [e]
-         ;; the callback should catch
-         ;; all errors and error! the dst, so this
-         ;; should never happen
-         (fatal e "unexpected error")
-         (pr/chain
-          (async-error! dst e)
-          (fn [_] (pt/-close! dst)))))))
+                  :else
+                  ;; callback is reponsible for putting
+                  ;; messages on to dst
+                  (callback v))))
+
+
+             (pr/handle
+              (fn [result err]
+                ;; (prn "async-connect-via: result" result err)
+
+                (cond
+                  (some? err)
+                  (do
+                    (pt/-close! src)
+                    (async-error! dst err))
+
+                  (true? result)
+                  (do
+                    ;; (prn "async-connect-via: recur")
+                    (pr/recur))
+
+                  :else
+                  (do
+                    ;; manifold default to not always closing the src
+                    ;; when the connection terminates... but manifold has
+                    ;; a behaviour where the src will always close when its
+                    ;; last sink is removed, which means that sources don't
+                    ;; leak after their sinks are removed
+                    ;;
+                    ;; core.async does not have this behavious, so we
+                    ;; default to closing the source by default when a
+                    ;; connection is broken
+
+                    (when-not (false? close-src?)
+                      (async-close! src))
+
+                    (if (= ::closed result)
+                      true
+                      false)))))))))
 
 (defn async-wrap-value
   "nils can't be put directly on core.async chans,

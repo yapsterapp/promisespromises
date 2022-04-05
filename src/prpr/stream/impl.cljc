@@ -79,11 +79,13 @@
    values were accepted onto the stream, false otherwise"
   [sink vals]
   (pr/loop [vals vals]
+    ;; (prn "put-all! in:" vals)
     (if (empty? vals)
       true
       (pr/chain
-       (pt/-put! sink (first vals))
+       (put! sink (first vals))
        (fn [result]
+         ;; (prn "put-all! out:" result)
          (if result
            (pr/recur (rest vals))
            false))))))
@@ -125,6 +127,7 @@
    the sink"
   [f sink]
   (fn [val]
+    ;; (prn "connect-via-error-fn: value" val)
     (pr/handle
 
      (try
@@ -142,7 +145,7 @@
          (types/stream-error x)))
 
      (fn [success err]
-
+       ;; (prn "connect-via-error-fn: handle" success err)
        (cond
          (some? err)
          (error! sink err)

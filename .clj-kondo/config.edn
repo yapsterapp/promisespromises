@@ -1,3 +1,3 @@
 {:lint-as
  {promesa.core/let clojure.core/let
-  prpr.test/defprtest clojure.test/deftest}}
+  prpr.test/deftest clojure.test/deftest}}

@@ -3,7 +3,8 @@
              [clojure.test]
              [prpr.util.macro]
              [promesa.core]
-             [taoensso.timbre])]
+             [taoensso.timbre]
+             [prpr.test.reduce])]
 
       :cljs [(:require-macros
               [cljs.test]
@@ -14,7 +15,8 @@
               [cljs.test]
               [prpr.util.macro]
               [promesa.core]
-              [taoensso.timbre])]))
+              [taoensso.timbre]
+              [prpr.test.reduce])]))
 
 ;; lord help me
 #?(:clj
@@ -79,38 +81,57 @@
        (cljs.test/use-fixtures ~@body)
        (clojure.test/use-fixtures ~@body))))
 
-;; if you make the body of test-async a form or forms that
-;; each return a promise... this will complete them
 #?(:clj
    (defmacro test-async
-     [& ps]
-     `(prpr.util.macro/if-cljs
-          (cljs.test/async
-           done#
+     "if you make the body of test-async a form or forms that
+      each return a promise... this will serially
+      complete them"
+     [& forms]
+     (let [;; wrap each form into a 0-args fn
+           fs (for [form forms]
+                `(fn []
+                   ~form))]
 
-           (promesa.core/catch
-               (fn [e#]
-                 (taoensso.timbre/warn e#)
-                 (cljs.test/report {:type :error
-                                    :message (str e#)
-                                    :error e#})
-                 (done#))
-               (promesa.core/let [ps# [~@ps]
-                                  r# (promesa.core/all ps#)]
-                                 (done#))))
+       `(prpr.util.macro/if-cljs
+         (cljs.test/async
+          done#
 
-        (let [body# (fn []
-                      (with-test-binding-frame
-                        (promesa.core/all [~@ps])))]
-          (record-test-binding-frame
-           @(body#))))))
+          (promesa.core/catch
+              (fn [e#]
+                (taoensso.timbre/warn e#)
+                (cljs.test/report {:type :error
+                                   :message (str e#)
+                                   :error e#})
+                (done#))
+              (promesa.core/let [r# (prpr.test.reduce/reduce-pr-fns
+                                     [~@fs])]
+                (done#))))
+
+         (let [body# (fn []
+                       (with-test-binding-frame
+                         (prpr.test.reduce/reduce-pr-fns
+                          [~@fs])))]
+           (record-test-binding-frame
+            @(body#)))))))
 
 #?(:clj
-   (defmacro deftest
+   (defmacro deftest*
      [& body]
      `(prpr.util.macro/if-cljs
        (cljs.test/deftest ~@body)
        (clojure.test/deftest ~@body))))
+
+#?(:clj
+   (defmacro deftest
+     "define a test whose body yields a list of promises, which will
+      be resolved before proceeding
+
+      use the same name as clojure.test/deftest because CIDER
+      recognizes it and uses it to find tests"
+     [name & body]
+     `(prpr.test/deftest* ~name
+        (prpr.test/test-async
+         ~@body))))
 
 #?(:clj
    (defmacro is
@@ -127,15 +148,6 @@
        (cljs.test/testing ~@body)
        (with-test-binding-frame
          (clojure.test/testing ~@body)))))
-
-#?(:clj
-   (defmacro defprtest
-     "define a test whose body yields a list of promises, which will
-      be resolved before proceeding"
-     [name & body]
-     `(prpr.test/deftest ~name
-        (prpr.test/test-async
-         ~@body))))
 
 #?(:clj
    (defmacro with-log-level

@@ -1,68 +1,51 @@
 (ns prpr.nustream-test
-  (:require-macros
-   [prpr.test
-    :refer [defprtest testing is]
-    :rename {defprtest deftest}])
   (:require
-   #?(:clj [prpr.test
-            :refer [defprtest testing is]
-            :rename {defprtest deftest}]
-      :cljs [prpr.test])
+   #?(:clj [prpr.test :refer [deftest testing is]]
+      :cljs [prpr.test :refer-macros [deftest testing is]])
+   [promesa.core :as pr]
    [prpr.nustream :as sut]))
 
-(deftest close!-test
-  (testing "closes a stream"
-    (is (= true true)))
-  (testing "no-op on an already closed stream"))
-
-(deftest put!-test
-  (testing "returns true and puts to an open stream")
-  (testing "resolves to true when backpressure finally allows put!")
-  (testing "returns false on a closed stream")
-  (testing "supports putting nils on a stream")
-  (testing "supports a timeout"))
-
-(deftest error!-test
-  (testing "returns false and puts an error marker on to an open stream")
-  (testing "throws an exception and logs on a closed stream"))
-
-(deftest put-all!-test
-  (testing "returns true when all values are accepted")
-  (testing "supports backpressure")
-  (testing "returns false when some values are not accepted"))
-
-(deftest throw-if-error-test
-  (testing "does not throw for non stream-error values")
-  (testing "throws with stream-error values"))
-
-(deftest take!-test
-  (testing "1-arity"
-    (testing "returns a value from an open stream")
-    (testing "parks until a value is available")
-    (testing "returns nil from a closed stream")
-    (testing "returns an error from an errored stream"))
-  (testing "2-arity"
-    (testing "returns a value from an open stream")
-    (testing "parks until a value is available")
-    (testing "supports taking nils from a stream")
-    (testing "returns the default-value from a closed stream")
-    (testing "returns an error from an errored stream"))
-  (testing "4-arity"
-    (testing "returns a value from an open stream")
-    (testing "parks until a value is available")
-    (testing "supports taking nils from a stream")
-    (testing "returns the default-value from a closed stream")
-    (testing "returns an error from an errored stream")))
-
-(deftest connect-via-test
-  (testing "sends all messages through the connect fn and cleans up")
-  (testing "catches errors in the connect fn, errors the sink stream and cleans up")
-  (testing "correctly propagates nil values"))
-
 (deftest realize-each-test
-  (testing "does nothing to non-promise values")
-  (testing "realizes promise values")
-  (testing "correctly propagates nil values"))
+  (testing "does nothing to non-promise values"
+    (let [s (sut/stream)
+          t (sut/realize-each s)
+          _ (pr/chain
+             (sut/put-all! s [0 1 2 3])
+             (fn [_] (sut/close! s)))]
+
+      (pr/let [vs (->> (range 0 5)
+                       (map (fn [_](sut/take! t ::closed)))
+                       (pr/all))]
+        (is (= [0 1 2 3 ::closed] vs)))))
+
+  (testing "realizes promise values"
+    (let [s (sut/stream)
+          t (sut/realize-each s)
+          _ (pr/chain
+             (sut/put-all! s (map pr/resolved [0 1 2 3]))
+             (fn [_] (sut/close! s)))]
+
+      (pr/let [vs (->> (range 0 5)
+                       (map (fn [_](sut/take! t ::closed)))
+                       (pr/all))]
+        (is (= [0 1 2 3 ::closed] vs)))))
+
+  (testing "correctly propagates nil values"
+    (let [s (sut/stream)
+          t (sut/realize-each s)
+          _ (pr/chain
+             (sut/put-all!
+              s
+              [(pr/resolved 0)
+               (pr/resolved nil)
+               2
+               nil])
+             (fn [_] (sut/close! s)))]
+
+      (pr/let [vs (->> (range 0 5)
+                       (map (fn [_](sut/take! t ::closed)))
+                       (pr/all))]
+        (is (= [0 nil 2 nil ::closed] vs))))))
 
 (deftest stream-error-capturing-stream-xform-test)
 
@@ -102,7 +85,7 @@
   (testing "returns reducing function errors")
   (testing "when receiving a nil wrapper sends nil to the reducing fn"))
 
-(deftest reduce
+(deftest reduce-test
   (testing "reduces a stream")
   (testing "returns reducing function errors")
   (testing "when receiving a nil wrapper sends nil to the reducing fn"))

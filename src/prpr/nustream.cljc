@@ -1,4 +1,5 @@
 (ns prpr.nustream
+  (:refer-clojure :exclude [map mapcat filter reductions reduce])
   (:require
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
@@ -109,7 +110,9 @@
 
          :else
          (put! s' v)))
-     s')))
+     s')
+
+    s'))
 
 (defn throw-errors-preserve-reduced
   "wrap a reducing fn to reduce chunks

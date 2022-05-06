@@ -25,7 +25,7 @@
 
         (first buf)
 
-        (pr/let [v (pt/-take! s :prpr.stream/end)]
+        (pr/let [v (impl/take! s :prpr.stream/end)]
           (cond
 
             ;; terminal conditions
@@ -64,7 +64,7 @@
             (swap! buf-a rest)
             fv))
 
-        (pr/let [v (pt/-take! s :prpr.stream/end)]
+        (pr/let [v (impl/take! s :prpr.stream/end)]
           (cond
 
             ;; terminal conditions
@@ -94,7 +94,7 @@
     (let [buf @buf-a]
       (if (not-empty buf)
         (first buf)
-        (pr/let [v (pt/-take! s :prpr.stream/end)]
+        (pr/let [v (impl/take! s :prpr.stream/end)]
           (swap! buf-a conj v)
           v))))
 
@@ -108,19 +108,21 @@
               (types/stream-error? fv))
           fv
 
-          ;; return first val from buf
+          ;; consume first val from buf
           :else
           (do
             (swap! buf-a rest)
             fv))
 
-        (pr/let [v (pt/-take! s :prpr.stream/end)]
+        (pr/let [;; _ (info "about to -take!")
+                 v (impl/take! s :prpr.stream/end)]
           (cond
 
-            ;; terminal conditions
+            ;; buffer and return terminal conditions
             (or (= :prpr.stream/end v)
                 (types/stream-error? v))
             (do
+              ;; (info "terminal" v)
               (swap! buf-a conj v)
               v)
 

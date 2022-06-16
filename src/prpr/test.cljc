@@ -144,14 +144,15 @@
 #?(:clj
    (defmacro testing
      [s & body]
-     `(prpr.util.macro/if-cljs
-       (do
-         (println "      " ~s)
-         (cljs.test/testing ~@body))
-       (with-test-binding-frame
+     (when (not-empty body)
+       `(prpr.util.macro/if-cljs
          (do
            (println "      " ~s)
-           (clojure.test/testing ~s ~@body))))))
+           (cljs.test/testing ~@body))
+         (with-test-binding-frame
+           (do
+             (println "      " ~s)
+             (clojure.test/testing ~s ~@body)))))))
 
 #?(:clj
    (defmacro with-log-level

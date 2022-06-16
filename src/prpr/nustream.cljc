@@ -5,7 +5,7 @@
    [prpr.stream.impl :as impl]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
-   [prpr.stream.concurrency :as concurrency]
+   ;; [prpr.stream.concurrency :as concurrency]
    [prpr.stream.consumer :as consumer]
    [promesa.core :as pr]
    [taoensso.timbre :refer [error]]
@@ -268,7 +268,8 @@
           (map dechunked-f)
           (pt/-buffer n)
           (chunk/rechunk)))
-   (map (concurrency/concurrency-limited-fn f n) s))
+   ;; (map (concurrency/concurrency-limited-fn f n) s)
+   )
   ([f n s & rest]
    (let [dechunked-f (fn [[chunk-k v]]
                        [chunk-k (f v)])]

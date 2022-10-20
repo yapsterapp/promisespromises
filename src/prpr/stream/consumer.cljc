@@ -265,7 +265,12 @@
                  :else
                  (let [v-rems (for [corv chunk-or-vals]
                                 (if (types/stream-chunk? corv)
-                                  (let [[fv & rvs] (pt/-chunk-values corv)]
+                                  (let [cvs (pt/-chunk-values corv)
+                                        ;; use subvec rather than
+                                        ;; descructuring to get remaining
+                                        ;; values, or we get a seq
+                                        [fv rvs] [(first cvs)
+                                                  (subvec cvs 1)]]
                                     [fv (types/stream-chunk rvs)])
                                   [corv nil]))
                        vs (map first v-rems)
@@ -285,7 +290,7 @@
 
         ;; catchall cleanup
         (fn [e]
-          (error e "zip error")
+          ;; (error e "zip error")
           (impl/error! out e)
           (close-all)))
 

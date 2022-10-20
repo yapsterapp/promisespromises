@@ -4,6 +4,7 @@
    special value wrapping/unwrapping and
    stream connection"
   (:require
+   [taoensso.timbre :refer [info warn]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -64,14 +65,16 @@
   when they encounter it, so errors are always propagated"
   [sink err]
   (let [wrapped-err (types/stream-error err)]
-    (pr/chain
+    (->
      (pt/-put! sink wrapped-err)
-     (fn [_]
-       (pt/-close! sink))
-     (fn [_]
-       ;; return false so that error! can be used like a put!
-       ;; in connect fns
-       false))))
+     (pr/handle
+      (fn [_ _]
+        (pt/-close! sink)))
+     (pr/handle
+      (fn [_ _]
+        ;; return false so that error! can be used like a put!
+        ;; in connect fns
+        false)))))
 
 (defn put-all!
   "put all values onto a stream with backpressure
@@ -121,68 +124,54 @@
     (pt/-unwrap-platform-error x)
     x))
 
-(defn connect-via-error-fn
+(defn safe-connect-via-fn
   "return a new connect-via fn which handles errors
    in the connect fn or from the source and error!s
    the sink"
   [f sink]
+
   (fn [val]
-    ;; (prn "connect-via-error-fn: value" val)
+    ;; (prn "safe-connect-via-fn: value" val)
     (pr/handle
 
      (try
-       (if (types/stream-error? val)
-         ;; always propagate errors
-         val
 
-         ;; apply f to unwrapped
-         ;; non-error values
-         (-> val
-             (pt/-unwrap-value)
-             (f)))
+       ;; always apply f to unwrapped values
+       (-> val
+           (pt/-unwrap-value)
+           (f))
 
        (catch #?(:clj Exception :cljs :default) x
-         (types/stream-error x)))
+         (error! sink x)))
 
      (fn [success err]
-       ;; (prn "connect-via-error-fn: handle" success err)
-       (cond
-         (some? err)
+       ;; (warn "safe-connect-via-fn: handle" success err)
+
+       (if (some? err)
          (error! sink err)
 
-         (types/stream-error? success)
-         (error! sink success)
-
-         (false? success)
-         (pr/handle
-          (close! sink)
-          (fn [_ _] false))
-
-         (true? success)
-         true
-
-         :else
-         (error!
-          sink
-          (ex-info "illegal return from f" {:success success})))))))
+         ;; we don't need to put! the value onto sink
+         ;; f will already have done that... we just
+         ;; return f's return value
+         success)))))
 
 (defn connect-via
   "feed all messages from src into callback on the
    understanding that they will eventually propagate into
    dst
 
-   the return value of callback should be a promise yielding
-   either true or false. when false the downstream sink
+   the return value of callback should be a boolean or
+   promise yielding a boolean. when false the downstream sink
    is assumed to be closed and the connection is severed"
   ([source f sink]
    (pt/-connect-via
     source
-    (connect-via-error-fn f sink)
+    (safe-connect-via-fn f sink)
     sink
     nil))
   ([source f sink opts]
    (pt/-connect-via
     source
-    (connect-via-error-fn f sink)
+    (safe-connect-via-fn f sink)
     sink
     opts)))

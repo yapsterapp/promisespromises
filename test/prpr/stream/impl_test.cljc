@@ -100,10 +100,10 @@
              r (sut/take! s ::closed 1 nil)]
       (is (nil? r)))))
 
-(deftest connect-via-error-fn-test
+(deftest safe-connect-via-fn-test
   (testing "applies f, puts the result on the sink, returs true"
     (let [t (sut/stream)
-          f (sut/connect-via-error-fn
+          f (sut/safe-connect-via-fn
              #(sut/put! t (inc %))
              t)
           frp1 (f 0)
@@ -121,7 +121,7 @@
         (is (= ::closed t3)))))
   (testing "unwraps wrapped values before sending to f"
     (let [t (sut/stream)
-          f (sut/connect-via-error-fn
+          f (sut/safe-connect-via-fn
              #(sut/put! t (inc %))
              t)
           frp0 (f (reify pt/IStreamValue
@@ -137,7 +137,7 @@
     ;; this doesn't test anything on clj/manifold, but it
     ;; does on cljs/core.async
     (let [t (sut/stream)
-          f (sut/connect-via-error-fn
+          f (sut/safe-connect-via-fn
              (fn [_] (sut/put! t nil))
              t)
           frp0 (f 0)]
@@ -150,7 +150,7 @@
         (is (= ::closed t1)))))
   (testing "catches errors in f, error!s the sink, returns false"
     (let [t (sut/stream)
-          f (sut/connect-via-error-fn
+          f (sut/safe-connect-via-fn
              (fn [_] (throw (ex-info "boo" {})))
              t)
           frp0 (f 0)]
@@ -224,6 +224,11 @@
 
       (pr/let [t0 (sut/take! t)
                t1 (sut/take! t)
+
+               ;; downstream is not closed after the connection
+               ;; is severed
+               _ (sut/close! t)
+
                [k2 v2] (capture-error (sut/take! t ::closed))
                psr psrp
 
@@ -280,6 +285,44 @@
         (is (= ::closed t3))
         (is (false? psr)))))
 
+  (testing "error!s the sink when f returns an errored promise"
+    (let [s (sut/stream)
+          t (sut/stream)
+
+          ;; put two values after the error-causing value,
+          ;; if just one then we get a race condition with
+          ;; close!ing stream s causing pst to be sometimes
+          ;; true
+          psrp (pr/chain
+                (sut/put-all! s [1 3 6 7 9])
+                (fn [r]
+                  (sut/close! s)
+                  r))
+
+          _cvrp (sut/connect-via
+                s
+                (fn [v]
+                  (if (odd? v)
+                    (sut/put! t (inc v))
+                    (pr/rejected (ex-info "even!" {:v v}))))
+                t)]
+
+      (pr/let [t0 (sut/take! t)
+               t1 (sut/take! t)
+               [k2 e2] (capture-error (sut/take! t))
+               t3 (sut/take! t ::closed)
+               psr psrp]
+
+
+        (is (= 2 t0))
+        (is (= 4 t1))
+
+        (is (= ::error k2))
+        (is (= {:v 6} (-> e2 sut/unwrap-platform-error ex-data)))
+
+        (is (= ::closed t3))
+        (is (false? psr)))))
+
   (testing "unwraps IStreamValues to feed to f"
     (let [s (sut/stream)
           t (sut/stream)
@@ -301,4 +344,6 @@
                psr psrp]
         (is (= 2 t0))
         (is (= ::closed t1))
-        (is (true? psr))))))
+        (is (true? psr)))))
+
+  )

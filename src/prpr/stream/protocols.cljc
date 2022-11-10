@@ -16,8 +16,9 @@
 ;; or core.async chans and the full manifold/core.async
 ;; API will be there for more complex stream processing
 (defprotocol IStream
+  (-closed? [s])
   (-put!
-    [sing val]
+    [sink val]
     [sink val timeout timeout-val])
   (-take!
     [source]

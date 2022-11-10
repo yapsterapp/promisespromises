@@ -83,6 +83,7 @@
 (def stream impl/stream)
 (def stream? impl/stream?)
 (def close! impl/close!)
+(def closed? impl/closed?)
 (def put! impl/put!)
 (def error! impl/error!)
 (def put-all! impl/put-all!)

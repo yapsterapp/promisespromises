@@ -37,6 +37,9 @@
 
 (extend-protocol p/IStream
   Stream
+  (-closed? [s]
+    (m.stream/closed? s))
+
   (-put!
     ([sink val]
      (m.stream/put! sink val))

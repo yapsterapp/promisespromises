@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as async]
    [cljs.core.async.impl.channels :refer [ManyToManyChannel]]
+   [cljs.core.async.impl.protocols :as impl.proto]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [promesa.core :as pr]
@@ -165,6 +166,9 @@
 
 (extend-protocol pt/IStream
   ManyToManyChannel
+  (-closed? [s]
+    (impl.proto/closed? s))
+
   (-put!
     ([sink val] (async-put! sink val))
     ([sink val timeout timeout-val] (async-put! sink val timeout timeout-val)))

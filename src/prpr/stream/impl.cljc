@@ -36,6 +36,10 @@
   [s]
   (pt/-close! s))
 
+(defn closed?
+  [s]
+  (pt/-closed? s))
+
 (defn put!
   "put a value onto a stream with backpressure - returns
    Promise<true|false> which eventually resolves to:

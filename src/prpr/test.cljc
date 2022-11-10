@@ -158,13 +158,13 @@
    (defmacro with-log-level
      "set the log-level while executing the body"
      [log-level & body]
-     `(let [cl# (or (:level timbre/*config*)
+     `(let [cl# (or (:level taoensso.timbre/*config*)
                     :info)]
         (try
-          (timbre/set-level! ~log-level)
+          (taoensso.timbre/set-level! ~log-level)
           ~@body
           (finally
-            (timbre/set-level! cl#))))))
+            (taoensso.timbre/set-level! cl#))))))
 
 
 (defn compose-fixtures

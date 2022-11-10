@@ -37,6 +37,8 @@
   (pt/-close! s))
 
 (defn closed?
+  "not in the public API, because it's so often a race condition,
+   but may be sometimes useful for inspection"
   [s]
   (pt/-closed? s))
 

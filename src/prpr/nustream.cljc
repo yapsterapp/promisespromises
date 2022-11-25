@@ -129,77 +129,85 @@
           (reduced r)
           r)))))
 
-(defn stream-error-capturing-stream-xform
-  "Returns a transducing xform that wraps the given `xform` but captures errors
-  raised when invoking any arity and passes them to the upstream `xf` fn wrapped
-  in `StreamError` markers"
-  [xform]
-  (let [cb (chunk/stream-chunk-builder)
-        c-xform (partial chunk/chunker-xform cb)
-        xform (comp xform c-xform)]
-    (fn [rf]
-      (let [rff (xform rf)]
-        (fn
-          ([]
-           (try
-             (rff)
-             (catch #?(:clj Throwable :cljs :default) e
-               ;; init with the underlying rf and
-               ;; then immediately call the reduce arity with
-               ;; the StreamError
-               (rf (rf) (types/stream-error e)))))
-          ([rs]
-           (try
-             (rff rs)
-             (catch #?(:clj Throwable :cljs :default) e
-               ;; first call the reduce arity of the rf
-               ;; with the StreamError, and then finalize
-               (rf (rf rs (types/stream-error e))))))
-          ([rs msg]
-           (cond
-             (types/stream-error? msg)
-             (rf rs msg)
+;; what do i want transform to do ?
+;; - use the underlying manifold/core.async facility to do
+;;   the basic transform
+;; - wrap other xforms in order to:
+;;   - catch any errors and send them on
+;;   - unroll any chunk inputs, xform the chunk as a seq, and send it on
+;;     - as a plain value if not a seq
+;;     - as a chunk if a seq
+;;     - do we want this implicit auto-chunking behaviour ? will it play well
+;;       with e.g. partitioning transforms
+;;   - that's it ?
 
-             (types/stream-chunk? msg)
-             (try
-               (pt/-start-chunk cb)
-               (let [_ (clojure.core/reduce
-                          (throw-errors-preserve-reduced rff)
-                          rs
-                          (pt/-chunk-values msg))
-                     chunk (pt/-finish-chunk cb)]
-                 (if (not-empty (pt/-chunk-values chunk))
-                   (rf rs chunk)
-                   rs))
-               (catch #?(:clj Throwable :cljs :default) e
-                 (rf rs (types/stream-error e)))
-               (finally
-                 (pt/-discard-chunk cb)))
+(defn safe-chunk-xform
+  "- xform : a transducer
+   - out : the eventual output stream
 
-             :else
-             (try
-               (rff rs msg)
-               (catch #?(:clj Throwable :cljs :default) e
-                 (rf rs (types/stream-error e)))))))))))
+   returns a transducer which, in normal operation,  unrolls chunks and
+   composes with xform. if any exception is thrown it immediately
+   errors the eventual output stream with the error"
+  [xform out]
+  (fn [out-rf]
+    (let [rf (xform out-rf)]
+      (fn
+        ([] (try
+              (rf)
+              (catch #?(:clj Throwable :cljs :default) e
+                ;; init with the underlying rf and
+                ;; then immediately call the reduce arity with
+                ;; the StreamError
+                (impl/error! out e))))
+
+        ([rs] (try
+                (rf rs)
+                (catch #?(:clj Throwable :cljs :default) e
+                  ;; first call the reduce arity of the rf
+                  ;; with the StreamError, and then finalize
+                  (impl/error! out e))))
+
+        ([rs v] (if (types/stream-chunk? v)
+                  (try
+                    (let [chunk-vals (pt/-chunk-values v)
+
+                          ;; chunks cannot be empty!
+                          chunk-vals-count (count chunk-vals)
+
+                          chunk-vals-but-last (->> chunk-vals
+                                                   (take (dec chunk-vals-count)))
+                          chunk-vals-last (->> chunk-vals
+                                               (drop (dec chunk-vals-count))
+                                               first)
+
+                          rs' (clojure.core/reduce rf rs chunk-vals-but-last)]
+                      (rf rs' chunk-vals-last))
+
+                    (catch #?(:clj Throwable :cljs :default) e
+                      (impl/error! out e)))
+
+                  (try
+                    (rf rs v)
+                    (catch #?(:clj Throwable :cljs :default) e
+                      (impl/error! out e)))))))))
+
 
 (defn transform
-  "apply transform to a stream
+  "apply transform to a stream, returning a transformed stream
 
-  TODO
-   as it stands the modified transform will put all reducing function
-   errors on to the result stream, but will not error the result stream.
-   possible solutions...
+   uses the underlying manifold or core.async feature to transform
+   a stream, but wraps the xform in a safe-chunk-xform which
 
-   - pass the result stream to the xform so that it can error the stream...
-   - change to use an intermediate with the transform, and downstream of
-    the intermediate, error the result stream at the first error and
-    close the intermediate - necessary because the xform wrapper can't
-    terminate the result stream itself, it can "
+   - unrolls chunks for the xform
+   - if the xform throws an exception then immediately errors the returned
+     stream with the exception"
   ([xform s]
    (transform xform 0 s))
   ([xform buffer-size s]
-   (let [s' (stream buffer-size (stream-error-capturing-stream-xform xform))]
-     (connect-via s #(put! s' %) s'))))
+   (let [out (stream)
+         s' (stream buffer-size (safe-chunk-xform xform out))]
+     (connect-via s #(put! s' %) s')
+     (connect-via s' #(put! out %) out))))
 
 (declare zip)
 
@@ -259,14 +267,17 @@
    this works to control concurrency even when chunks are
    used - because using buffering to control concurrency
    no longer works when each buffered value can be a chunk
-   or arbitrary size"
+   or arbitrary size
+
+   note that using this fn may have performance
+   implications - it dechunks and rechunks"
   ([f n s]
    (let [dechunked-f (fn [[chunk-k v]]
                        [chunk-k (f v)])]
      (->> s
           (chunk/dechunk)
           (map dechunked-f)
-          (pt/-buffer n)
+          (pt/-buffer (dec n))
           (chunk/rechunk)))
    ;; (map (concurrency/concurrency-limited-fn f n) s)
    )
@@ -276,7 +287,7 @@
      (->> s
           (chunk/dechunk)
           (apply map dechunked-f s rest)
-          (pt/-buffer n)
+          (pt/-buffer (dec n))
           (chunk/rechunk)))))
 
 (defn zip

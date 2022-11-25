@@ -3,8 +3,15 @@
    #?(:clj [prpr.test :refer [deftest testing is]]
       :cljs [prpr.test :refer-macros [deftest testing is]])
    [promesa.core :as pr]
+   [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [prpr.nustream :as sut]))
+
+(defn put-all-and-close
+  [s vs]
+  (pr/chain
+   (sut/put-all! s vs)
+   (fn [_] (sut/close! s))))
 
 (deftest realize-each-test
   (testing "does nothing to non-promise values"
@@ -48,7 +55,16 @@
                        (pr/all))]
         (is (= [0 nil 2 nil ::closed] vs))))))
 
-(deftest stream-error-capturing-stream-xform-test)
+(deftest safe-chunk-xform-test
+  (testing "simple map transform with no error"
+    (let [out (sut/stream)]
+      (is (= [1 2 3]
+             (into [] (sut/safe-chunk-xform (map inc) out) [0 1 2])))
+      (is (not (pt/-closed? out)))
+
+      (is (= []
+             (into [] (sut/safe-chunk-xform (map inc) out) [])))
+      (is (not (pt/-closed? out))))))
 
 (deftest transform-test)
 
@@ -185,9 +201,55 @@
           (is (= {:val 1} (ex-data err2))))
         (is (= ::closed r3))))))
 
+(deftest mapcon-test
+  )
+
 (deftest zip-test
-  (testing "zips some streams")
-  (testing "cleanly terminates the output when any one of the inputs terminates"))
+  (testing "zips some streams"
+    (testing "equal length streams"
+      (let [[a b] (repeatedly 2 sut/stream)
+            _ (put-all-and-close a [0 1 2 3])
+            _ (put-all-and-close b [:a :b :c :d])
+
+            s (sut/zip a b)]
+
+        (pr/let [[r0 r1 r2 r3 r4] (->> (range 0 5)
+                                       (map (fn [_] (sut/take! s ::closed)))
+                                       (pr/all))]
+
+          (is (= [0 :a] r0))
+          (is (= [1 :b] r1))
+          (is (= [2 :c] r2))
+          (is (= [3 :d] r3))
+          (is (= ::closed r4)))))
+
+    (testing "different length streams"
+      (let [[a b] (repeatedly 2 sut/stream)
+            _ (put-all-and-close a [0 1 2 3])
+            _ (put-all-and-close b [:a :b])
+
+            s (sut/zip a b)]
+
+        (pr/let [[r0 r1 r2] (->> (range 0 3)
+                                 (map (fn [_] (sut/take! s ::closed)))
+                                 (pr/all))]
+
+          (is (= [0 :a] r0))
+          (is (= [1 :b] r1))
+          (is (= ::closed r2))))
+
+      (testing "including a zero length stream"
+        (let [[a b] (repeatedly 2 sut/stream)
+              _ (put-all-and-close a [])
+              _ (put-all-and-close b [:a :b])
+
+              s (sut/zip a b)]
+
+          (pr/let [[r0] (->> (range 0 1)
+                             (map (fn [_] (sut/take! s ::closed)))
+                             (pr/all))]
+
+            (is (= ::closed r0))))))))
 
 (deftest mapcat-test
   (testing "mapcats a stream")

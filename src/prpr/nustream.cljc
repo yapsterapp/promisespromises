@@ -147,7 +147,8 @@
 
    returns a transducer which, in normal operation,  unrolls chunks and
    composes with xform. if any exception is thrown it immediately
-   errors the eventual output stream with the error"
+   errors the eventual output stream with the error, and then rethrows
+   the error (since there is no sensible value to return)"
   [xform out]
   (fn [out-rf]
     (let [rf (xform out-rf)]
@@ -158,14 +159,16 @@
                 ;; init with the underlying rf and
                 ;; then immediately call the reduce arity with
                 ;; the StreamError
-                (impl/error! out e))))
+                (impl/error! out e)
+                (throw e))))
 
         ([rs] (try
                 (rf rs)
                 (catch #?(:clj Throwable :cljs :default) e
                   ;; first call the reduce arity of the rf
                   ;; with the StreamError, and then finalize
-                  (impl/error! out e))))
+                  (impl/error! out e)
+                  (throw e))))
 
         ([rs v] (if (types/stream-chunk? v)
                   (try
@@ -184,12 +187,14 @@
                       (rf rs' chunk-vals-last))
 
                     (catch #?(:clj Throwable :cljs :default) e
-                      (impl/error! out e)))
+                      (impl/error! out e)
+                      (throw e)))
 
                   (try
                     (rf rs v)
                     (catch #?(:clj Throwable :cljs :default) e
-                      (impl/error! out e)))))))))
+                      (impl/error! out e)
+                      (throw e)))))))))
 
 
 (defn transform
@@ -200,14 +205,27 @@
 
    - unrolls chunks for the xform
    - if the xform throws an exception then immediately errors the returned
-     stream with the exception"
+     stream with the exception
+
+   TODO the connect-via error-handling doesn't work with xform errors, because
+   the error doesn't happen in the connect-via fn, but rather in the
+   manifold/core.async impl, and manifold's (at least) put! impl swallows the
+   error, so connect-via sees no error. sidestepping this problem with
+   the safe-chunk-xform and erroring the returned stream directly propagates the
+   error, but also leads to some transformed values before the error going
+   missing from the downstream, because of implicit buffering. i can't
+   see an alternative impl atm, but i've also never used exceptions for
+   non-exceptional control flow for streams, so i don't think it's a big
+   problem"
   ([xform s]
    (transform xform 0 s))
   ([xform buffer-size s]
    (let [out (stream)
          s' (stream buffer-size (safe-chunk-xform xform out))]
      (connect-via s #(put! s' %) s')
-     (connect-via s' #(put! out %) out))))
+     (connect-via s' #(put! out %) out)
+
+     out)))
 
 (declare zip)
 

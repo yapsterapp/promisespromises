@@ -8,7 +8,7 @@
   (-unwrap-value [this] this)
 
   nil
-  (-unwrap-value [this] nil))
+  (-unwrap-value [_this] nil))
 
 ;; core.async channels don't support nil values,
 ;; but we would like clj and cljs to be as similar
@@ -74,6 +74,7 @@
 
 (defn stream-chunk
   [values]
-  (when (<= (count values) 0)
-    (throw (ex-info "empty chunk not allowed" {})))
-  (->StreamChunk values))
+  (let [values (vec values)]
+    (when (<= (count values) 0)
+      (throw (ex-info "empty chunk not allowed" {})))
+    (->StreamChunk values)))

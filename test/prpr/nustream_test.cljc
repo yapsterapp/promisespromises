@@ -64,7 +64,106 @@
 
       (is (= []
              (into [] (sut/safe-chunk-xform (map inc) out) [])))
-      (is (not (pt/-closed? out))))))
+
+      (is (not (pt/-closed? out)))))
+
+  (testing "stateful transducer with no errors"
+    (let [out (sut/stream)]
+      (is (= [[0 2 4] [3 7] [8 10]]
+             (into []
+                   (sut/safe-chunk-xform
+                    (partition-by odd?)
+                    out)
+                   [0 2 4 3 7 8 10])))
+      (is (not (pt/-closed? out)))
+
+      (is (= []
+             (into []
+                   (sut/safe-chunk-xform
+                    (partition-by odd?)
+                    out) [])))
+
+      (is (not (pt/-closed? out)))))
+
+  (testing "simple map transform with chunks and no error"
+    (let [out (sut/stream)]
+      (is (= [1 2 3]
+             (into []
+                   (sut/safe-chunk-xform (map inc) out)
+                   [(types/stream-chunk [0 1 2])])))
+      (is (not (pt/-closed? out)))
+
+      (is (= [1 2 3]
+             (into []
+                   (sut/safe-chunk-xform (map inc) out)
+                   [(types/stream-chunk [0])
+                    (types/stream-chunk [1 2])])))
+      (is (not (pt/-closed? out)))
+
+      (is (= [1 2 3]
+             (into []
+                   (sut/safe-chunk-xform (map inc) out)
+                   [0 (types/stream-chunk [1]) 2])))
+      (is (not (pt/-closed? out)))))
+
+  (testing "stateful transducer with chunks and no error"
+    (let [out (sut/stream)]
+      (is (= [[0 2] [3 5] [8]]
+             (into []
+                   (sut/safe-chunk-xform
+                    (partition-by odd?)
+                    out)
+                   [(types/stream-chunk [0 2 3 5 8])])))
+      (is (not (pt/-closed? out)))
+
+      (is (= [[0 2] [3 5] [8]]
+             (into []
+                   (sut/safe-chunk-xform
+                    (partition-by odd?)
+                    out)
+                   [(types/stream-chunk [0 2 3])
+                    (types/stream-chunk [5 8])])))
+      (is (not (pt/-closed? out)))
+
+      (is (= [[0 2] [3 5] [8]]
+             (into []
+                   (sut/safe-chunk-xform
+                    (partition-by odd?)
+                    out)
+                   [0
+                    (types/stream-chunk [2])
+                    3
+                    (types/stream-chunk [5 8])])))
+      (is (not (pt/-closed? out)))))
+
+  (testing "simple map transformer with an error"
+
+    ;; we expect an error in the into xform to throw immediately, and
+    ;; also to error the out stream
+    (let [out (sut/stream)
+          [rk rv] (try
+                    [:ok (into []
+                               (sut/safe-chunk-xform
+                                (map (fn [v] (if (odd? v)
+                                              (throw (ex-info "boo" {:v v}))
+                                              (inc v))))
+                                out)
+                               [0 2 3])]
+                    (catch #?(:clj Throwable :cljs :default) e
+                      [:error e]))
+
+          [vk vv] @(pr/catch
+                       (pr/let [r (sut/take! out ::closed)]
+                         [:ok r])
+                       (fn [e]
+                         [:error e]))]
+
+      (is (= :error rk))
+      (is (= {:v 3} (ex-data rv)))
+
+      (is (= :error vk))
+      (is (= {:v 3} (ex-data vv)))
+      (is (pt/-closed? out)))))
 
 (deftest transform-test)
 

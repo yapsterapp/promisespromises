@@ -181,7 +181,7 @@
       (pt/-connect-via
        src
        (fn [v]
-         (prn "connect-via-interm" v)
+         ;; (prn "connect-via-interm" v)
          (pt/-put! interm v))
        interm))
 
@@ -197,7 +197,7 @@
 
            ;; output the biggest possible chunk of zipped values
            (fn [chunk-or-vals]
-             (info "chunk-or-vals" chunk-or-vals)
+             ;; (info "chunk-or-vals" chunk-or-vals)
 
              (let [;; has any source ended ?
                    end? (some #(= :prpr.stream/end %) chunk-or-vals)

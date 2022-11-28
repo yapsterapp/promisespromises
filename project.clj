@@ -55,5 +55,7 @@
                  [danlentz/clj-uuid "0.1.9"]
                  [com.lucasbradstreet/cljs-uuid-utils "1.0.2"]]
 
-  :profiles {:repl {:pedantic? :ranges}
-             :test {:resource-paths ["test-resources" "resources"]}})
+  :profiles {:repl {:pedantic? :ranges
+                    :dependencies [[org.clojure/test.check "1.1.1"]]}
+             :test {:resource-paths ["test-resources" "resources"]
+                    :dependencies [[org.clojure/test.check "1.1.1"]]}})

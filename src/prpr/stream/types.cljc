@@ -68,6 +68,12 @@
     (pr/let [realized-values (pr/all values)]
       (->StreamChunk realized-values))))
 
+#?(:clj
+   (defmethod print-method StreamChunk [x writer]
+     (.write writer "#Chunk<")
+     (print-method (pt/-chunk-values x) writer)
+     (.write writer ">")))
+
 (defn stream-chunk?
   [v]
   (instance? StreamChunk v))

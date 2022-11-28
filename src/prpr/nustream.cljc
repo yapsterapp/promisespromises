@@ -376,8 +376,9 @@
 (defn reduce
   "reduce, but for streams. returns a Promise of the reduced value
 
-   the reducing function is *not* async - it must return a plain
-   value and not a promise"
+   NOTE the reducing function is not expected to be async - if it
+   returns a promise then the promise will *not* be unwrapped, and
+   unexpected things will probably happen"
   ([id f s]
    (reduce id f ::none s))
   ([id f initial-val s]
@@ -398,40 +399,44 @@
 
             :else
             #_{:clj-kondo/ignore [:loop-without-recur]}
-            (pr/loop [val initial-val]
-              (let [val (if (types/stream-chunk? initial-val)
-                          (clj/reduce
-                           (@#'clj/preserving-reduced f)
-                           (pt/-chunk-values initial-val))
-                          val)]
+            (pr/loop [val (if (types/stream-chunk? initial-val)
 
-                (if (reduced? val)
-                  (deref val)
+                            (clj/reduce
+                             (@#'clj/preserving-reduced f)
+                             (pt/-chunk-values initial-val))
 
-                  (-> (take! s ::none)
-                      (pr/chain (fn [x]
-                                  (cond
+                            initial-val)]
 
-                                    (identical? ::none x) val
+              ;; (prn "loop" val)
 
-                                    (types/stream-error? x)
-                                    (throw
-                                     (pt/-unwrap-error x))
+              (if (reduced? val)
+                (deref val)
 
-                                    (types/stream-chunk? x)
-                                    (let [r (clj/reduce
-                                             (@#'clj/preserving-reduced f)
-                                             val
-                                             (pt/-chunk-values x))]
-                                      (if (reduced? r)
-                                        (deref r)
-                                        (pr/recur r)))
+                (-> (take! s ::none)
+                    (pr/chain (fn [x]
+                                ;; (prn "take!" val x)
+                                (cond
 
-                                    :else
-                                    (let [r (f val x)]
-                                      (if (reduced? r)
-                                        (deref r)
-                                        (pr/recur r)))))))))))))
+                                  (identical? ::none x) val
+
+                                  (types/stream-error? x)
+                                  (throw
+                                   (pt/-unwrap-error x))
+
+                                  (types/stream-chunk? x)
+                                  (let [r (clj/reduce
+                                           (@#'clj/preserving-reduced f)
+                                           val
+                                           (pt/-chunk-values x))]
+                                    (if (reduced? r)
+                                      (deref r)
+                                      (pr/recur r)))
+
+                                  :else
+                                  (let [r (f val x)]
+                                    (if (reduced? r)
+                                      (deref r)
+                                      (pr/recur r))))))))))))
        (pr/catch
            (fn [e]
              (throw

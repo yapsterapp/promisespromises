@@ -407,7 +407,8 @@
                                      4 5
                                      (types/stream-chunk [6])])]
         (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 21 r))))))
+          (is (= 21 r)))))
+    )
   (testing "returns reducing function errors"
     )
   (testing "when receiving a nil wrapper sends nil to the reducing fn"))

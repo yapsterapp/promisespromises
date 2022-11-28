@@ -12,25 +12,11 @@
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
 
-;; differences between manifold and core.async
+;; a clj+cljs cross-platform streams lib, in the style of manifold
 ;;
-;; - put!/take! timeouts
-;;   - in manifold, timeouts cancel the operation. in core.async they
-;;     don't
-
-;; manifold's stream API (map,filter,transform,reduce ops) is
-;; implemented with put!, take! and connect...
-;;
-;; we have had good success in rewriting the top-level stream API
-;; to propagate errors on clj, but we can go further...
-;;
-;; and add chunking support. we can also implement put!, take!
-;; and connect for core.async and potentially get a cross-platform
-;; streams lib
-;;
-;; the idea is to use manifold streams and core.async
-;; channels as low-level errorless message transports with
-;; backpressure, and then to add
+;; the idea is to use manifold streams (on clj) and core.async channels
+;; (on cljs) as low-level errorless message transports with backpressure,
+;; and then to add on top of that:
 ;;
 ;; 1. error capture and propagation
 ;;    any errors in applying transform/map/filter/reduce fns to stream values
@@ -39,11 +25,18 @@
 ;;    turn any error marker into an errored promise and thus error
 ;;    propagation happens
 ;; 2. (mostly) transparent chunking
-;;    any chunks on a stream are transparently processed as if
+;;    chunks on a stream are transparently processed as if
 ;;    the values in the chunk were values in the stream
-;; 3. a clj+cljs consistent manifold-like (but promesa-based) streams and
-;;    promises API
+;; 3. a consistent API across clj + cljs
+;;    the API is a manifold-like streams and promises API, but it uses
+;;    promesa for the promises, (instead of manifold's deferreds) - so
+;;    we get the same API across clj+cljs
 ;;
+;; there are currently some API differences between clj + cljs
+;;
+;; - put!/take! timeouts
+;;   - in manifold, timeouts cancel the operation. in core.async they
+;;     don't
 
 (def stream impl/stream)
 (def stream? impl/stream?)
@@ -68,7 +61,9 @@
     (impl/put! sink ch)))
 
 (defn ->source
-  "does nothing to a stream, converts a collection into a stream"
+  "turns a collection into a stream
+   (with the collection as a chunk on the stream), otherwise does nothing
+   to a stream"
   [stream-or-coll]
   (if (impl/stream? stream-or-coll)
     stream-or-coll
@@ -79,11 +74,12 @@
 
       s)))
 
-;; TODO API take! would ideally not return chunks, but it curently does...
+;; NOTE take! API would ideally not return chunks, but it curently does...
 ;; don't currently have a good way of using a consumer/ChunkConsumer
-;; in the public API, 'cos i don't really want to wrap the underlying stream
+;; in the public API, since i don't really want to wrap the underlying stream
 ;; or channel in something else
 (def take! impl/take!)
+
 (def connect-via impl/connect-via)
 
 (defn realize-each
@@ -126,17 +122,12 @@
         ([] (try
               (rf)
               (catch #?(:clj Throwable :cljs :default) e
-                ;; init with the underlying rf and
-                ;; then immediately call the reduce arity with
-                ;; the StreamError
                 (impl/error! out e)
                 (throw e))))
 
         ([rs] (try
                 (rf rs)
                 (catch #?(:clj Throwable :cljs :default) e
-                  ;; first call the reduce arity of the rf
-                  ;; with the StreamError, and then finalize
                   (impl/error! out e)
                   (throw e))))
 
@@ -321,7 +312,7 @@
   (ex-info "reduce error" {:id id} cause))
 
 (defn reductions
-  "like clojure.core/reductions but for streams"
+  "like clojure.core/reductions, but for streams"
   ([id f s]
    (reductions id f ::none s))
   ([id f initial-val s]

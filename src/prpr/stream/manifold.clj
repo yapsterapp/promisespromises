@@ -3,10 +3,8 @@
    [manifold.deferred :as m.deferred]
    [manifold.stream :as m.stream]
    [prpr.stream.protocols :as p]
-   [prpr.stream.types :as types]
    [promesa.core :as promise]
-   [promesa.protocols :as promise.p]
-   [prpr.stream.protocols :as pt])
+   [promesa.protocols :as promise.p])
   (:import
    [manifold.stream.default Stream]
    [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]
@@ -70,7 +68,7 @@
   (-buffer [s n]
     (m.stream/buffer s n)))
 
-(extend-protocol pt/IPlatformErrorWrapper
+(extend-protocol p/IPlatformErrorWrapper
   ExecutionException
   (-unwrap-platform-error [this] (ex-cause this))
   CompletionException

@@ -5,9 +5,7 @@
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
-   [prpr.stream.chunk :as chunk]
-   [prpr.stream.types :as types]
-   [taoensso.timbre :refer [info error]]))
+   [prpr.stream.types :as types]))
 
 ;; maintains some state
 ;; uses a buffer list of unconsumed values allowing
@@ -186,6 +184,7 @@
        interm))
 
     (pr/catch
+        #_{:clj-kondo/ignore [:loop-without-recur]}
         (pr/loop []
 
           (pr/chain

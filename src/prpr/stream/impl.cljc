@@ -4,7 +4,6 @@
    special value wrapping/unwrapping and
    stream connection"
   (:require
-   [taoensso.timbre :refer [info warn]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -91,6 +90,7 @@
    returns Promise<true|false> yielding true if all
    values were accepted onto the stream, false otherwise"
   [sink vals]
+  #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [vals vals]
     ;; (prn "put-all! in:" vals)
     (if (empty? vals)

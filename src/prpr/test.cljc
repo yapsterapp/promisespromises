@@ -57,20 +57,7 @@
 (comment
   (ns some.ns
     (:require
-     [prpr.test :refer [defprtest is testing]]))
-
-  ;; this is more complex - but gives better editor support
-  ;; with CIDER, which only recognizes tests by the `deftest` form
-  (ns other.ns
-    (:require
-     #?(:clj [prpr.test
-              :refer [defprtest testing is]
-              :rename {defprtest deftest}]
-        :cljs [prpr.test
-               :include-macros true
-               :refer-macros [defprtest testing is]
-               :rename-macros {defprtest deftest}])
-     [prpr.nustream :as sut])))
+     [prpr.test :refer [deftest is testing use-fixtures]])))
 
 #?(:clj
    (defmacro use-fixtures
@@ -93,6 +80,7 @@
                    ~form))]
 
        `(prpr.util.macro/if-cljs
+
          (cljs.test/async
           done#
 

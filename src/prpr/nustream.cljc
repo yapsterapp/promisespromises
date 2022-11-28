@@ -8,7 +8,6 @@
    ;; [prpr.stream.concurrency :as concurrency]
    [prpr.stream.consumer :as consumer]
    [promesa.core :as pr]
-   [taoensso.timbre :refer [error]]
    [clojure.core :as clj])
   (:refer-clojure
     :exclude [map filter mapcat reductions reduce concat]))
@@ -29,57 +28,22 @@
 ;; and connect for core.async and potentially get a cross-platform
 ;; streams lib
 ;;
-;; so the idea is to use manifold streams and core.async
-;; channels as low-level message transports with
+;; the idea is to use manifold streams and core.async
+;; channels as low-level errorless message transports with
 ;; backpressure, and then to add
 ;;
-;; 1. error-propagation
-;;    any errors in applying map/filter/reduce fns to stream values
+;; 1. error capture and propagation
+;;    any errors in applying transform/map/filter/reduce fns to stream values
 ;;    are wrapped in a marker and propagated downstream,
-;;    thereafter immediately closing the downwards stream. take! then
-;;    turns any error marker into an errored promise and error
+;;    thereafter immediately closing the downstream. take! and reduce
+;;    turn any error marker into an errored promise and thus error
 ;;    propagation happens
 ;; 2. (mostly) transparent chunking
 ;;    any chunks on a stream are transparently processed as if
-;;    they were values on the stream
+;;    the values in the chunk were values in the stream
+;; 3. a clj+cljs consistent manifold-like (but promesa-based) streams and
+;;    promises API
 ;;
-;; to implementations of (roughly) the manifold streams
-;; API - map / filter / transform / reduce / realize-each with a
-;; similar promise-based to manifold. we're using promesa rather
-;; than manifold's own deferred because it's cross-platform
-;;
-;; layer 0 - transport
-;;           manifold/stream.clj || core/async.cljs
-;;
-;;           graphs of streams with a promise-based interaction
-;;           interface
-;;
-;;           (put! sink val) -> Promise<true|false>
-;;           (put! sink val timeout timeout-val) -> Promise<true|false|timeout-val>
-;;
-;;           (take! source) -> Promise<val|nil>
-;;           (take! source default-val) -> Promise<val|default-val>
-;;           (take! source defaul-val timeout timeout-val) ->
-;;             Promise<val|default-val|timeout-val>
-;;
-;;           (connect-via source f sink close-timeout-opts)
-;;           feed messages from source into function f on the
-;;           understanding that they will propagate eventually
-;;           to sink (it's up to f to do this)
-;;
-;;           (error! ex) - puts an error wrapper onto the
-;;           stream transport and thereafter immediately
-;;           closes it
-;;
-;; layer 1 - higher level ops - propagate errors and
-;;           handle chunks transparently and present a similar
-;;           promise-based interface to manifold
-;;           map
-;;           zip
-;;           reduce
-;;           transform
-;;           realize
-
 
 (def stream impl/stream)
 (def stream? impl/stream?)
@@ -442,6 +406,7 @@
              (pt/-unwrap-error initial-val))
 
             :else
+            #_{:clj-kondo/ignore [:loop-without-recur]}
             (pr/loop [val initial-val]
               (let [val (if (types/stream-chunk? initial-val)
                           (clj/reduce

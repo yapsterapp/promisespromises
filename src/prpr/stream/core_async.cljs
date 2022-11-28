@@ -5,8 +5,7 @@
    [cljs.core.async.impl.protocols :as impl.proto]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [promesa.core :as pr]
-   [taoensso.timbre :refer [fatal]]))
+   [promesa.core :as pr]))
 
 (deftype StreamFactory []
   pt/IStreamFactory
@@ -90,6 +89,7 @@
     {close-src? :prpr.stream/upstream?
      :as _opts}]
 
+   #_{:clj-kondo/ignore [:loop-without-recur]}
    (pr/loop []
          ;; (prn "async-connect-via: pre-take!")
 
@@ -126,8 +126,9 @@
                     (async-error! dst err))
 
                   (true? result)
+                  #_{:clj-kondo/ignore [:redundant-do]}
                   (do
-                    ;; (prn "async-connect-via: recur")
+                     ;; (prn "async-connect-via: recur")
                     (pr/recur))
 
                   :else
@@ -185,5 +186,5 @@
     ([source f sink] (async-connect-via source f sink))
     ([source f sink opts] (async-connect-via source f sink opts)))
 
-  (-wrap-value [s v] (async-wrap-value v))
+  (-wrap-value [_s v] (async-wrap-value v))
   (-buffer [s n] (async-buffer s n)))

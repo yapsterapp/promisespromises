@@ -68,7 +68,11 @@
 
   puts an marker wrapper with the error on to the stream,
   and then closes it. consuming fns will throw an error
-  when they encounter it, so errors are always propagated"
+  when they encounter it, so errors are always propagated
+
+  it would of course be nicer if the underlying stream/channel had
+  an error state, but this is the best to be done without
+  wrapping the underlying stream/channel"
   [sink err]
   (let [wrapped-err (types/stream-error err)]
     (->

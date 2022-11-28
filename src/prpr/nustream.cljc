@@ -80,12 +80,45 @@
 ;;           transform
 ;;           realize
 
+
 (def stream impl/stream)
 (def stream? impl/stream?)
 (def close! impl/close!)
 (def put! impl/put!)
 (def error! impl/error!)
-(def put-all! impl/put-all!)
+
+(defn put-all!
+  "puts all values onto a stream - first flattens any chunks from
+   the vals, and creates a new chunk, then puts the chunk on the
+   stream"
+  [sink vals]
+  (let [flat-vals (clojure.core/reduce
+                   (fn [a v]
+                     (if (types/stream-chunk? v)
+                       (into a (pt/-chunk-values v))
+                       (conj a v)))
+                   []
+                   vals)
+        ch (types/stream-chunk flat-vals)]
+
+    (impl/put! sink ch)))
+
+(defn ->source
+  "does nothing to a stream, converts a collection into a stream"
+  [stream-or-coll]
+  (if (impl/stream? stream-or-coll)
+    stream-or-coll
+    (let [s (impl/stream 1)]
+
+      (pr/let [_ (put-all! s stream-or-coll)]
+        (impl/close! s))
+
+      s)))
+
+;; TODO API take! would ideally not return chunks, but it curently does...
+;; don't currently have a good way of using a consumer/ChunkConsumer
+;; in the public API, 'cos i don't really want to wrap the underlying stream
+;; or channel in something else
 (def take! impl/take!)
 (def connect-via impl/connect-via)
 
@@ -113,33 +146,6 @@
      s')
 
     s'))
-
-(defn throw-errors-preserve-reduced
-  "wrap a reducing fn to reduce chunks
-   - any StreamErrors in the chunk will be immediately thrown
-   - a reduced value will be wrapped in another reduced, so that
-     it gets returned to the outer reduction
-   (modelled on clojure.core/preserving-reduced)"
-  [rf]
-  (fn [result input]
-    (if (types/stream-error? input)
-      (throw (pt/-unwrap-error input))
-      (let [r (rf result input)]
-        (if (reduced? r)
-          (reduced r)
-          r)))))
-
-;; what do i want transform to do ?
-;; - use the underlying manifold/core.async facility to do
-;;   the basic transform
-;; - wrap other xforms in order to:
-;;   - catch any errors and send them on
-;;   - unroll any chunk inputs, xform the chunk as a seq, and send it on
-;;     - as a plain value if not a seq
-;;     - as a chunk if a seq
-;;     - do we want this implicit auto-chunking behaviour ? will it play well
-;;       with e.g. partitioning transforms
-;;   - that's it ?
 
 (defn safe-chunk-xform
   "- xform : a transducer
@@ -207,7 +213,7 @@
    - if the xform throws an exception then immediately errors the returned
      stream with the exception
 
-   TODO the connect-via error-handling doesn't work with xform errors, because
+   NOTE connect-via error-handling doesn't work with xform errors, because
    the error doesn't happen in the connect-via fn, but rather in the
    manifold/core.async impl, and manifold's (at least) put! impl swallows the
    error, so connect-via sees no error. sidestepping this problem with
@@ -256,22 +262,6 @@
    (->> (apply consumer/chunk-zip s rest)
         (map #(apply f %)))))
 
-;; alternative implementation strategy, since a concurrency
-;; limited fn isn't much faster than a stream...
-;; (3s vs 7s for 1M messages - with simple optimisation to use
-;; mutable types. it was 19s with atoms) at least,
-;; not without putting lots of optimisation effort in
-;;
-;; stream values to an intermediate steam with no chunks, but
-;; retaining chunking info
-;; [::unchunked|::chunk-start|::chunk|::chunk-end val]
-;; then use buffers to enforce concurrency, do a regular
-;; map and rechunk after the map
-;;
-;; this is vanilla stream-processing function, so less likely
-;; to have bugs than a concurrency limited function, and
-;; sorting out disposal on the concurrency limited function
-;; was also going to be difficult
 (defn mapcon
   "like map, but limits the number of concurrent unresolved
    promises from application of f
@@ -296,9 +286,7 @@
           (chunk/dechunk)
           (map dechunked-f)
           (pt/-buffer (dec n))
-          (chunk/rechunk)))
-   ;; (map (concurrency/concurrency-limited-fn f n) s)
-   )
+          (chunk/rechunk))))
   ([f n s & rest]
    (let [dechunked-f (fn [[chunk-k v]]
                        [chunk-k (f v)])]
@@ -309,6 +297,11 @@
           (chunk/rechunk)))))
 
 (defn zip
+  "zip streams
+     S<a> S<b> ... -> S<[a b ...]>
+
+   the output stream will terminate with the first input stream
+   which terminates"
   ([a] (map vector a))
   ([a & rest]
    (apply consumer/chunk-zip a rest)))
@@ -338,26 +331,39 @@
         (mapcat #(apply f %)))))
 
 (defn filter
-  "TODO add error and chunk support"
   [pred s]
   (let [s' (impl/stream)]
     (connect-via
      s
      (fn [v]
-       (if (pred v)
-         (put! s' v)
-         true))
+       (cond
+          (types/stream-error? v)
+          (error! s' v)
+
+          (types/stream-chunk? v)
+          (let [fchunk (filter pred (pt/-chunk-values v))]
+            (if (not-empty fchunk)
+              (put! s' (types/stream-chunk fchunk))
+              true))
+
+          :else
+          (if (pred v)
+            (put! s' v)
+            true)))
      s')))
 
-(defn reductions
-  "like clojure.core/reductions but for streams
+(defn reduce-ex-info
+  [id cause]
+  (ex-info "reduce error" {:id id} cause))
 
-   TODO add error and chunk support"
-  ([f s]
-   (reductions f ::none s))
-  ([f initial-val s]
+(defn reductions
+  "like clojure.core/reductions but for streams"
+  ([id f s]
+   (reductions id f ::none s))
+  ([id f initial-val s]
    (let [s' (impl/stream)
-         val (atom initial-val)]
+         acc (atom initial-val)]
+
      (pr/chain
       (if (identical? ::none initial-val)
         true
@@ -367,37 +373,59 @@
         (connect-via
          s
          (fn [v]
-           (if (identical? ::none @val)
-             (do
-               (reset! val v)
-               (put! s' v))
+           (if (identical? ::none @acc)
+
+             (let [v (if (types/stream-chunk? v)
+                       (clj/reduce
+                        (@#'clj/preserving-reduced f)
+                        (pt/-chunk-values v))
+                       v)]
+
+               (reset! acc v)
+
+               (let [put-r (put! s' v)]
+                 (if (reduced? v)
+                   false
+                   put-r)))
 
              (-> v
                  (pr/chain
-                  #(f @val %)
+
+                  (fn [v]
+                    (let [v (if (types/stream-chunk? v)
+                              (clj/reduce
+                               (@#'clj/preserving-reduced f)
+                               (pt/-chunk-values v))
+                              v)]
+
+                      (f @acc v)))
+
                   (fn [x]
                     (if (reduced? x)
                       (do
-                        (reset! val @x)
-                        (put! s' @x)
+                        (reset! acc @x)
+                        (pr/let [_p-r (put! s' @x)]
+                          (close! s'))
                         false)
                       (do
-                        (reset! val x)
+                        (reset! acc x)
                         (put! s' x)))))
                  (pr/catch
                      (fn [e]
-                       (error! s' e)
+                       (error! s' (reduce-ex-info id e))
                        false)))))
-         s'))))))
+         s')))
+
+     s')))
 
 (defn reduce
   "reduce, but for streams. returns a Promise of the reduced value
 
    the reducing function is *not* async - it must return a plain
    value and not a promise"
-  ([f s]
-   (reduce f ::none s))
-  ([f initial-val s]
+  ([id f s]
+   (reduce id f ::none s))
+  ([id f initial-val s]
    (-> (if (identical? ::none initial-val)
          (take! s ::none)
          (pr/resolved initial-val))
@@ -410,7 +438,8 @@
             (f)
 
             (types/stream-error? initial-val)
-            (throw (pt/-unwrap-error initial-val))
+            (throw
+             (pt/-unwrap-error initial-val))
 
             :else
             (pr/loop [val initial-val]
@@ -430,7 +459,8 @@
                                     (identical? ::none x) val
 
                                     (types/stream-error? x)
-                                    (throw (pt/-unwrap-error x))
+                                    (throw
+                                     (pt/-unwrap-error x))
 
                                     (types/stream-chunk? x)
                                     (let [r (clj/reduce
@@ -445,4 +475,8 @@
                                     (let [r (f val x)]
                                       (if (reduced? r)
                                         (deref r)
-                                        (pr/recur r))))))))))))))))
+                                        (pr/recur r)))))))))))))
+       (pr/catch
+           (fn [e]
+             (throw
+              (reduce-ex-info id e)))))))

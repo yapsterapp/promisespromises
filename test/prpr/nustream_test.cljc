@@ -383,35 +383,35 @@
   (testing "when receiving a nil wrapper sends nil to the reducing fn"))
 
 (deftest reduce-test
-  ;; (testing "reduces a stream"
-  ;;   (testing "reduces an empty stream"
-  ;;     (let [s (sut/stream)
-  ;;           _ (put-all-and-close! s [])]
-  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-  ;;         (is (= 0 r)))))
-  ;;   (testing "reduces a non-empty stream with plain values"
-  ;;     (let [s (sut/stream)
-  ;;           _ (put-all-and-close! s [1])]
-  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-  ;;         (is (= 1 r))))
-  ;;     (let [s (sut/stream)
-  ;;           _ (put-all-and-close! s [1 2 3 4 5 6])]
-  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-  ;;         (is (= 21 r)))))
-  ;;   (testing "reduces a stream with chunks"
-  ;;     (let [s (sut/stream)
-  ;;           _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
-  ;;                                    (types/stream-chunk [4 5 6])])]
-  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-  ;;         (is (= 21 r)))))
-  ;;   (testing "reduces a stream with mixed chunks and plain values"
-  ;;     (let [s (sut/stream)
-  ;;           _ (put-all-and-close! s [1
-  ;;                                    (types/stream-chunk [2 3])
-  ;;                                    4 5
-  ;;                                    (types/stream-chunk [6])])]
-  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-  ;;         (is (= 21 r))))))
+  (testing "reduces a stream"
+    (testing "reduces an empty stream"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [])]
+        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+          (is (= 0 r)))))
+    (testing "reduces a non-empty stream with plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [1])]
+        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+          (is (= 1 r))))
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [1 2 3 4 5 6])]
+        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+          (is (= 21 r)))))
+    (testing "reduces a stream with chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
+                                     (types/stream-chunk [4 5 6])])]
+        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+          (is (= 21 r)))))
+    (testing "reduces a stream with mixed chunks and plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [1
+                                     (types/stream-chunk [2 3])
+                                     4 5
+                                     (types/stream-chunk [6])])]
+        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+          (is (= 21 r))))))
   (testing "returns reducing function errors"
     (testing "returns errors on stream with plain values"
       (let [s (sut/stream)

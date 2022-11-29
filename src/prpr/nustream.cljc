@@ -388,6 +388,12 @@
 (defn reduce
   "reduce, but for streams. returns a Promise of the reduced value
 
+   an id is required for the reduction - this will be used to
+   decorate any exception data, and helps to identify
+   where an error happened, because exception stack-traces are
+   generally not useful. a namespaced keyword identifying the function
+   or block where a reduce is happening makes a good id e.g. ::reduce
+
    NOTE the reducing function is not expected to be async - if it
    returns a promise then the promise will *not* be unwrapped, and
    unexpected things will probably happen"
@@ -416,10 +422,9 @@
                   ;; reduce any initial-val chunk before binding
                   initial-val (if (types/stream-chunk? initial-val)
 
-                                (do
-                                  (clj/reduce
+                                (clj/reduce
                                    (@#'clj/preserving-reduced f)
-                                   (pt/-chunk-values initial-val)))
+                                   (pt/-chunk-values initial-val))
 
                                 initial-val)]
 

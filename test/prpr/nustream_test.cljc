@@ -2,6 +2,10 @@
   (:require
    #?(:clj [prpr.test :refer [deftest testing is]]
       :cljs [prpr.test :refer-macros [deftest testing is]])
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]
+   [clojure.test.check.clojure-test :refer [defspec]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -379,36 +383,87 @@
   (testing "when receiving a nil wrapper sends nil to the reducing fn"))
 
 (deftest reduce-test
-  (testing "reduces a stream"
-    (testing "reduces an empty stream"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [])]
-        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 0 r)))))
-    (testing "reduces a non-empty stream with plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [1])]
-        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 1 r))))
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [1 2 3 4 5 6])]
-        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 21 r)))))
-    (testing "reduces a stream with chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
-                                     (types/stream-chunk [4 5 6])])]
-        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 21 r)))))
-    (testing "reduces a stream with mixed chunks and plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [1
-                                     (types/stream-chunk [2 3])
-                                     4 5
-                                     (types/stream-chunk [6])])]
-        (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-          (is (= 21 r)))))
-    )
+  ;; (testing "reduces a stream"
+  ;;   (testing "reduces an empty stream"
+  ;;     (let [s (sut/stream)
+  ;;           _ (put-all-and-close! s [])]
+  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+  ;;         (is (= 0 r)))))
+  ;;   (testing "reduces a non-empty stream with plain values"
+  ;;     (let [s (sut/stream)
+  ;;           _ (put-all-and-close! s [1])]
+  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+  ;;         (is (= 1 r))))
+  ;;     (let [s (sut/stream)
+  ;;           _ (put-all-and-close! s [1 2 3 4 5 6])]
+  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+  ;;         (is (= 21 r)))))
+  ;;   (testing "reduces a stream with chunks"
+  ;;     (let [s (sut/stream)
+  ;;           _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
+  ;;                                    (types/stream-chunk [4 5 6])])]
+  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+  ;;         (is (= 21 r)))))
+  ;;   (testing "reduces a stream with mixed chunks and plain values"
+  ;;     (let [s (sut/stream)
+  ;;           _ (put-all-and-close! s [1
+  ;;                                    (types/stream-chunk [2 3])
+  ;;                                    4 5
+  ;;                                    (types/stream-chunk [6])])]
+  ;;       (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+  ;;         (is (= 21 r))))))
   (testing "returns reducing function errors"
-    )
-  (testing "when receiving a nil wrapper sends nil to the reducing fn"))
+    (testing "returns errors on stream with plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0 2 3])]
+        (pr/let [[k v] (->
+                        (sut/reduce
+                         ::reduce-error
+                         (fn [a v] (if (odd? v)
+                                    (throw (ex-info "boo" {:v v}))
+                                    (+ a v)))
+                         s)
+                        (pr/chain (fn [v] [::ok v]))
+                        (pr/catch (fn [e] [::error e])))]
+          (is (= ::error k))
+          (is (= {::sut/reduce-id ::reduce-error
+                  :v 3} (ex-data v))))))
+    (testing "returns errors on stream with chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0 2 3])])]
+        (pr/let [[k v] (->
+                        (sut/reduce
+                         ::reduce-error
+                         (fn [a v] (if (odd? v)
+                                    (throw (ex-info "boo" {:v v}))
+                                    (+ a v)))
+                         s)
+                        (pr/chain (fn [v] [::ok v]))
+                        (pr/catch (fn [e] [::error e])))]
+          (is (= ::error k))
+          (is (= {::sut/reduce-id ::reduce-error
+                  :v 3} (ex-data v))))))
+    (testing "returns errors on stream with mixed plain values and chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0 2 (types/stream-chunk [3])])]
+        (pr/let [[k v] (->
+                        (sut/reduce
+                         ::reduce-error
+                         (fn [a v] (if (odd? v)
+                                    (throw (ex-info "boo" {:v v}))
+                                    (+ a v)))
+                         s)
+                        (pr/chain (fn [v] [::ok v]))
+                        (pr/catch (fn [e] [::error e])))]
+          (is (= ::error k))
+          (is (= {::sut/reduce-id ::reduce-error
+                  :v 3} (ex-data v)))))))
+  (testing "when receiving a nil wrapper sends nil to the reducing fn"
+    (let [s (sut/stream)
+          _ (put-all-and-close! s [(types/stream-nil)])]
+      (pr/let [r (sut/reduce
+                  ::reduce-nil
+                  (fn [a v]
+                    (conj a v))
+                  [] s)]
+        (is (= [nil] r))))))

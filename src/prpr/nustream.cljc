@@ -308,8 +308,20 @@
      s')))
 
 (defn reduce-ex-info
+  "extend cause ex-data with a reduce-id, or wrap cause in an ex-info"
   [id cause]
-  (ex-info "reduce error" {:id id} cause))
+  (let [xd (ex-data cause)
+        xm (ex-message cause)]
+
+    (if (nil? xd)
+
+      (ex-info "reduce error" {::reduce-id id} cause)
+
+      (ex-info
+       (or xm "reduce error")
+       (assoc xd
+              ::reduce-id id)
+       cause))))
 
 (defn reductions
   "like clojure.core/reductions, but for streams"
@@ -388,6 +400,8 @@
 
        (pr/chain
         (fn [initial-val]
+          ;; (prn "initial-val" initial-val)
+
           (cond
 
             (identical? ::none initial-val)
@@ -398,45 +412,50 @@
              (pt/-unwrap-error initial-val))
 
             :else
-            #_{:clj-kondo/ignore [:loop-without-recur]}
-            (pr/loop [val (if (types/stream-chunk? initial-val)
+            (let [;; errors in the loop binding get swallowed, so
+                  ;; reduce any initial-val chunk before binding
+                  initial-val (if (types/stream-chunk? initial-val)
 
-                            (clj/reduce
-                             (@#'clj/preserving-reduced f)
-                             (pt/-chunk-values initial-val))
+                                (do
+                                  (clj/reduce
+                                   (@#'clj/preserving-reduced f)
+                                   (pt/-chunk-values initial-val)))
 
-                            initial-val)]
+                                initial-val)]
 
-              ;; (prn "loop" val)
+              #_{:clj-kondo/ignore [:loop-without-recur]}
+              (pr/loop [val initial-val]
 
-              (if (reduced? val)
-                (deref val)
+                ;; (prn "loop" val)
 
-                (-> (take! s ::none)
-                    (pr/chain (fn [x]
-                                ;; (prn "take!" val x)
-                                (cond
+                (if (reduced? val)
+                  (deref val)
 
-                                  (identical? ::none x) val
+                  (-> (take! s ::none)
+                      (pr/chain (fn [x]
+                                  ;; (prn "take!" val x)
+                                  (cond
 
-                                  (types/stream-error? x)
-                                  (throw
-                                   (pt/-unwrap-error x))
+                                    (identical? ::none x) val
 
-                                  (types/stream-chunk? x)
-                                  (let [r (clj/reduce
-                                           (@#'clj/preserving-reduced f)
-                                           val
-                                           (pt/-chunk-values x))]
-                                    (if (reduced? r)
-                                      (deref r)
-                                      (pr/recur r)))
+                                    (types/stream-error? x)
+                                    (throw
+                                     (pt/-unwrap-error x))
 
-                                  :else
-                                  (let [r (f val x)]
-                                    (if (reduced? r)
-                                      (deref r)
-                                      (pr/recur r))))))))))))
+                                    (types/stream-chunk? x)
+                                    (let [r (clj/reduce
+                                             (@#'clj/preserving-reduced f)
+                                             val
+                                             (pt/-chunk-values x))]
+                                      (if (reduced? r)
+                                        (deref r)
+                                        (pr/recur r)))
+
+                                    :else
+                                    (let [r (f val x)]
+                                      (if (reduced? r)
+                                        (deref r)
+                                        (pr/recur r)))))))))))))
        (pr/catch
            (fn [e]
              (throw

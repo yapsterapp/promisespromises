@@ -76,7 +76,7 @@
 
 (defn ->promesa
   [d]
-  (let [p  (promise/deferred)]
+  (let [p (promise/deferred)]
     (m.deferred/on-realized
      d
      (fn [v] (promise/resolve! p v))
@@ -93,6 +93,10 @@
     (->promesa d))
 
   ErrorDeferred
+  (-promise [d]
+    (->promesa d))
+
+  LeakAwareDeferred
   (-promise [d]
     (->promesa d)))
 

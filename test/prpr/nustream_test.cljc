@@ -18,6 +18,16 @@
    (impl/put-all! s vs)
    (fn [_] (sut/close! s))))
 
+(defn safe-take!
+  [s & args]
+  (pr/catch
+      (pr/chain
+       (apply sut/take! s args)
+       (fn [v]
+         [::ok v]))
+      (fn [e]
+        [::error e])))
+
 (deftest realize-each-test
   (testing "does nothing to non-promise values"
     (let [s (sut/stream)
@@ -440,7 +450,43 @@
           (is (= ::closed v4))))))
 
   (testing "returns reducing function errors"
-    )
+    (testing "with plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0 2 3])
+            t (sut/reductions
+               ::reductions-empty-stream
+               (fn [a v]
+                 (if (odd? v)
+                   (throw (ex-info "boo" {:v v}))
+                   (+ a v)))
+               s)]
+        (pr/let [[k1 v1] (safe-take! t ::closed)
+                 [k2 v2] (safe-take! t ::closed)
+                 [k3 v3] (safe-take! t ::closed)
+                 [k4 v4] (safe-take! t ::closed)]
+          (is (= ::ok k1)) (is (= 0 v1))
+          (is (= ::ok k2)) (is (= 2 v2))
+          (is (= ::error k3))
+          (is (= {:v 3
+                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
+          (is (= ::ok k4)) (is (= ::closed v4)))))
+    (testing "with chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0 2 3])])
+            t (sut/reductions
+               ::reductions-empty-stream
+               (fn [a v]
+                 (if (odd? v)
+                   (throw (ex-info "boo" {:v v}))
+                   (+ a v)))
+               s)]
+        (pr/let [[k1 v1] (safe-take! t ::closed)
+                 [k2 v2] (safe-take! t ::closed)]
+          (is (= ::error k1))
+          (is (= {:v 3
+                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
+          (is (= ::ok k2)) (is (= ::closed v2))))))
+
   (testing "when receiving a nil wrapper sends nil to the reducing fn")
   (testing "deals with reduced"))
 

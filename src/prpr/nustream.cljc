@@ -324,7 +324,12 @@
        cause))))
 
 (defn reductions
-  "like clojure.core/reductions, but for streams"
+  "like clojure.core/reductions, but for streams
+
+   NOTE like manifold's own reductions, and unlike clojure.core/reductions,
+   this returns an empty stream if the input stream is empty. this is because
+   a connect-via implementation does not offer any ability to output
+   anything if the input stream is empty"
   ([id f s]
    (reductions id f ::none s))
   ([id f initial-val s]

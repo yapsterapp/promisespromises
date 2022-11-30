@@ -415,20 +415,29 @@
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
                    v2 (sut/take! t ::closed)]
-            (is (= 5 v1))
+            (is (= (types/stream-chunk [5]) v1))
             (is (= ::closed v2)))))
       (testing "reductions of a multi-element stream"
         (let [s (sut/stream)
               _ (put-all-and-close! s [(types/stream-chunk [1 2 3])])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)
-                   v4 (sut/take! t ::closed)]
-            (is (= 1 v1))
-            (is (= 3 v2))
-            (is (= 6 v3))
-            (is (= ::closed v4)))))))
+                   v2 (sut/take! t ::closed)]
+            (is (= (types/stream-chunk [1 3 6]) v1))
+            (is (= ::closed v2))))))
+
+    (testing "reductions of a mix of chunks and plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [1 (types/stream-chunk [2 3]) 4])
+            t (sut/reductions ::reductions-empty-stream + s)]
+        (pr/let [v1 (sut/take! t ::closed)
+                 v2 (sut/take! t ::closed)
+                 v3 (sut/take! t ::closed)
+                 v4 (sut/take! t ::closed)]
+          (is (= 1 v1))
+          (is (= (types/stream-chunk [3 6]) v2))
+          (is (= 10 v3))
+          (is (= ::closed v4))))))
 
   (testing "returns reducing function errors"
     )

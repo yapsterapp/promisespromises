@@ -66,7 +66,11 @@
   (-chunk-values [_] values)
   (-chunk-flatten [_]
     (pr/let [realized-values (pr/all values)]
-      (->StreamChunk realized-values))))
+      (->StreamChunk realized-values)))
+
+  Object
+  (equals [a b]
+    (= (.-values a) (.-values b))))
 
 #?(:clj
    (defmethod print-method StreamChunk [x writer]

@@ -329,6 +329,28 @@
    (reductions id f ::none s))
   ([id f initial-val s]
    (let [s' (impl/stream)
+
+         chunk-reductions
+         (fn ([f chk]
+             (let [rs (clj/reductions
+                       (@#'clj/preserving-reduced f)
+                       (pt/-chunk-values chk))
+                   cnt (count rs)]
+               [(take (dec cnt) rs)
+                (last rs)]))
+
+           ([f init chk]
+             (let [rs (clj/reductions
+                       (@#'clj/preserving-reduced f)
+                       init
+                       (pt/-chunk-values chk))
+                   cnt (count rs)]
+
+               ;; NOTE we remove the init value from
+               ;; the front of the intermediates
+               [(take (max 0 (- cnt 2)) (rest rs))
+                (last rs)])))
+
          acc (atom initial-val)]
 
      (pr/chain
@@ -339,48 +361,45 @@
       (fn [_]
         (connect-via
          s
+
          (fn [v]
-           (if (identical? ::none @acc)
 
-             (let [v (if (types/stream-chunk? v)
-                       (clj/reduce
-                        (@#'clj/preserving-reduced f)
-                        (pt/-chunk-values v))
-                       v)]
+           (->
+            v ;; chain to simplify error-handling (only pr exceptions)
 
-               (reset! acc v)
+            (pr/chain
+             (fn [v]
+                (let [[t ivs v] (if (identical? ::none @acc)
+                                  (if (types/stream-chunk? v)
+                                    (into [::chunk] (chunk-reductions f v))
+                                    [::plain nil v])
 
-               (let [put-r (put! s' v)]
-                 (if (reduced? v)
-                   false
-                   put-r)))
+                                  (if (types/stream-chunk? v)
+                                    (into [::chunk] (chunk-reductions f @acc v))
+                                    [::plain nil (f @acc v)]))]
 
-             (-> v
-                 (pr/chain
+                  (if (reduced? v)
+                    (pr/chain
+                     (put!
+                      s'
+                      (if (= ::plain t)
+                        @v
+                        (types/stream-chunk (clj/concat ivs [@v]))))
+                     (fn [_] false))
 
-                  (fn [v]
-                    (let [v (if (types/stream-chunk? v)
-                              (clj/reduce
-                               (@#'clj/preserving-reduced f)
-                               (pt/-chunk-values v))
-                              v)]
+                    (do
+                      (reset! acc v)
+                      (put!
+                       s'
+                       (if (= ::plain t)
+                         v
+                         (types/stream-chunk (clj/concat ivs [v])))))))))
 
-                      (f @acc v)))
+            (pr/catch
+                (fn [e]
+                  (throw
+                   (reduce-ex-info id e))))))
 
-                  (fn [x]
-                    (if (reduced? x)
-                      (do
-                        (reset! acc @x)
-                        (pr/let [_p-r (put! s' @x)]
-                          (close! s'))
-                        false)
-                      (do
-                        (reset! acc x)
-                        (put! s' x)))))
-                 (pr/catch
-                     (fn [e]
-                       (error! s' (reduce-ex-info id e))
-                       false)))))
          s')))
 
      s')))

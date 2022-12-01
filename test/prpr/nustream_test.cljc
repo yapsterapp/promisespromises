@@ -44,9 +44,8 @@
 
 (deftest realize-each-test
   (testing "does nothing to non-promise values"
-    (let [s (sut/stream)
-          t (sut/realize-each s)
-          _ (put-all-and-close! s [0 1 2 3])]
+    (let [s (stream-of [0 1 2 3])
+          t (sut/realize-each s)]
 
       (pr/let [vs (->> (range 0 5)
                        (map (fn [_](sut/take! t ::closed)))
@@ -54,9 +53,8 @@
         (is (= [0 1 2 3 ::closed] vs)))))
 
   (testing "realizes promise values"
-    (let [s (sut/stream)
-          t (sut/realize-each s)
-          _ (put-all-and-close! s (map pr/resolved [0 1 2 3]))]
+    (let [s (stream-of (map pr/resolved [0 1 2 3]))
+          t (sut/realize-each s)]
 
       (pr/let [vs (->> (range 0 5)
                        (map (fn [_](sut/take! t ::closed)))
@@ -64,14 +62,12 @@
         (is (= [0 1 2 3 ::closed] vs)))))
 
   (testing "correctly propagates nil values"
-    (let [s (sut/stream)
-          t (sut/realize-each s)
-          _ (put-all-and-close!
-              s
+    (let [s (stream-of
               [(pr/resolved 0)
                (pr/resolved nil)
                2
-               nil])]
+               nil])
+          t (sut/realize-each s)]
 
       (pr/let [vs (->> (range 0 5)
                        (map (fn [_](sut/take! t ::closed)))
@@ -219,8 +215,7 @@
 (deftest transform-test
   (testing "simple stateless transducer"
     (testing "transforms a stream of plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [0 1 2])
+      (let [s (stream-of [0 1 2])
             t (sut/transform (map inc) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok 1]
@@ -229,8 +224,7 @@
                   [::ok :prpr.nustream-test/closed]]
                vs)))))
     (testing "transforms a stream of chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [0 1 2])])
+      (let [s (stream-of [(types/stream-chunk [0 1 2])])
             t (sut/transform (map inc) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok 1]
@@ -239,8 +233,7 @@
                   [::ok :prpr.nustream-test/closed]]
                vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [0])
+      (let [s (stream-of [(types/stream-chunk [0])
                                      (types/stream-chunk [1 2])
                                      3])
             t (sut/transform (map inc) s)]
@@ -251,8 +244,7 @@
                   [::ok 4]
                   [::ok :prpr.nustream-test/closed]]
                vs))))
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [0
+      (let [s (stream-of [0
                                      (types/stream-chunk [1 2])
                                      3])
             t (sut/transform (map inc) s)]
@@ -266,8 +258,7 @@
 
   (testing "stateful transducer"
     (testing "transforms a stream of plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [0 0 1 1 2 2])
+      (let [s (stream-of [0 0 1 1 2 2])
             t (sut/transform (partition-by identity) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok [0 0]]
@@ -276,8 +267,7 @@
                   [::ok :prpr.nustream-test/closed]]
                vs)))))
     (testing "transforms a stream of chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [0 0 1 1 2 2])])
+      (let [s (stream-of [(types/stream-chunk [0 0 1 1 2 2])])
             t (sut/transform (partition-by identity) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok [0 0]]
@@ -286,8 +276,7 @@
                   [::ok :prpr.nustream-test/closed]]
                vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [0])
+      (let [s (stream-of [(types/stream-chunk [0])
                                      0
                                      (types/stream-chunk [1 1 2])
                                       2])
@@ -311,8 +300,7 @@
                             (throw (ex-info "boo" {:v v}))
                             (rf a (inc v))))))
 
-              s (sut/stream)
-              _ (put-all-and-close! s [0 1 2])
+              s (stream-of [0 1 2])
               t (sut/transform
                  mapinc
                  s)]
@@ -339,8 +327,7 @@
                             (throw (ex-info "boo" {:v v}))
                             (rf a (inc v))))))
 
-              s (sut/stream)
-              _ (put-all-and-close! s [0 (types/stream-chunk [1]) 2])
+              s (stream-of [0 (types/stream-chunk [1]) 2])
               t (sut/transform
                  mapinc
                  s)]
@@ -359,9 +346,8 @@
 
 (deftest map-test
   (testing "maps a stream"
-    (let [s (sut/stream)
-          t (sut/map inc s)
-          _ (put-all-and-close! s [0 1 2 3])]
+    (let [s (stream-of [0 1 2 3])
+          t (sut/map inc s)]
 
       (pr/let [vs (->> (range 0 5)
                        (map (fn [_](sut/take! t ::closed)))
@@ -370,11 +356,9 @@
 
   (testing "maps multiple streams"
     (testing "maps multiple streams of the same size"
-      (let [a (sut/stream)
-            b (sut/stream)
-            t (sut/map #(+ %1 %2) a b)
-            _ (put-all-and-close! a [0 1 2 3])
-            _ (put-all-and-close! b [0 1 2 3])]
+      (let [a (stream-of [0 1 2 3])
+            b (stream-of [0 1 2 3])
+            t (sut/map #(+ %1 %2) a b)]
 
         (pr/let [vs (->> (range 0 5)
                          (map (fn [_](sut/take! t ::closed)))
@@ -382,11 +366,10 @@
           (is (= [0 2 4 6 ::closed] vs))))))
 
   (testing "terminates the output when any of the inputs terminates"
-    (let [a (sut/stream)
+    (let [a (stream-of [0 1 2 3])
           b (sut/stream)
-          t (sut/map #(+ %1 %2) a b)
-          _ (put-all-and-close! a [0 1 2 3])
-          _ (sut/put-all! b [0 1 2 3 4 5])]
+          _ (impl/put-all! b [0 1 2 3 4 5])
+          t (sut/map #(+ %1 %2) a b)]
 
       (pr/let [vs (->> (range 0 5)
                        (map (fn [_](sut/take! t ::closed)))
@@ -395,11 +378,9 @@
 
   (testing "when receiving an error propagates it downstream"
     (testing "error propagation when mapping a single stream"
-      (let [a (sut/stream)
-            t (sut/map #(inc %1) a )
-            _ (put-all-and-close!
-               a
-               [0 1 2 (types/stream-error (ex-info "boo" {:boo 100}))])]
+      (let [a (stream-of
+               [0 1 2 (types/stream-error (ex-info "boo" {:boo 100}))])
+            t (sut/map #(inc %1) a )]
 
         (pr/let [[a b c [ek ev]] (->> (range 0 4)
                                       (map (fn [_]
@@ -413,13 +394,13 @@
           (is {:boo 100} (-> ev ex-data)))))
 
     (testing "error propagation when mapping multiple streams"
-      (let [a (sut/stream)
+      (let [a (stream-of [0 1 2])
             b (sut/stream)
-            t (sut/map #(+ %1 %2) a b)
-            _ (put-all-and-close! a [0 1 2])
             _ (impl/put-all! b [0 1 2
                                (types/stream-error (ex-info "boo" {:boo 100}))
-                               4])]
+                               4])
+
+            t (sut/map #(+ %1 %2) a b)]
 
         (pr/let [[a b c [ek ev]] (->> (range 0 4)
                                       (map (fn [_]
@@ -433,9 +414,8 @@
           (is (= {:boo 100} (-> ev ex-data)))))))
 
   (testing "when receiving a nil wrapper sends nil to the mapping fn"
-    (let [a (sut/stream)
-          t (sut/map #(some-> %1 inc) a )
-          _ (put-all-and-close! a [0 (types/stream-nil)])]
+    (let [a (stream-of [0 (types/stream-nil)])
+          t (sut/map #(some-> %1 inc) a )]
 
       (pr/let [[a b] (->> (range 0 2)
                           (map (fn [_] (sut/take! t ::closed)))
@@ -444,9 +424,8 @@
   #?(:cljs
      (testing "when mapping-fn returns a nil value, wraps it for the output"
        ;; nil-wrapping only happens on cljs
-       (let [a (sut/stream)
-             t (sut/map #(some-> %1 inc) a )
-             _ (sut/put-all-and-close! a [0 (types/stream-nil)])]
+       (let [a (stream-of [0 (types/stream-nil)])
+             t (sut/map #(some-> %1 inc) a )]
 
          (pr/let [[a b] (->> (range 0 2)
                              (map (fn [_] (pt/-take! t ::closed)))
@@ -454,11 +433,10 @@
            (is (= [1 (types/stream-nil)] [a b]))))))
 
   (testing "catches mapping fn errors, errors the output and cleans up"
-    (let [a (sut/stream)
+    (let [a (stream-of [0 1])
           t (sut/map #(if (odd? %)
                         (throw (ex-info "boo" {:val %}))
-                        (inc %)) a )
-          _ (put-all-and-close! a [0 1])]
+                        (inc %)) a )]
 
       (pr/let [[r1 r2 r3] (->> (range 0 3)
                                (map

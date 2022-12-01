@@ -131,16 +131,27 @@
 
 #?(:clj
    (defmacro testing
-     [s & body]
-     (when (not-empty body)
-       `(prpr.util.macro/if-cljs
-         (do
-           (println "      " ~s)
-           (cljs.test/testing ~@body))
-         (with-test-binding-frame
+     "each testing form is expected to have zero or more
+      child forms (which may be nested testing forms), each
+      of which yields a promise (or plain value), and will
+      be evaluated serially in strict depth-first order"
+     [s & forms]
+     (when (not-empty forms)
+       (let [;; wrap each form into a 0-args fn
+             fs (for [form forms]
+                  `(fn [] ~form))]
+         `(prpr.util.macro/if-cljs
            (do
              (println "      " ~s)
-             (clojure.test/testing ~s ~@body)))))))
+             (cljs.test/testing
+                 (prpr.test.reduce/reduce-pr-fns
+                          [~@fs])))
+           (with-test-binding-frame
+             (do
+               (println "      " ~s)
+               (clojure.test/testing ~s
+                 (prpr.test.reduce/reduce-pr-fns
+                  [~@fs])))))))))
 
 #?(:clj
    (defmacro with-log-level

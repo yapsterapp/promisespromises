@@ -596,8 +596,20 @@
           (is (= ::error (first b)))
           (is (= {:v 3} (ex-data (second b))))
           (is (= [::ok ::closed] c))))))
+
   (testing "when receiving a nil wrapper sends nil to the filter fn"
-    ))
+    (let [s (stream-of [0 1 (types/stream-nil) 2 3 (types/stream-nil) 4 5])
+            t (sut/filter
+               (fn [v] (or (nil? v) (odd? v) ))
+               s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1]
+                  [::ok nil]
+                  [::ok 3]
+                  [::ok nil]
+                  [::ok 5]
+                  [::ok ::closed]]
+                 vs))))))
 
 (deftest reductions-test
 

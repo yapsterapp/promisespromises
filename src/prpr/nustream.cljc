@@ -56,9 +56,11 @@
                        (conj a v)))
                    []
                    vals)
-        ch (types/stream-chunk flat-vals)]
-
-    (impl/put! sink ch)))
+        chk (when (not-empty flat-vals)
+             (types/stream-chunk flat-vals))]
+    (if (some? chk)
+      (impl/put! sink chk)
+      (pr/resolved true))))
 
 (defn ->source
   "turns a collection into a stream
@@ -281,7 +283,9 @@
           :else
           (put-all! s' (f v))))
       s')
+
      s'))
+
   ([f s & rest]
    (->> (apply consumer/chunk-zip s rest)
         (mapcat #(apply f %)))))

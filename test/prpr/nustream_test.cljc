@@ -525,7 +525,17 @@
             (is (= ::closed r0))))))))
 
 (deftest mapcat-test
-  (testing "mapcats a stream")
+  (testing "mapcats a stream"
+    (let [s (stream-of [0 1 2 3])
+          t (sut/mapcat
+             (fn [v] (repeat v v))
+             s)]
+      (pr/let [vs (safe-consume t)]
+        (is (= [[::ok (types/stream-chunk [1])]
+                [::ok (types/stream-chunk [2 2])]
+                [::ok (types/stream-chunk [3 3 3])]
+                [::ok :prpr.nustream-test/closed]]
+               vs)))))
   (testing "mapcats multiple streams"
     (testing "maps multiple streams of the same size")
     (testing "terminates the output when any of the inputs terminates"))

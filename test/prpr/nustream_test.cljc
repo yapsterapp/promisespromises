@@ -19,6 +19,8 @@
    (fn [_] (sut/close! s))))
 
 (defn safe-take!
+  "take! from a stream returning
+   Promise<[::ok <val>]> | Promise<[::error <err>]>"
   [s & args]
   (pr/catch
       (pr/chain
@@ -27,6 +29,16 @@
          [::ok v]))
       (fn [e]
         [::error e])))
+
+(defn safe-consume
+  "keep safe-take! ing until ::closed"
+  [s]
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [r []]
+    (pr/let [[t v :as t-v] (safe-take! s ::closed)]
+      (if (= ::closed v)
+        (conj r t-v)
+        (pr/recur (conj r t-v))))))
 
 (deftest realize-each-test
   (testing "does nothing to non-promise values"
@@ -73,7 +85,6 @@
 
       (is (= []
              (into [] (sut/safe-chunk-xform (map inc) out) [])))
-
       (is (not (pt/-closed? out)))))
 
   (testing "stateful transducer with no errors"
@@ -487,8 +498,87 @@
                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
           (is (= ::ok k2)) (is (= ::closed v2))))))
 
-  (testing "when receiving a nil wrapper sends nil to the reducing fn")
-  (testing "deals with reduced"))
+  (testing "when receiving a nil wrapper sends nil to the reducing fn"
+    (let [s (sut/stream)
+          _ (put-all-and-close! s [1 (types/stream-nil) 2])]
+      (pr/let [t (sut/reductions
+                  ::reduce-nil
+                  (fn [a v]
+                    (conj a v))
+                  []
+                  s)
+
+               vs (safe-consume t)]
+        (is (= [[:prpr.nustream-test/ok []]
+                [:prpr.nustream-test/ok [1]]
+                [:prpr.nustream-test/ok [1 nil]]
+                [:prpr.nustream-test/ok [1 nil 2]]
+                [:prpr.nustream-test/ok :prpr.nustream-test/closed]]
+               vs)))))
+
+  (testing "deals with reduced"
+    (testing "with no initial value"
+      (testing "with reduced in second place"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [1 3 4 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 s)]
+          (pr/let [v1 (sut/take! t ::closed)
+                   v2 (sut/take! t ::closed)
+                   v3 (sut/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 4 v2))
+            (is (= ::closed v3)))))
+      (testing "with reduced further down the stream"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [2 4 3 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 s)]
+          (pr/let [v1 (sut/take! t ::closed)
+                   v2 (sut/take! t ::closed)
+                   v3 (sut/take! t ::closed)
+                   v4 (sut/take! t ::closed)]
+            (is (= 2 v1))
+            (is (= 6 v2))
+            (is (= 9 v3))
+            (is (= ::closed v4))))))
+    (testing "with an initial value"
+      (testing "with reduced in first place"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [1 2 4 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 1
+                 s)]
+          (pr/let [v1 (sut/take! t ::closed)
+                   v2 (sut/take! t ::closed)
+                   v3 (sut/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 2 v2))
+            (is (= ::closed v3)))))
+      (testing "with reduced further down the stream"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [2 4 3 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 1
+                 s)]
+          (pr/let [v1 (sut/take! t ::closed)
+                   v2 (sut/take! t ::closed)
+                   v3 (sut/take! t ::closed)
+                   v4 (sut/take! t ::closed)
+                   v5 (sut/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 3 v2))
+            (is (= 7 v3))
+            (is (= 10 v4))
+            (is (= ::closed v5))))))))
 
 (deftest reduce-test
   (testing "reduces a stream"
@@ -756,4 +846,80 @@
                   [] s)]
         (is (= [nil] r)))))
 
-  (testing "deals with reduced"))
+  (testing "deals with reduced"
+    (testing "with no initial value"
+      (testing "reduced at second position"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [2 3 4 6])]
+          (pr/let [[k v] (->
+                          (sut/reduce
+                           ::deals-with-reduced
+                           (fn [a v] (if (odd? v)
+                                      (reduced (+ a v))
+                                      (+ a v)))
+                           s)
+                          (pr/chain (fn [v] [::ok v]))
+                          (pr/catch (fn [e] [::error e])))]
+            (is (= ::ok k))
+            (is (= 5 v)))))
+      (testing "reduced further down stream"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [0 2 3 4 6])]
+          (pr/let [[k v] (->
+                          (sut/reduce
+                           ::deals-with-reduced
+                           (fn [a v] (if (odd? v)
+                                      (reduced (+ a v))
+                                      (+ a v)))
+                           s)
+                          (pr/chain (fn [v] [::ok v]))
+                          (pr/catch (fn [e] [::error e])))]
+            (is (= ::ok k))
+            (is (= 5 v))))))
+    (testing "with an initial value"
+      (testing "reduced at head of stream"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [1 2 3 4 6])]
+          (pr/let [[k v] (->
+                          (sut/reduce
+                           ::deals-with-reduced
+                           (fn [a v] (if (odd? v)
+                                      (reduced (+ a v))
+                                      (+ a v)))
+                           2
+                           s)
+                          (pr/chain (fn [v] [::ok v]))
+                          (pr/catch (fn [e] [::error e])))]
+            (is (= ::ok k))
+            (is (= 3 v)))))
+      (testing "reduced at second position"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [2 3 4 6])]
+          (pr/let [[k v] (->
+                          (sut/reduce
+                           ::deals-with-reduced
+                           (fn [a v] (if (odd? v)
+                                      (reduced (+ a v))
+                                      (+ a v)))
+                           2
+                           s)
+                          (pr/chain (fn [v] [::ok v]))
+                          (pr/catch (fn [e] [::error e])))]
+            (is (= ::ok k))
+            (is (= 7 v)))))
+      (testing "reduced further down stream"
+        (let [s (sut/stream)
+              _ (put-all-and-close! s [0 2 3 4 6])]
+          (pr/let [[k v] (->
+                          (sut/reduce
+                           ::deals-with-reduced
+                           (fn [a v] (if (odd? v)
+                                      (reduced (+ a v))
+                                      (+ a v)))
+                           2
+                           s)
+                          (pr/chain (fn [v] [::ok v]))
+                          (pr/catch (fn [e] [::error e])))]
+            (is (= ::ok k))
+            (is (= 7 v))))))
+    ))

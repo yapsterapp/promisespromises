@@ -329,18 +329,24 @@
    NOTE like manifold's own reductions, and unlike clojure.core/reductions,
    this returns an empty stream if the input stream is empty. this is because
    a connect-via implementation does not offer any ability to output
-   anything if the input stream is empty"
+   anything if the input stream is empty
+
+   NOTE if the input contains chunks, the output will contain matching chunks"
   ([id f s]
    (reductions id f ::none s))
   ([id f initial-val s]
    (let [s' (impl/stream)
 
+         ;; run clojure.core/reductions on chunks
+         ;; returning a pair of
+         ;; [intermediate-values last-value]
          chunk-reductions
          (fn ([f chk]
              (let [rs (clj/reductions
                        (@#'clj/preserving-reduced f)
                        (pt/-chunk-values chk))
                    cnt (count rs)]
+
                [(take (dec cnt) rs)
                 (last rs)]))
 
@@ -352,7 +358,8 @@
                    cnt (count rs)]
 
                ;; NOTE we remove the init value from
-               ;; the front of the intermediates
+               ;; the front of the intermediates...
+               ;; it will already have been output
                [(take (max 0 (- cnt 2)) (rest rs))
                 (last rs)])))
 
@@ -383,6 +390,8 @@
                                     (into [::chunk] (chunk-reductions f @acc v))
                                     [::plain nil (f @acc v)]))]
 
+                  ;; (prn "connect-via" @acc [t ivs v])
+
                   (if (reduced? v)
                     (pr/chain
                      (put!
@@ -390,7 +399,13 @@
                       (if (= ::plain t)
                         @v
                         (types/stream-chunk (clj/concat ivs [@v]))))
-                     (fn [_] false))
+                     (fn [_]
+                       ;; explicitly close the output stream, since
+                       ;; ending the connection doesn't do it
+                       (close! s'))
+                     (fn [_]
+                       ;; end the connection
+                       false))
 
                     (do
                       (reset! acc v)
@@ -430,7 +445,7 @@
 
        (pr/chain
         (fn [initial-val]
-          ;; (prn "initial-val" initial-val)
+          (prn "initial-val" initial-val)
 
           (cond
 
@@ -455,14 +470,14 @@
               #_{:clj-kondo/ignore [:loop-without-recur]}
               (pr/loop [val initial-val]
 
-                ;; (prn "loop" val)
+                (prn "loop" val)
 
                 (if (reduced? val)
                   (deref val)
 
                   (-> (take! s ::none)
                       (pr/chain (fn [x]
-                                  ;; (prn "take!" val x)
+                                  (prn "take!" val x)
                                   (cond
 
                                     (identical? ::none x) val

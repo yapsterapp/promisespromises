@@ -26,6 +26,7 @@
    promise-returning 0-args fns into
    Promise<[results]>"
   [fns]
+  #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [rs []
             [f & remf] fns]
     (if (nil? f)

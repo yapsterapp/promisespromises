@@ -550,6 +550,13 @@
           (is (= [[::ok (types/stream-chunk [1])]
                   [::ok (types/stream-chunk [3 5])]
                   [::ok ::closed]]
+                 vs))))
+      (let [s (stream-of [(types/stream-chunk [0 2])
+                          (types/stream-chunk [3 4 5])])
+            t (sut/filter odd? s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok (types/stream-chunk [3 5])]
+                  [::ok ::closed]]
                  vs)))))
     (testing "of mixed plain values and chunks"
       (let [s (stream-of [0 (types/stream-chunk [1 2])
@@ -564,9 +571,33 @@
 
   (testing "catches filter fn errors, errors the output and cleans up"
     (testing "with plain values"
-      )
-    )
-  (testing "when receiving a nil wrapper sends nil to the filter fn"))
+      (let [s (stream-of [0 2 3 4 5])
+            t (sut/filter (fn [v]
+                            (if (odd? v)
+                              (throw (ex-info "boo" {:v v}))
+                              true))
+                          s)]
+        (pr/let [[a b c d :as _vs] (safe-consume t)]
+          (is (= [::ok 0] a))
+          (is (= [::ok 2] b))
+          (is (= ::error (first c)))
+          (is (= {:v 3} (ex-data (second c))))
+          (is (= [::ok ::closed] d)))))
+    (testing "with chunks"
+      (let [s (stream-of [(types/stream-chunk [0 2])
+                          (types/stream-chunk [3 4 5])])
+            t (sut/filter (fn [v]
+                            (if (odd? v)
+                              (throw (ex-info "boo" {:v v}))
+                              true))
+                          s)]
+        (pr/let [[a b c d :as vs] (safe-consume t)]
+          (is (= [::ok (types/stream-chunk [0 2])] a))
+          (is (= ::error (first b)))
+          (is (= {:v 3} (ex-data (second b))))
+          (is (= [::ok ::closed] c))))))
+  (testing "when receiving a nil wrapper sends nil to the filter fn"
+    ))
 
 (deftest reductions-test
 

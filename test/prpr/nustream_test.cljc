@@ -214,7 +214,146 @@
       (is (= {:v 3} (ex-data vv)))
       (is (pt/-closed? out)))))
 
-(deftest transform-test)
+(deftest transform-test
+  (testing "simple stateless transducer"
+    (testing "transforms a stream of plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0 1 2])
+            t (sut/transform (map inc) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok :prpr.nustream-test/closed]]
+               vs)))))
+    (testing "transforms a stream of chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0 1 2])])
+            t (sut/transform (map inc) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok :prpr.nustream-test/closed]]
+               vs)))))
+    (testing "transforms a stream of mixed plain values and chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0])
+                                     (types/stream-chunk [1 2])
+                                     3])
+            t (sut/transform (map inc) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok 4]
+                  [::ok :prpr.nustream-test/closed]]
+               vs))))
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0
+                                     (types/stream-chunk [1 2])
+                                     3])
+            t (sut/transform (map inc) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok 4]
+                  [::ok :prpr.nustream-test/closed]]
+               vs))))))
+
+  (testing "stateful transducer"
+    (testing "transforms a stream of plain values"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [0 0 1 1 2 2])
+            t (sut/transform (partition-by identity) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok [0 0]]
+                  [::ok [1 1]]
+                  [::ok [2 2]]
+                  [::ok :prpr.nustream-test/closed]]
+               vs)))))
+    (testing "transforms a stream of chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0 0 1 1 2 2])])
+            t (sut/transform (partition-by identity) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok [0 0]]
+                  [::ok [1 1]]
+                  [::ok [2 2]]
+                  [::ok :prpr.nustream-test/closed]]
+               vs)))))
+    (testing "transforms a stream of mixed plain values and chunks"
+      (let [s (sut/stream)
+            _ (put-all-and-close! s [(types/stream-chunk [0])
+                                     0
+                                     (types/stream-chunk [1 1 2])
+                                      2])
+            t (sut/transform (partition-by identity) s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok [0 0]]
+                  [::ok [1 1]]
+                  [::ok [2 2]]
+                  [::ok :prpr.nustream-test/closed]]
+                 vs))))))
+
+  (testing "errors in the transducer"
+    (testing "errors the output stream"
+      (testing "stream of plain values"
+        (let [mapinc (fn [rf]
+                       (fn
+                         ([] (rf))
+                         ([a] (rf a))
+                         ([a v]
+                          (if (odd? v)
+                            (throw (ex-info "boo" {:v v}))
+                            (rf a (inc v))))))
+
+              s (sut/stream)
+              _ (put-all-and-close! s [0 1 2])
+              t (sut/transform
+                 mapinc
+                 s)]
+
+          ;; the order of the output is not fully defined, because
+          ;; the safe-chunk-xform currently skips a step in the stream
+          ;; topology to error the output stream
+          (pr/let [vs (safe-consume t)
+                   oks (filter (fn [[k v]] (= ::ok k)) vs)
+                   [[_ err]] (filter (fn [[k v]] (= ::error k)) vs)]
+            (is (= [[::ok 1]
+                    [::ok :prpr.nustream-test/closed]]
+                   oks))
+            (is (= {:v 1}
+                   (ex-data err))))))
+
+      (testing "stream of plain values and chunks"
+        (let [mapinc (fn [rf]
+                       (fn
+                         ([] (rf))
+                         ([a] (rf a))
+                         ([a v]
+                          (if (odd? v)
+                            (throw (ex-info "boo" {:v v}))
+                            (rf a (inc v))))))
+
+              s (sut/stream)
+              _ (put-all-and-close! s [0 (types/stream-chunk [1]) 2])
+              t (sut/transform
+                 mapinc
+                 s)]
+
+          ;; the order of the output is not fully defined, because
+          ;; the safe-chunk-xform currently skips a step in the stream
+          ;; topology to error the output stream
+          (pr/let [vs (safe-consume t)
+                   oks (filter (fn [[k v]] (= ::ok k)) vs)
+                   [[_ err]] (filter (fn [[k v]] (= ::error k)) vs)]
+            (is (= [[::ok 1]
+                    [::ok :prpr.nustream-test/closed]]
+                   oks))
+            (is (= {:v 1}
+                   (ex-data err)))))))))
 
 (deftest map-test
   (testing "maps a stream"

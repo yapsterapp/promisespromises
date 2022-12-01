@@ -174,10 +174,11 @@
    error, so connect-via sees no error. sidestepping this problem with
    the safe-chunk-xform and erroring the returned stream directly propagates the
    error, but also leads to some transformed values before the error going
-   missing from the downstream, because of implicit buffering. i can't
-   see an alternative impl atm, but i've also never used exceptions for
-   non-exceptional control flow for streams, so i don't think it's a big
-   problem"
+   missing from the downstream, or arriving after the error, because of implicit
+   buffering. an alternative might be to not use the core.async/manifold native
+   transforms, but i've also never used exceptions for control flow, so i can't
+   see this being a problem atm, so i'm sticking with the native transforms for
+   now"
   ([xform s]
    (transform xform 0 s))
   ([xform buffer-size s]

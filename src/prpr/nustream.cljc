@@ -297,7 +297,7 @@
           (error! s' v)
 
           (types/stream-chunk? v)
-          (let [fchunk (filter pred (pt/-chunk-values v))]
+          (let [fchunk (clj/filter pred (pt/-chunk-values v))]
             (if (not-empty fchunk)
               (put! s' (types/stream-chunk fchunk))
               true))
@@ -306,7 +306,9 @@
           (if (pred v)
             (put! s' v)
             true)))
-     s')))
+     s')
+
+    s'))
 
 (defn reduce-ex-info
   "extend cause ex-data with a reduce-id, or wrap cause in an ex-info"

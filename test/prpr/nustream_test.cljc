@@ -2,10 +2,6 @@
   (:require
    #?(:clj [prpr.test :refer [deftest testing is]]
       :cljs [prpr.test :refer-macros [deftest testing is]])
-   [clojure.test.check :as tc]
-   [clojure.test.check.generators :as gen]
-   [clojure.test.check.properties :as prop]
-   [clojure.test.check.clojure-test :refer [defspec]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -17,6 +13,12 @@
   (pr/chain
    (impl/put-all! s vs)
    (fn [_] (sut/close! s))))
+
+(defn stream-of
+  [vs]
+  (let [s (sut/stream)]
+    (put-all-and-close! s vs)
+    s))
 
 (defn safe-take!
   "take! from a stream returning
@@ -533,8 +535,37 @@
   (testing "catches mapping fn errors, errors the output and cleans up"))
 
 (deftest filter-test
-  (testing "filters a streams")
-  (testing "catches filter fn errors, errors the output and cleans up")
+
+  (testing "filters a stream"
+    (testing "of plain values"
+      (let [s (stream-of [0 1 2 3 4 5])
+            t (sut/filter odd? s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 1] [::ok 3] [::ok 5] [::ok ::closed]] vs)))))
+    (testing "of chunks"
+      (let [s (stream-of [(types/stream-chunk [0 1 2])
+                          (types/stream-chunk [3 4 5])])
+            t (sut/filter odd? s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok (types/stream-chunk [1])]
+                  [::ok (types/stream-chunk [3 5])]
+                  [::ok ::closed]]
+                 vs)))))
+    (testing "of mixed plain values and chunks"
+      (let [s (stream-of [0 (types/stream-chunk [1 2])
+                          3 (types/stream-chunk [4 5])])
+            t (sut/filter odd? s)]
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok (types/stream-chunk [1])]
+                  [::ok 3]
+                  [::ok (types/stream-chunk [5])]
+                  [::ok ::closed]]
+                 vs))))))
+
+  (testing "catches filter fn errors, errors the output and cleans up"
+    (testing "with plain values"
+      )
+    )
   (testing "when receiving a nil wrapper sends nil to the filter fn"))
 
 (deftest reductions-test

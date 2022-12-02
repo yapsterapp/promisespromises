@@ -155,15 +155,26 @@
 
 #?(:clj
    (defmacro with-log-level
-     "set the log-level while executing the body"
-     [log-level & body]
-     `(let [cl# (or (:level taoensso.timbre/*config*)
-                    :info)]
-        (try
+     "temporarily set the log-level while executing the forms"
+     [log-level & forms]
+     (let [;; wrap each form into a 0-args fn
+           fs (for [form forms]
+                `(fn [] ~form))]
+
+       `(let [cl# (or (:level taoensso.timbre/*config*)
+                      :info)]
+
           (taoensso.timbre/set-level! ~log-level)
-          ~@body
-          (finally
-            (taoensso.timbre/set-level! cl#))))))
+
+          (promesa.core/finally
+
+            ;; put a fn which can't fail at the head, so that
+            ;; we only need the promise-based finally
+            (prpr.test.reduce/reduce-pr-fns (into [(constantly true)]
+                                                  [~@fs]))
+
+            (fn [_# _#]
+              (taoensso.timbre/set-level! cl#)))))))
 
 
 (defn compose-fixtures

@@ -42,177 +42,236 @@
         (conj r t-v)
         (pr/recur (conj r t-v))))))
 
+(comment
+  ;; these things should be tested in every stream transform
+  (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+
+  ;; and these should be testing in every transform with non-trivial function
+  (testing "error in transform behaviours"))
+
 (deftest realize-each-test
-  (testing "does nothing to non-promise values"
-    (let [s (stream-of [0 1 2 3])
-          t (sut/realize-each s)]
+  (testing "receiving a plain value behaviours"
+    (testing "does nothing to non-promise values"
+      (let [s (stream-of [0 1 2 3])
+            t (sut/realize-each s)]
 
-      (pr/let [vs (->> (range 0 5)
-                       (map (fn [_](sut/take! t ::closed)))
-                       (pr/all))]
-        (is (= [0 1 2 3 ::closed] vs)))))
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 0]
+                  [::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok ::closed]]
+                 vs)))))
 
-  (testing "realizes promise values"
-    (let [s (stream-of (map pr/resolved [0 1 2 3]))
-          t (sut/realize-each s)]
+    (testing "realizes promise values"
+      (let [s (stream-of (map pr/resolved [0 1 2 3]))
+            t (sut/realize-each s)]
 
-      (pr/let [vs (->> (range 0 5)
-                       (map (fn [_](sut/take! t ::closed)))
-                       (pr/all))]
-        (is (= [0 1 2 3 ::closed] vs)))))
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 0]
+                  [::ok 1]
+                  [::ok 2]
+                  [::ok 3]
+                  [::ok ::closed]]
+                 vs))))))
 
-  (testing "correctly propagates nil values"
-    (let [s (stream-of
-             [(pr/resolved 0)
-              (pr/resolved nil)
-              2
-              nil])
-          t (sut/realize-each s)]
+  (testing "receiving a chunk behaviour"
+    ;; TODO
+    )
 
-      (pr/let [vs (->> (range 0 5)
-                       (map (fn [_](sut/take! t ::closed)))
-                       (pr/all))]
-        (is (= [0 nil 2 nil ::closed] vs))))))
+  (testing "receiving a nil-value behaviour"
+    (testing "correctly propagates nil values"
+      (let [s (stream-of
+               [(pr/resolved 0)
+                (pr/resolved nil)
+                2
+                nil])
+            t (sut/realize-each s)]
+
+        (pr/let [vs (safe-consume t)]
+          (is (= [[::ok 0]
+                  [::ok nil]
+                  [::ok 2]
+                  [::ok nil]
+                  [::ok ::closed]]
+                 vs))))))
+
+  (testing "receiving a stream-error behaviour"
+    (testing "propagates errors downstream"
+      (let [s (stream-of
+               [(pr/resolved 0)
+                (types/stream-error (ex-info "boo" {:id 100}))])
+            t (sut/realize-each s)]
+
+        (pr/let [[r0 [r1t r1v :as r1] r2] (safe-consume t)]
+
+          (is (= [[::ok 0]
+                  [::ok ::closed]]
+                 [r0 r2]))
+          (is (= ::error r1t))
+          (is (= {:id 100} (ex-data r1v))))))))
 
 (deftest safe-chunk-xform-test
-  (testing "simple map transform with no error"
-    (let [out (sut/stream)]
-      (is (= [1 2 3]
-             (into [] (sut/safe-chunk-xform (map inc) out) [0 1 2])))
-      (is (not (pt/-closed? out)))
+  (testing "receiving a plain value behaviours"
+    (testing "simple map transform with no error"
+      (let [out (sut/stream)]
+        (is (= [1 2 3]
+               (into [] (sut/safe-chunk-xform (map inc) out) [0 1 2])))
+        (is (not (pt/-closed? out)))
 
-      (is (= []
-             (into [] (sut/safe-chunk-xform (map inc) out) [])))
-      (is (not (pt/-closed? out)))))
+        (is (= []
+               (into [] (sut/safe-chunk-xform (map inc) out) [])))
+        (is (not (pt/-closed? out)))))
 
-  (testing "stateful transducer with no errors"
-    (let [out (sut/stream)]
-      (is (= [[0 2 4] [3 7] [8 10]]
-             (into []
-                   (sut/safe-chunk-xform
-                    (partition-by odd?)
-                    out)
-                   [0 2 4 3 7 8 10])))
-      (is (not (pt/-closed? out)))
+    (testing "stateful transducer with no errors"
+      (let [out (sut/stream)]
+        (is (= [[0 2 4] [3 7] [8 10]]
+               (into []
+                     (sut/safe-chunk-xform
+                      (partition-by odd?)
+                      out)
+                     [0 2 4 3 7 8 10])))
+        (is (not (pt/-closed? out)))
 
-      (is (= []
-             (into []
-                   (sut/safe-chunk-xform
-                    (partition-by odd?)
-                    out) [])))
+        (is (= []
+               (into []
+                     (sut/safe-chunk-xform
+                      (partition-by odd?)
+                      out) [])))
 
-      (is (not (pt/-closed? out)))))
+        (is (not (pt/-closed? out))))))
 
-  (testing "simple map transform with chunks and no error"
-    (let [out (sut/stream)]
-      (is (= [1 2 3]
-             (into []
-                   (sut/safe-chunk-xform (map inc) out)
-                   [(types/stream-chunk [0 1 2])])))
-      (is (not (pt/-closed? out)))
+  (testing "receiving a chunk behaviours"
+    (testing "simple map transform with chunks and no error"
+      (let [out (sut/stream)]
+        (is (= [1 2 3]
+               (into []
+                     (sut/safe-chunk-xform (map inc) out)
+                     [(types/stream-chunk [0 1 2])])))
+        (is (not (pt/-closed? out)))
 
-      (is (= [1 2 3]
-             (into []
-                   (sut/safe-chunk-xform (map inc) out)
-                   [(types/stream-chunk [0])
-                    (types/stream-chunk [1 2])])))
-      (is (not (pt/-closed? out)))
+        (is (= [1 2 3]
+               (into []
+                     (sut/safe-chunk-xform (map inc) out)
+                     [(types/stream-chunk [0])
+                      (types/stream-chunk [1 2])])))
+        (is (not (pt/-closed? out)))
 
-      (is (= [1 2 3]
-             (into []
-                   (sut/safe-chunk-xform (map inc) out)
-                   [0 (types/stream-chunk [1]) 2])))
-      (is (not (pt/-closed? out)))))
+        (is (= [1 2 3]
+               (into []
+                     (sut/safe-chunk-xform (map inc) out)
+                     [0 (types/stream-chunk [1]) 2])))
+        (is (not (pt/-closed? out)))))
 
-  (testing "stateful transducer with chunks and no error"
-    (let [out (sut/stream)]
-      (is (= [[0 2] [3 5] [8]]
-             (into []
-                   (sut/safe-chunk-xform
-                    (partition-by odd?)
-                    out)
-                   [(types/stream-chunk [0 2 3 5 8])])))
-      (is (not (pt/-closed? out)))
+    (testing "stateful transducer with chunks and no error"
+      (let [out (sut/stream)]
+        (is (= [[0 2] [3 5] [8]]
+               (into []
+                     (sut/safe-chunk-xform
+                      (partition-by odd?)
+                      out)
+                     [(types/stream-chunk [0 2 3 5 8])])))
+        (is (not (pt/-closed? out)))
 
-      (is (= [[0 2] [3 5] [8]]
-             (into []
-                   (sut/safe-chunk-xform
-                    (partition-by odd?)
-                    out)
-                   [(types/stream-chunk [0 2 3])
-                    (types/stream-chunk [5 8])])))
-      (is (not (pt/-closed? out)))
+        (is (= [[0 2] [3 5] [8]]
+               (into []
+                     (sut/safe-chunk-xform
+                      (partition-by odd?)
+                      out)
+                     [(types/stream-chunk [0 2 3])
+                      (types/stream-chunk [5 8])])))
+        (is (not (pt/-closed? out)))
 
-      (is (= [[0 2] [3 5] [8]]
-             (into []
-                   (sut/safe-chunk-xform
-                    (partition-by odd?)
-                    out)
-                   [0
-                    (types/stream-chunk [2])
-                    3
-                    (types/stream-chunk [5 8])])))
-      (is (not (pt/-closed? out)))))
+        (is (= [[0 2] [3 5] [8]]
+               (into []
+                     (sut/safe-chunk-xform
+                      (partition-by odd?)
+                      out)
+                     [0
+                      (types/stream-chunk [2])
+                      3
+                      (types/stream-chunk [5 8])])))
+        (is (not (pt/-closed? out))))))
 
-  (testing "simple map transformer with an error"
+  (testing "receiving a nil-value behaviours"
+    ;; TODO
+    )
 
-    ;; we expect an error in the into xform to throw immediately, and
-    ;; also to error the out stream
-    (let [out (sut/stream)
-          [rk rv] (try
-                    [:ok (into []
-                               (sut/safe-chunk-xform
-                                (map (fn [v] (if (odd? v)
-                                              (throw (ex-info "boo" {:v v}))
-                                              (inc v))))
-                                out)
-                               [0 2 3])]
-                    (catch #?(:clj Throwable :cljs :default) e
-                      [:error e]))
+  (testing "receiving a stream-error behaviours"
+    (testing "simple map transform with a StreamError"
+      ;; TODO
+      ))
 
-          [vk vv] @(pr/catch
-                       (pr/let [r (sut/take! out ::closed)]
-                         [:ok r])
-                       (fn [e]
-                         [:error e]))]
+  (testing "error in transform behaviours"
+    (testing "simple map transformer with an error"
 
-      (is (= :error rk))
-      (is (= {:v 3} (ex-data rv)))
+      ;; we expect an error in the into xform to throw immediately, and
+      ;; also to error the out stream
+      (let [out (sut/stream)
+            [rk rv] (try
+                      [:ok (into []
+                                 (sut/safe-chunk-xform
+                                  (map (fn [v] (if (odd? v)
+                                                (throw (ex-info "boo" {:v v}))
+                                                (inc v))))
+                                  out)
+                                 [0 2 3])]
+                      (catch #?(:clj Throwable :cljs :default) e
+                        [:error e]))
 
-      (is (= :error vk))
-      (is (= {:v 3} (ex-data vv)))
-      (is (pt/-closed? out))))
+            [vk vv] @(pr/catch
+                         (pr/let [r (sut/take! out ::closed)]
+                           [:ok r])
+                         (fn [e]
+                           [:error e]))]
 
-  (testing "simple map transformer with chunk and error"
+        (is (= :error rk))
+        (is (= {:v 3} (ex-data rv)))
 
-    ;; we expect an error in the into xform to throw immediately, and
-    ;; also to error the out stream
-    (let [out (sut/stream)
-          [rk rv] (try
-                    [:ok (into []
-                               (sut/safe-chunk-xform
-                                (map (fn [v] (if (odd? v)
-                                              (throw (ex-info "boo" {:v v}))
-                                              (inc v))))
-                                out)
-                               [0 2 (types/stream-chunk [3])])]
-                    (catch #?(:clj Throwable :cljs :default) e
-                      [:error e]))
+        (is (= :error vk))
+        (is (= {:v 3} (ex-data vv)))
+        (is (pt/-closed? out))))
 
-          [vk vv] @(pr/catch
-                       (pr/let [r (sut/take! out ::closed)]
-                         [:ok r])
-                       (fn [e]
-                         [:error e]))]
+    (testing "simple map transformer with chunk and error"
 
-      (is (= :error rk))
-      (is (= {:v 3} (ex-data rv)))
+      ;; we expect an error in the into xform to throw immediately, and
+      ;; also to error the out stream
+      (let [out (sut/stream)
+            [rk rv] (try
+                      [:ok (into []
+                                 (sut/safe-chunk-xform
+                                  (map (fn [v] (if (odd? v)
+                                                (throw (ex-info "boo" {:v v}))
+                                                (inc v))))
+                                  out)
+                                 [0 2 (types/stream-chunk [3])])]
+                      (catch #?(:clj Throwable :cljs :default) e
+                        [:error e]))
 
-      (is (= :error vk))
-      (is (= {:v 3} (ex-data vv)))
-      (is (pt/-closed? out)))))
+            [vk vv] @(pr/catch
+                         (pr/let [r (sut/take! out ::closed)]
+                           [:ok r])
+                         (fn [e]
+                           [:error e]))]
+
+        (is (= :error rk))
+        (is (= {:v 3} (ex-data rv)))
+
+        (is (= :error vk))
+        (is (= {:v 3} (ex-data vv)))
+        (is (pt/-closed? out))))))
 
 (deftest transform-test
+
+  (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
   (testing "simple stateless transducer"
     (testing "transforms a stream of plain values"
       (let [s (stream-of [0 1 2])
@@ -344,9 +403,21 @@
                      oks))
               (is (= {:v 1}
                      (ex-data err)))))))))
+
+  (testing "when receiving an error propagates it downstream"
+    ;; TODO
+    )
   )
 
 (deftest map-test
+
+    (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
+
   (testing "maps a stream"
     (let [s (stream-of [0 1 2 3])
           t (sut/map inc s)]
@@ -455,9 +526,23 @@
         (is (= ::closed r3))))))
 
 (deftest mapcon-test
+    (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
+
   )
 
 (deftest zip-test
+    (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
+
   (testing "zips some streams"
     (testing "equal length streams"
       (let [a (stream-of [0 1 2 3])
@@ -502,6 +587,13 @@
             (is (= ::closed r0))))))))
 
 (deftest mapcat-test
+    (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
+
   (testing "mapcats a stream"
     (let [s (stream-of [0 1 2 3])
           t (sut/mapcat
@@ -538,8 +630,8 @@
                              (ex-info "boo" {:id 100}))])
           t (sut/mapcat
              (fn [v] (if (odd? v)
-                       (throw (ex-info "boo" {:v v}))
-                       (repeat v v)))
+                      (throw (ex-info "boo" {:v v}))
+                      (repeat v v)))
              s)]
       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
         (is (= [[::ok (types/stream-chunk [2 2])]
@@ -589,6 +681,12 @@
         (is (= {:v 5} (ex-data (second r2))))))))
 
 (deftest filter-test
+  (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
 
   (testing "filters a stream"
     (testing "of plain values"
@@ -666,6 +764,12 @@
                vs))))))
 
 (deftest reductions-test
+  (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
 
   (testing "returns reductions on the output stream"
     (testing "reductions of a stream of plain values"
@@ -835,6 +939,14 @@
             (is (= ::closed v5))))))))
 
 (deftest reduce-test
+    (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
+
+
+
   (testing "reduces a stream"
     (testing "reduces an empty stream"
       (testing "with no initial value"

@@ -92,6 +92,8 @@
      s
      (fn [v]
        (cond
+         (types/stream-error? v)
+         (impl/error! s' v)
 
          (pr/promise? v)
          (pr/chain
@@ -133,7 +135,13 @@
                   (impl/error! out e)
                   (throw e))))
 
-        ([rs v] (if (types/stream-chunk? v)
+        ([rs v] (cond
+                  (types/stream-error? v)
+                  (do
+                    (impl/error! out v)
+                    (throw v))
+
+                  (types/stream-chunk? v)
                   (try
                     (let [chunk-vals (pt/-chunk-values v)
 
@@ -153,6 +161,7 @@
                       (impl/error! out e)
                       (throw e)))
 
+                  :else
                   (try
                     (rf rs v)
                     (catch #?(:clj Throwable :cljs :default) e
@@ -338,7 +347,9 @@
    a connect-via implementation does not offer any ability to output
    anything if the input stream is empty
 
-   NOTE if the input contains chunks, the output will contain matching chunks"
+   NOTE if the input contains chunks, the output will contain matching chunks
+
+   TODO add StreamError value handling"
   ([id f s]
    (reductions id f ::none s))
   ([id f initial-val s]
@@ -442,7 +453,9 @@
 
    NOTE the reducing function is not expected to be async - if it
    returns a promise then the promise will *not* be unwrapped, and
-   unexpected things will probably happen"
+   unexpected things will probably happen
+
+   TODO add StreamError value handling"
   ([id f s]
    (reduce id f ::none s))
   ([id f initial-val s]

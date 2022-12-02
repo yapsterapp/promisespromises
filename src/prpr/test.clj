@@ -48,10 +48,10 @@
 
 (defmacro test-async
   "the body of test-async is a form or forms that
-      each return a plain value or a promise of a value...
-      test-async serially completes them - waiting on the
-      completion of any promises before proceeding to
-      evaluate the next form"
+   each return a plain value or a promise of a value...
+   test-async serially completes them - waiting on the
+   completion of any promises before proceeding to
+   evaluate the next form"
   [& forms]
   (let [;; wrap each form into a 0-args fn
         fs (for [form forms]
@@ -88,10 +88,10 @@
 
 (defmacro deftest
   "define a test whose body yields a list of promises, which will
-      be resolved before proceeding
+   be resolved before proceeding
 
-      use the same name as clojure.test/deftest because CIDER
-      recognizes it and uses it to find tests"
+   use the same name as clojure.test/deftest because CIDER
+   recognizes it and uses it to find tests"
   [name & body]
   `(prpr.test/deftest* ~name
      (println "   " ~(str name))
@@ -107,9 +107,9 @@
 
 (defmacro testing
   "each testing form is expected to have zero or more
-      child forms (which may be nested testing forms), each
-      of which yields a promise (or plain value), and will
-      be evaluated serially in strict depth-first order"
+   child forms (which may be nested testing forms), each
+   of which yields a promise (or plain value), and will
+   be evaluated serially in strict depth-first order"
   [s & forms]
   (when (not-empty forms)
     (let [;; wrap each form into a 0-args fn

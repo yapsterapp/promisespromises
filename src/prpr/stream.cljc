@@ -1,4 +1,4 @@
-(ns prpr.nustream
+(ns prpr.stream
   (:refer-clojure :exclude [map mapcat filter reductions reduce])
   (:require
    [prpr.stream.protocols :as pt]

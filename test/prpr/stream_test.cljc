@@ -1,11 +1,11 @@
-(ns prpr.nustream-test
+(ns prpr.stream-test
   (:require
    [prpr.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [prpr.stream.impl :as impl]
-   [prpr.nustream :as sut]))
+   [prpr.stream :as sut]))
 
 (defn put-all-and-close!
   [s vs]
@@ -279,7 +279,7 @@
           (is (= [[::ok 1]
                   [::ok 2]
                   [::ok 3]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs)))))
     (testing "transforms a stream of chunks"
       (let [s (stream-of [(types/stream-chunk [0 1 2])])
@@ -288,7 +288,7 @@
           (is (= [[::ok 1]
                   [::ok 2]
                   [::ok 3]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
       (let [s (stream-of [(types/stream-chunk [0])
@@ -300,7 +300,7 @@
                   [::ok 2]
                   [::ok 3]
                   [::ok 4]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs))))
       (let [s (stream-of [0
                           (types/stream-chunk [1 2])
@@ -311,7 +311,7 @@
                   [::ok 2]
                   [::ok 3]
                   [::ok 4]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs))))))
 
   (testing "stateful transducer"
@@ -322,7 +322,7 @@
           (is (= [[::ok [0 0]]
                   [::ok [1 1]]
                   [::ok [2 2]]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs)))))
     (testing "transforms a stream of chunks"
       (let [s (stream-of [(types/stream-chunk [0 0 1 1 2 2])])
@@ -331,7 +331,7 @@
           (is (= [[::ok [0 0]]
                   [::ok [1 1]]
                   [::ok [2 2]]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
       (let [s (stream-of [(types/stream-chunk [0])
@@ -343,7 +343,7 @@
           (is (= [[::ok [0 0]]
                   [::ok [1 1]]
                   [::ok [2 2]]
-                  [::ok :prpr.nustream-test/closed]]
+                  [::ok ::closed]]
                  vs))))))
 
   (testing "errors in the transducer"
@@ -371,7 +371,7 @@
                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
               (is (= [[::ok 1]
-                      [::ok :prpr.nustream-test/closed]]
+                      [::ok ::closed]]
                      oks))
               (is (= {:v 1}
                      (ex-data err))))))
@@ -398,7 +398,7 @@
                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
               (is (= [[::ok 1]
-                      [::ok :prpr.nustream-test/closed]]
+                      [::ok ::closed]]
                      oks))
               (is (= {:v 1}
                      (ex-data err)))))))))
@@ -602,7 +602,7 @@
         (is (= [[::ok (types/stream-chunk [1])]
                 [::ok (types/stream-chunk [2 2])]
                 [::ok (types/stream-chunk [3 3 3])]
-                [::ok :prpr.nustream-test/closed]]
+                [::ok ::closed]]
                vs)))))
   (testing "mapcats multiple streams"
     (testing "maps multiple streams of the same size"
@@ -635,7 +635,7 @@
       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
         (is (= [[::ok (types/stream-chunk [2 2])]
                 [::ok (types/stream-chunk [4 4 4 4])]
-                [::ok :prpr.nustream-test/closed]]
+                [::ok ::closed]]
                [r0 r1 r3]))
         (is (= ::error (first r2)))
         (is (= {:id 100} (ex-data (second r2)))))))
@@ -650,7 +650,7 @@
         (is (= [[::ok (types/stream-chunk [1])]
                 [::ok (types/stream-chunk [::nil])]
                 [::ok (types/stream-chunk [3 3 3])]
-                [::ok :prpr.nustream-test/closed]]
+                [::ok ::closed]]
                vs)))))
   (testing "when mapping-fn returns a nil value, sends nothing to the output"
     (let [s (stream-of [0 1 nil 3])
@@ -662,7 +662,7 @@
       (pr/let [vs (safe-consume t)]
         (is (= [[::ok (types/stream-chunk [1])]
                 [::ok (types/stream-chunk [3 3 3])]
-                [::ok :prpr.nustream-test/closed]]
+                [::ok ::closed]]
                vs)))))
   (testing "catches mapping fn errors, errors the output and cleans up"
     (let [s (stream-of [2 4 5 6])
@@ -674,7 +674,7 @@
       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
         (is (= [[::ok (types/stream-chunk [2 2])]
                 [::ok (types/stream-chunk [4 4 4 4])]
-                [::ok :prpr.nustream-test/closed]]
+                [::ok ::closed]]
                [r0 r1 r3]))
         (is (= ::error (first r2)))
         (is (= {:v 5} (ex-data (second r2))))))))
@@ -870,11 +870,11 @@
                   s)
 
                vs (safe-consume t)]
-        (is (= [[:prpr.nustream-test/ok []]
-                [:prpr.nustream-test/ok [1]]
-                [:prpr.nustream-test/ok [1 nil]]
-                [:prpr.nustream-test/ok [1 nil 2]]
-                [:prpr.nustream-test/ok :prpr.nustream-test/closed]]
+        (is (= [[::ok []]
+                [::ok [1]]
+                [::ok [1 nil]]
+                [::ok [1 nil 2]]
+                [::ok ::closed]]
                vs)))))
 
   (testing "deals with reduced"

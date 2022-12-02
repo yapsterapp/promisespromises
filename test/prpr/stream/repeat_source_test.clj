@@ -1,4 +1,5 @@
 (ns prpr.stream.repeat-source-test
+  "TODO port to promesa-based prpr.stream"
   (:require
    [clojure.test :refer [deftest is are testing use-fixtures]]
    [manifold.stream :as m.stream]

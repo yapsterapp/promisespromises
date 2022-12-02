@@ -3,13 +3,11 @@
    [schema.core :as s]
    [clojure.set :as set]
    [cats.context #?(:clj :refer :cljs :refer-macros) [with-context]]
-   [cats.data :as data]
    [cats.monad.state :as state]
-   [cats.core :as monad :refer [mlet return bind]]
+   [cats.core :as monad :refer [return bind]]
    [prpr.cats.prws :as prws #?@(:cljs [:include-macros true])]
    [prpr.promise :as pr #?@(:cljs [:include-macros true])]
-   [deferst.kahn :refer [kahn-sort]]
-   [taoensso.timbre :refer [warn]]))
+   [deferst.kahn :refer [kahn-sort]]))
 
 (def ^:private SystemStateSchema
   {;; for each key, a map of constructor, destructor config-ctx

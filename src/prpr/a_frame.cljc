@@ -7,8 +7,7 @@
    [prpr.a-frame.std-interceptors
     :refer [modify-interceptors-for-coeffects]]
    [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.router :as router]
-   [taoensso.timbre :refer [info]]))
+   [prpr.a-frame.router :as router]))
 
 ;; like re-frame, but for backend stuff
 ;; provide an app-context map to most of the core fns, from which an
@@ -181,25 +180,31 @@
    (registry/unregister-handler schema/a-frame-kind-cofx id)))
 
 (defn ->interceptor
-  [{id :id
-    before :before
-    after :after}])
+  "TODO impl"
+  [{_id :id
+    _before :before
+    _after :after}])
 
 (defn get-coeffect
-  ([context])
-  ([context key])
-  ([context key not-found]))
+  "TODO impl"
+  ([_context])
+  ([_context _key])
+  ([_context _key _not-found]))
 
 (defn assoc-coeffect
-  [context key value])
+  "TODO impl"
+  [_context _key _value])
 
 (defn get-effect
-  ([context])
-  ([context key])
-  ([context key not-found]))
+  "TODO impl"
+  ([_context])
+  ([_context _key])
+  ([_context _key _not-found]))
 
 (defn assoc-effect
-  [context key value])
+  "TODO impl"
+  [_context _key _value])
 
 (defn enqueue
-  [context interceptors])
+  "TODO impl"
+  [_context _interceptors])

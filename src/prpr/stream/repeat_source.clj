@@ -1,5 +1,7 @@
 (ns prpr.stream.repeat-source
-  "Provides promise friendly and error safe stream of repeated fn invocations.
+  "TODO port to promesa-based prpr.stream
+
+  Provides promise friendly and error safe stream of repeated fn invocations.
 
   See:
 

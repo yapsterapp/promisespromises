@@ -515,12 +515,79 @@
                 [::ok :prpr.nustream-test/closed]]
                vs)))))
   (testing "mapcats multiple streams"
-    (testing "maps multiple streams of the same size")
-    (testing "terminates the output when any of the inputs terminates"))
-  (testing "when receiving an error propagates it to the downstream")
-  (testing "when receiving a nil wrapper sends nil to the mapping fn")
-  (testing "when mapping-fn returns a nil value, sends nothing to the output")
-  (testing "catches mapping fn errors, errors the output and cleans up"))
+    (testing "maps multiple streams of the same size"
+      (let [s (stream-of [0 1 2 3])
+            t (stream-of [:a :b :c :d])
+            u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
+        (pr/let [vs (safe-consume u)]
+          (is (= [[::ok (types/stream-chunk [[1 :b]])]
+                  [::ok (types/stream-chunk [[2 :c][2 :c]])]
+                  [::ok (types/stream-chunk [[3 :d][3 :d][3 :d]])]
+                  [::ok ::closed]]
+                 vs)))))
+    (testing "terminates the output when any of the inputs terminates"
+      (let [s (stream-of [0 1 2])
+            t (stream-of [:a :b :c :d])
+            u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
+        (pr/let [vs (safe-consume u)]
+          (is (= [[::ok (types/stream-chunk [[1 :b]])]
+                  [::ok (types/stream-chunk [[2 :c][2 :c]])]
+                  [::ok ::closed]]
+                 vs))))))
+  (testing "when receiving an error propagates it to the downstream"
+    (let [s (stream-of [2 4 (types/stream-error
+                             (ex-info "boo" {:id 100}))])
+          t (sut/mapcat
+             (fn [v] (if (odd? v)
+                      (throw (ex-info "boo" {:v v}))
+                      (repeat v v)))
+             s)]
+      (pr/let [[r0 r1 r2 r3] (safe-consume t)]
+        (is (= [[::ok (types/stream-chunk [2 2])]
+                [::ok (types/stream-chunk [4 4 4 4])]
+                [::ok :prpr.nustream-test/closed]]
+               [r0 r1 r3]))
+        (is (= ::error (first r2)))
+        (is (= {:id 100} (ex-data (second r2)))))))
+  (testing "when receiving a nil wrapper sends nil to the mapping fn"
+    (let [s (stream-of [0 1 nil 3])
+          t (sut/mapcat
+             (fn [v] (if (nil? v)
+                      [::nil]
+                      (repeat v v)))
+             s)]
+      (pr/let [vs (safe-consume t)]
+        (is (= [[::ok (types/stream-chunk [1])]
+                [::ok (types/stream-chunk [::nil])]
+                [::ok (types/stream-chunk [3 3 3])]
+                [::ok :prpr.nustream-test/closed]]
+               vs)))))
+  (testing "when mapping-fn returns a nil value, sends nothing to the output"
+    (let [s (stream-of [0 1 nil 3])
+          t (sut/mapcat
+             (fn [v] (if (nil? v)
+                      nil
+                      (repeat v v)))
+             s)]
+      (pr/let [vs (safe-consume t)]
+        (is (= [[::ok (types/stream-chunk [1])]
+                [::ok (types/stream-chunk [3 3 3])]
+                [::ok :prpr.nustream-test/closed]]
+               vs)))))
+  (testing "catches mapping fn errors, errors the output and cleans up"
+    (let [s (stream-of [2 4 5 6])
+          t (sut/mapcat
+             (fn [v] (if (odd? v)
+                      (throw (ex-info "boo" {:v v}))
+                      (repeat v v)))
+             s)]
+      (pr/let [[r0 r1 r2 r3] (safe-consume t)]
+        (is (= [[::ok (types/stream-chunk [2 2])]
+                [::ok (types/stream-chunk [4 4 4 4])]
+                [::ok :prpr.nustream-test/closed]]
+               [r0 r1 r3]))
+        (is (= ::error (first r2)))
+        (is (= {:v 5} (ex-data (second r2))))))))
 
 (deftest filter-test
 

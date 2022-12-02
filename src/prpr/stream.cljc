@@ -7,7 +7,6 @@
    [prpr.stream.impl :as impl]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
-   ;; [prpr.stream.concurrency :as concurrency]
    [prpr.stream.consumer :as consumer]))
 
 ;; a clj+cljs cross-platform streams lib, in the style of manifold

@@ -1,7 +1,6 @@
 (ns prpr.nustream-test
   (:require
-   #?(:clj [prpr.test :refer [deftest testing is with-log-level]]
-      :cljs [prpr.test :refer-macros [deftest testing is with-log-level]])
+   [prpr.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]

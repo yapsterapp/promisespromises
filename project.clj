@@ -43,12 +43,15 @@
                  [org.slf4j/jul-to-slf4j "1.7.36"]
 
 
-                 [funcool/cats "2.4.2"]
+                 ;; TODO - drop
                  [prismatic/schema "1.2.0"]
+
+                 ;; TODO - maybe drop?
+                 [funcool/cats "2.4.2"]
+
+                 [metosin/malli "0.9.2"]
                  [funcool/promesa "8.0.450"]
                  [manifold "0.2.3"]
-                 [potemkin "0.4.5"
-                  :exclusions [riddley]]
                  [org.clojure/math.combinatorics "0.1.6"]
                  [frankiesardo/linked "1.3.0"]
 

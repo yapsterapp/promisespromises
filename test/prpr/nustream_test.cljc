@@ -37,7 +37,7 @@
   [s]
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [r []]
-    (pr/let [[t v :as t-v] (safe-take! s ::closed)]
+    (pr/let [[_t v :as t-v] (safe-take! s ::closed)]
       (if (= ::closed v)
         (conj r t-v)
         (pr/recur (conj r t-v))))))
@@ -106,7 +106,7 @@
                 (types/stream-error (ex-info "boo" {:id 100}))])
             t (sut/realize-each s)]
 
-        (pr/let [[r0 [r1t r1v :as r1] r2] (safe-consume t)]
+        (pr/let [[r0 [r1t r1v :as _r1] r2] (safe-consume t)]
 
           (is (= [[::ok 0]
                   [::ok ::closed]]
@@ -369,8 +369,8 @@
             ;; the safe-chunk-xform currently skips a step in the stream
             ;; topology to error the output stream
             (pr/let [vs (safe-consume t)
-                     oks (filter (fn [[k v]] (= ::ok k)) vs)
-                     [[_ err]] (filter (fn [[k v]] (= ::error k)) vs)]
+                     oks (filter (fn [[k _v]] (= ::ok k)) vs)
+                     [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
               (is (= [[::ok 1]
                       [::ok :prpr.nustream-test/closed]]
                      oks))
@@ -396,8 +396,8 @@
             ;; the safe-chunk-xform currently skips a step in the stream
             ;; topology to error the output stream
             (pr/let [vs (safe-consume t)
-                     oks (filter (fn [[k v]] (= ::ok k)) vs)
-                     [[_ err]] (filter (fn [[k v]] (= ::error k)) vs)]
+                     oks (filter (fn [[k _v]] (= ::ok k)) vs)
+                     [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
               (is (= [[::ok 1]
                       [::ok :prpr.nustream-test/closed]]
                      oks))
@@ -743,7 +743,7 @@
                               (throw (ex-info "boo" {:v v}))
                               true))
                           s)]
-        (pr/let [[a b c d :as vs] (safe-consume t)]
+        (pr/let [[a b c _d :as _vs] (safe-consume t)]
           (is (= [::ok (types/stream-chunk [0 2])] a))
           (is (= ::error (first b)))
           (is (= {:v 3} (ex-data (second b))))

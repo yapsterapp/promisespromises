@@ -1,16 +1,14 @@
 (ns prpr.stream
-  (:refer-clojure :exclude [map mapcat filter reductions reduce])
+  (:refer-clojure :exclude [map mapcat filter reductions reduce concat])
   (:require
+   [clojure.core :as clj]
+   [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
    ;; [prpr.stream.concurrency :as concurrency]
-   [prpr.stream.consumer :as consumer]
-   [promesa.core :as pr]
-   [clojure.core :as clj])
-  (:refer-clojure
-    :exclude [map filter mapcat reductions reduce concat]))
+   [prpr.stream.consumer :as consumer]))
 
 ;; a clj+cljs cross-platform streams lib, in the style of manifold
 ;;

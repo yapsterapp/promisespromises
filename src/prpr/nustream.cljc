@@ -452,7 +452,7 @@
 
        (pr/chain
         (fn [initial-val]
-          (prn "initial-val" initial-val)
+          ;; (prn "initial-val" initial-val)
 
           (cond
 
@@ -477,14 +477,14 @@
               #_{:clj-kondo/ignore [:loop-without-recur]}
               (pr/loop [val initial-val]
 
-                (prn "loop" val)
+                ;; (prn "loop" val)
 
                 (if (reduced? val)
                   (deref val)
 
                   (-> (take! s ::none)
                       (pr/chain (fn [x]
-                                  (prn "take!" val x)
+                                  ;; (prn "take!" val x)
                                   (cond
 
                                     (identical? ::none x) val

@@ -63,10 +63,10 @@
 
   (testing "correctly propagates nil values"
     (let [s (stream-of
-              [(pr/resolved 0)
-               (pr/resolved nil)
-               2
-               nil])
+             [(pr/resolved 0)
+              (pr/resolved nil)
+              2
+              nil])
           t (sut/realize-each s)]
 
       (pr/let [vs (->> (range 0 5)
@@ -222,7 +222,7 @@
                   [::ok 2]
                   [::ok 3]
                   [::ok :prpr.nustream-test/closed]]
-               vs)))))
+                 vs)))))
     (testing "transforms a stream of chunks"
       (let [s (stream-of [(types/stream-chunk [0 1 2])])
             t (sut/transform (map inc) s)]
@@ -231,11 +231,11 @@
                   [::ok 2]
                   [::ok 3]
                   [::ok :prpr.nustream-test/closed]]
-               vs)))))
+                 vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
       (let [s (stream-of [(types/stream-chunk [0])
-                                     (types/stream-chunk [1 2])
-                                     3])
+                          (types/stream-chunk [1 2])
+                          3])
             t (sut/transform (map inc) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok 1]
@@ -243,7 +243,7 @@
                   [::ok 3]
                   [::ok 4]
                   [::ok :prpr.nustream-test/closed]]
-               vs))))
+                 vs))))
       (let [s (stream-of [0
                           (types/stream-chunk [1 2])
                           3])
@@ -254,7 +254,7 @@
                   [::ok 3]
                   [::ok 4]
                   [::ok :prpr.nustream-test/closed]]
-               vs))))))
+                 vs))))))
 
   (testing "stateful transducer"
     (testing "transforms a stream of plain values"
@@ -265,7 +265,7 @@
                   [::ok [1 1]]
                   [::ok [2 2]]
                   [::ok :prpr.nustream-test/closed]]
-               vs)))))
+                 vs)))))
     (testing "transforms a stream of chunks"
       (let [s (stream-of [(types/stream-chunk [0 0 1 1 2 2])])
             t (sut/transform (partition-by identity) s)]
@@ -274,12 +274,12 @@
                   [::ok [1 1]]
                   [::ok [2 2]]
                   [::ok :prpr.nustream-test/closed]]
-               vs)))))
+                 vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
       (let [s (stream-of [(types/stream-chunk [0])
-                                     0
-                                     (types/stream-chunk [1 1 2])
-                                      2])
+                          0
+                          (types/stream-chunk [1 1 2])
+                          2])
             t (sut/transform (partition-by identity) s)]
         (pr/let [vs (safe-consume t)]
           (is (= [[::ok [0 0]]
@@ -399,8 +399,8 @@
       (let [a (stream-of [0 1 2])
             b (sut/stream)
             _ (impl/put-all! b [0 1 2
-                               (types/stream-error (ex-info "boo" {:boo 100}))
-                               4])
+                                (types/stream-error (ex-info "boo" {:boo 100}))
+                                4])
 
             t (sut/map #(+ %1 %2) a b)]
 
@@ -460,9 +460,8 @@
 (deftest zip-test
   (testing "zips some streams"
     (testing "equal length streams"
-      (let [[a b] (repeatedly 2 sut/stream)
-            _ (put-all-and-close! a [0 1 2 3])
-            _ (put-all-and-close! b [:a :b :c :d])
+      (let [a (stream-of [0 1 2 3])
+            b (stream-of [:a :b :c :d])
 
             s (sut/zip a b)]
 
@@ -477,9 +476,8 @@
           (is (= ::closed r4)))))
 
     (testing "different length streams"
-      (let [[a b] (repeatedly 2 sut/stream)
-            _ (put-all-and-close! a [0 1 2 3])
-            _ (put-all-and-close! b [:a :b])
+      (let [a (stream-of [0 1 2 3])
+            b (stream-of [:a :b])
 
             s (sut/zip a b)]
 
@@ -492,9 +490,8 @@
           (is (= ::closed r2))))
 
       (testing "including a zero length stream"
-        (let [[a b] (repeatedly 2 sut/stream)
-              _ (put-all-and-close! a [])
-              _ (put-all-and-close! b [:a :b])
+        (let [a (stream-of [])
+              b (stream-of [:a :b])
 
               s (sut/zip a b)]
 
@@ -541,8 +538,8 @@
                              (ex-info "boo" {:id 100}))])
           t (sut/mapcat
              (fn [v] (if (odd? v)
-                      (throw (ex-info "boo" {:v v}))
-                      (repeat v v)))
+                       (throw (ex-info "boo" {:v v}))
+                       (repeat v v)))
              s)]
       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
         (is (= [[::ok (types/stream-chunk [2 2])]
@@ -656,39 +653,36 @@
 
   (testing "when receiving a nil wrapper sends nil to the filter fn"
     (let [s (stream-of [0 1 (types/stream-nil) 2 3 (types/stream-nil) 4 5])
-            t (sut/filter
-               (fn [v] (or (nil? v) (odd? v) ))
-               s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1]
-                  [::ok nil]
-                  [::ok 3]
-                  [::ok nil]
-                  [::ok 5]
-                  [::ok ::closed]]
-                 vs))))))
+          t (sut/filter
+             (fn [v] (or (nil? v) (odd? v) ))
+             s)]
+      (pr/let [vs (safe-consume t)]
+        (is (= [[::ok 1]
+                [::ok nil]
+                [::ok 3]
+                [::ok nil]
+                [::ok 5]
+                [::ok ::closed]]
+               vs))))))
 
 (deftest reductions-test
 
   (testing "returns reductions on the output stream"
     (testing "reductions of a stream of plain values"
       (testing "reductions of an empty stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [])
+        (let [s (stream-of [])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v (sut/take! t ::closed)]
             (is (= ::closed v )))))
       (testing "reductions of a single-element stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [5])
+        (let [s (stream-of [5])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
                    v2 (sut/take! t ::closed)]
             (is (= 5 v1))
             (is (= ::closed v2)))))
       (testing "reductions of a multi-element stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2 3])
+        (let [s (stream-of [1 2 3])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
                    v2 (sut/take! t ::closed)
@@ -701,16 +695,14 @@
 
     (testing "reductions of a stream of chunks"
       (testing "reductions of a single-element stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [5])])
+        (let [s (stream-of [(types/stream-chunk [5])])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
                    v2 (sut/take! t ::closed)]
             (is (= (types/stream-chunk [5]) v1))
             (is (= ::closed v2)))))
       (testing "reductions of a multi-element stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [1 2 3])])
+        (let [s (stream-of [(types/stream-chunk [1 2 3])])
               t (sut/reductions ::reductions-empty-stream + s)]
           (pr/let [v1 (sut/take! t ::closed)
                    v2 (sut/take! t ::closed)]
@@ -718,8 +710,7 @@
             (is (= ::closed v2))))))
 
     (testing "reductions of a mix of chunks and plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [1 (types/stream-chunk [2 3]) 4])
+      (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
             t (sut/reductions ::reductions-empty-stream + s)]
         (pr/let [v1 (sut/take! t ::closed)
                  v2 (sut/take! t ::closed)
@@ -732,8 +723,7 @@
 
   (testing "returns reducing function errors"
     (testing "with plain values"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [0 2 3])
+      (let [s (stream-of [0 2 3])
             t (sut/reductions
                ::reductions-empty-stream
                (fn [a v]
@@ -752,8 +742,7 @@
                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
           (is (= ::ok k4)) (is (= ::closed v4)))))
     (testing "with chunks"
-      (let [s (sut/stream)
-            _ (put-all-and-close! s [(types/stream-chunk [0 2 3])])
+      (let [s (stream-of [(types/stream-chunk [0 2 3])])
             t (sut/reductions
                ::reductions-empty-stream
                (fn [a v]
@@ -769,8 +758,7 @@
           (is (= ::ok k2)) (is (= ::closed v2))))))
 
   (testing "when receiving a nil wrapper sends nil to the reducing fn"
-    (let [s (sut/stream)
-          _ (put-all-and-close! s [1 (types/stream-nil) 2])]
+    (let [s (stream-of [1 (types/stream-nil) 2])]
       (pr/let [t (sut/reductions
                   ::reduce-nil
                   (fn [a v]
@@ -789,8 +777,7 @@
   (testing "deals with reduced"
     (testing "with no initial value"
       (testing "with reduced in second place"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 3 4 6])
+        (let [s (stream-of [1 3 4 6])
               t (sut/reductions
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
@@ -802,8 +789,7 @@
             (is (= 4 v2))
             (is (= ::closed v3)))))
       (testing "with reduced further down the stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [2 4 3 6])
+        (let [s (stream-of [2 4 3 6])
               t (sut/reductions
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
@@ -818,8 +804,7 @@
             (is (= ::closed v4))))))
     (testing "with an initial value"
       (testing "with reduced in first place"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2 4 6])
+        (let [s (stream-of [1 2 4 6])
               t (sut/reductions
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
@@ -832,8 +817,7 @@
             (is (= 2 v2))
             (is (= ::closed v3)))))
       (testing "with reduced further down the stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [2 4 3 6])
+        (let [s (stream-of [2 4 3 6])
               t (sut/reductions
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
@@ -854,78 +838,65 @@
   (testing "reduces a stream"
     (testing "reduces an empty stream"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [])]
+        (let [s (stream-of [])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 0 r)))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [])]
+        (let [s (stream-of [])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 5 r))))))
     (testing "reduces a non-empty stream with plain values"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1])]
+        (let [s (stream-of [1])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 1 r))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2])]
+        (let [s (stream-of [1 2])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 3 r))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2 3 4 5 6])]
+        (let [s (stream-of [1 2 3 4 5 6])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 21 r)))))
 
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1])]
+        (let [s (stream-of [1])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 6 r))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2])]
+        (let [s (stream-of [1 2])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 8 r))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2 3 4 5 6])]
+        (let [s (stream-of [1 2 3 4 5 6])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 26 r))))))
     (testing "reduces a stream with chunks"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
-                                       (types/stream-chunk [4 5 6])])]
+        (let [s (stream-of [(types/stream-chunk [1 2 3])
+                            (types/stream-chunk [4 5 6])])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 21 r)))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [1 2 3])
-                                       (types/stream-chunk [4 5 6])])]
+        (let [s (stream-of [(types/stream-chunk [1 2 3])
+                            (types/stream-chunk [4 5 6])])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 26 r))))))
     (testing "reduces a stream with mixed chunks and plain values"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1
-                                       (types/stream-chunk [2 3])
-                                       4 5
-                                       (types/stream-chunk [6])])]
+        (let [s (stream-of [1
+                            (types/stream-chunk [2 3])
+                            4 5
+                            (types/stream-chunk [6])])]
           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
             (is (= 21 r)))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1
-                                       (types/stream-chunk [2 3])
-                                       4 5
-                                       (types/stream-chunk [6])])]
+        (let [s (stream-of [1
+                            (types/stream-chunk [2 3])
+                            4 5
+                            (types/stream-chunk [6])])]
           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
             (is (= 26 r)))))))
   (testing "returns reducing function errors"
     (testing "returns errors on stream with plain values"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 1])]
+        (let [s (stream-of [0 1])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -938,8 +909,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 1} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 3])]
+        (let [s (stream-of [0 2 3])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -953,8 +923,7 @@
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v))))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1])]
+        (let [s (stream-of [1])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -968,8 +937,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 1} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 3])]
+        (let [s (stream-of [0 2 3])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -985,8 +953,7 @@
                     :v 3} (ex-data v)))))))
     (testing "returns errors on stream with chunks"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [0 3])])]
+        (let [s (stream-of [(types/stream-chunk [0 3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -999,8 +966,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [0 2 3])])]
+        (let [s (stream-of [(types/stream-chunk [0 2 3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1014,8 +980,7 @@
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v))))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [3])])]
+        (let [s (stream-of [(types/stream-chunk [3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1029,8 +994,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [0 2 3])])]
+        (let [s (stream-of [(types/stream-chunk [0 2 3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1046,8 +1010,7 @@
                     :v 3} (ex-data v)))))))
     (testing "returns errors on stream with mixed plain values and chunks"
       (testing "with no initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 (types/stream-chunk [3])])]
+        (let [s (stream-of [0 (types/stream-chunk [3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1060,8 +1023,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 (types/stream-chunk [3])])]
+        (let [s (stream-of [0 2 (types/stream-chunk [3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1075,8 +1037,7 @@
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v))))))
       (testing "with an initial value"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [(types/stream-chunk [3])])]
+        (let [s (stream-of [(types/stream-chunk [3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1090,8 +1051,7 @@
             (is (= ::error k))
             (is (= {::sut/reduce-id ::reduce-error
                     :v 3} (ex-data v)))))
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 (types/stream-chunk [3])])]
+        (let [s (stream-of [0 2 (types/stream-chunk [3])])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::reduce-error
@@ -1107,8 +1067,7 @@
                     :v 3} (ex-data v))))))))
 
   (testing "when receiving a nil wrapper sends nil to the reducing fn"
-    (let [s (sut/stream)
-          _ (put-all-and-close! s [(types/stream-nil)])]
+    (let [s (stream-of [(types/stream-nil)])]
       (pr/let [r (sut/reduce
                   ::reduce-nil
                   (fn [a v]
@@ -1119,8 +1078,7 @@
   (testing "deals with reduced"
     (testing "with no initial value"
       (testing "reduced at second position"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [2 3 4 6])]
+        (let [s (stream-of [2 3 4 6])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::deals-with-reduced
@@ -1133,8 +1091,7 @@
             (is (= ::ok k))
             (is (= 5 v)))))
       (testing "reduced further down stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 3 4 6])]
+        (let [s (stream-of [0 2 3 4 6])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::deals-with-reduced
@@ -1148,8 +1105,7 @@
             (is (= 5 v))))))
     (testing "with an initial value"
       (testing "reduced at head of stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [1 2 3 4 6])]
+        (let [s (stream-of [1 2 3 4 6])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::deals-with-reduced
@@ -1163,8 +1119,7 @@
             (is (= ::ok k))
             (is (= 3 v)))))
       (testing "reduced at second position"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [2 3 4 6])]
+        (let [s (stream-of [2 3 4 6])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::deals-with-reduced
@@ -1178,8 +1133,7 @@
             (is (= ::ok k))
             (is (= 7 v)))))
       (testing "reduced further down stream"
-        (let [s (sut/stream)
-              _ (put-all-and-close! s [0 2 3 4 6])]
+        (let [s (stream-of [0 2 3 4 6])]
           (pr/let [[k v] (->
                           (sut/reduce
                            ::deals-with-reduced

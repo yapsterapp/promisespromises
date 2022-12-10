@@ -87,6 +87,7 @@
     callback
     dst
     {close-src? :prpr.stream/upstream?
+     close-sink? :prpr.stream/downstream?
      :as _opts}]
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
@@ -106,7 +107,8 @@
                   (nil? v)
                   ;; src has closed
                   (do
-                    (pt/-close! dst)
+                    (when close-sink?
+                      (pt/-close! dst))
                     ::closed)
 
                   :else
@@ -165,6 +167,14 @@
     ch
     (async/chan n))))
 
+(def default-connect-via-opts
+  {;; standard manifold default
+   :prpr.stream/downstream? true
+   ;; *not* the standard manifold default - but we
+   ;; can easily implement this behaviour for core.async too
+   ;; so going with it for cross-platform consistency
+   :prpr.stream/upstream? true})
+
 (extend-protocol pt/IStream
   ManyToManyChannel
   (-closed? [s]
@@ -183,8 +193,12 @@
   (-close! [this] (async-close! this))
 
   (-connect-via
-    ([source f sink] (async-connect-via source f sink))
-    ([source f sink opts] (async-connect-via source f sink opts)))
+    ([source f sink] (async-connect-via source f sink default-connect-via-opts))
+    ([source f sink opts] (async-connect-via
+                           source
+                           f
+                           sink
+                           (merge default-connect-via-opts opts))))
 
   (-wrap-value [_s v] (async-wrap-value v))
   (-buffer [s n] (async-buffer s n)))

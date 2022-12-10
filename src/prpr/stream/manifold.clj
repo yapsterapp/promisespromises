@@ -33,6 +33,25 @@
     (m.deferred/->deferred v)
     v))
 
+(def default-connect-via-opts
+  {;; standard manifold default
+   :prpr.stream/downstream? true
+   ;; *not* the standard manifold default - but we
+   ;; can easily implement this behaviour for core.async too
+   ;; so going with it for cross-platform consistency
+   :prpr.stream/upstream? true})
+
+(defn manifold-connect-via-opts
+  [{downstream? :prpr.stream/downstream?
+    upstream? :prpr.stream/upstream?
+    timeout :prpr.stream/timeout
+    description :prpr.stream/description}]
+  (cond-> {}
+    (some? downstream?) (assoc :downstream? downstream?)
+    (some? upstream?) (assoc :upstream? upstream?)
+    (some? timeout) (assoc :timeout timeout)
+    (some? description) (assoc :description description)))
+
 (extend-protocol p/IStream
   Stream
   (-closed? [s]
@@ -57,10 +76,19 @@
   (-connect-via
     ([source f sink]
      (let [f' (comp promise->deferred f)]
-       (m.stream/connect-via source f' sink)))
+       (m.stream/connect-via
+        source
+        f'
+        sink
+        (manifold-connect-via-opts default-connect-via-opts))))
     ([source f sink opts]
      (let [f' (comp promise->deferred f)]
-       (m.stream/connect-via source f' sink opts))))
+       (m.stream/connect-via
+        source
+        f'
+        sink
+        (manifold-connect-via-opts
+         (merge default-connect-via-opts opts))))))
 
   ;; don't need to wrap anything for manifold
   (-wrap-value [_ v] v)

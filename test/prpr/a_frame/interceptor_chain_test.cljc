@@ -1,20 +1,14 @@
 (ns prpr.a-frame.interceptor-chain-test
-  #?(:cljs (:require-macros
-            [prpr.test
-             :refer [deftest test-async is testing
-                     use-fixtures]]
-            [prpr.a-frame.interceptor-chain-test
-             :refer [wrap-catch]]))
   (:require
 
-   #?(:cljs [prpr.test])
-
-   #?(:clj [prpr.test :refer [deftest test-async is testing
-                              use-fixtures compose-fixtures]])
+   [prpr.test :refer [deftest tlet testing is
+                      use-fixtures
+                      #?(:clj compose-fixtures)]]
 
    #?(:cljs [schema.core :as s])
    #?(:clj [schema.test :refer [validate-schemas]])
 
+   [promesa.core :as pr]
    [prpr.promise :as prpr]
    [prpr.a-frame.schema :as af.schema]
    [prpr.a-frame.registry.test :as registry.test]
@@ -42,37 +36,32 @@
    ::sut/history []})
 
 (deftest execute-empty-chain-test
-  (test-async
-   (prpr/ddo
-    [:let [chain []
-           input {:test (rand-int 9999)}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (= (merge
-             empty-interceptor-context
-             input)
-            r))))))
+  (pr/let
+      [chain []
+       input {:test (rand-int 9999)}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (= (merge
+            empty-interceptor-context
+            input)
+           r))))
 
 (deftest execute-single-interceptor-test
   (sut/register-interceptor
    ::execute-single-interceptor-test
    {::sut/enter (fn [x] (assoc x :entered? true))
     ::sut/leave (fn [x] (assoc x :left? true))})
-
-  (test-async
-   (prpr/ddo
-    [:let [chain [::execute-single-interceptor-test]
-           input {:test (rand-int 9999)}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (= (merge
-             empty-interceptor-context
-             input
-             {:entered? true
-              :left? true}
-             {::sut/history [[::execute-single-interceptor-test ::sut/enter]
-                             [::execute-single-interceptor-test ::sut/leave]]})
-            r))))))
+  (pr/let
+      [chain [::execute-single-interceptor-test]
+       input {:test (rand-int 9999)}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (= (merge
+            empty-interceptor-context
+            input
+            {:entered? true
+             :left? true}
+            {::sut/history [[::execute-single-interceptor-test ::sut/enter]
+                            [::execute-single-interceptor-test ::sut/leave]]})
+           r))))
 
 (deftest execute-single-interceptor-with-data-test
   (sut/register-interceptor
@@ -84,25 +73,23 @@
                   (is (= "barbar" data))
                   (assoc x :left? true))})
 
-  (test-async
-   (prpr/ddo
-    [:let [intc-with-data {::sut/key ::execute-single-interceptor-with-data-test
-                           ::sut/data {::sut/enter-data #ctx/path [::foo]
-                                       ::sut/leave-data #ctx/path [::bar]}}
-           chain [intc-with-data]
-           input {:test (rand-int 9999)
-                  ::foo "foofoo"
-                  ::bar "barbar"}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (= (merge
-             empty-interceptor-context
-             input
-             {:entered? true
-              :left? true}
-             {::sut/history [[intc-with-data ::sut/enter "foofoo"]
-                             [intc-with-data ::sut/leave "barbar"]]})
-            r))))))
+  (pr/let
+      [intc-with-data {::sut/key ::execute-single-interceptor-with-data-test
+                       ::sut/data {::sut/enter-data #ctx/path [::foo]
+                                   ::sut/leave-data #ctx/path [::bar]}}
+       chain [intc-with-data]
+       input {:test (rand-int 9999)
+              ::foo "foofoo"
+              ::bar "barbar"}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (= (merge
+            empty-interceptor-context
+            input
+            {:entered? true
+             :left? true}
+            {::sut/history [[intc-with-data ::sut/enter "foofoo"]
+                            [intc-with-data ::sut/leave "barbar"]]})
+           r))))
 
 (deftest execute-multiple-interceptors-test
   (doseq [[key inter] [[::execute-multiple-interceptors-test-A
@@ -134,74 +121,69 @@
                                        (assoc x :leaving-at (epoch)))}]]]
     (sut/register-interceptor key inter))
 
-  (test-async
-   (prpr/ddo
-    [:let [chain [::execute-multiple-interceptors-test-A
-                  ::execute-multiple-interceptors-test-B
-                  ::execute-multiple-interceptors-test-C
-                  ::execute-multiple-interceptors-test-D]
-           {t :test :as input} {:test (rand-int 9999)}
-           epoch-before (epoch)]
-     r (sut/execute ::app ::a-frame chain input)
-     :let [epoch-after (epoch)]]
-    (prpr/return
-     (do (is (= (merge
-                 empty-interceptor-context
-                 input
-                 {:states [{:test (* t 2) :test2 t}]}
-                 {::sut/history
-                  [[::execute-multiple-interceptors-test-A ::sut/enter]
-                   [::execute-multiple-interceptors-test-B ::sut/enter]
-                   [::execute-multiple-interceptors-test-C ::sut/enter]
-                   [::execute-multiple-interceptors-test-D ::sut/noop ::sut/enter]
-                   [::execute-multiple-interceptors-test-D ::sut/leave]
-                   [::execute-multiple-interceptors-test-C ::sut/noop ::sut/leave]
-                   [::execute-multiple-interceptors-test-B ::sut/noop ::sut/leave]
-                   [::execute-multiple-interceptors-test-A ::sut/leave]]})
-                (dissoc r :leaving-at)))
-         (is (<= epoch-before (:leaving-at r) epoch-after)))))))
+  (pr/let
+      [chain [::execute-multiple-interceptors-test-A
+              ::execute-multiple-interceptors-test-B
+              ::execute-multiple-interceptors-test-C
+              ::execute-multiple-interceptors-test-D]
+       {t :test :as input} {:test (rand-int 9999)}
+       epoch-before (epoch)
+       r (sut/execute ::app ::a-frame chain input)
+       epoch-after (epoch)]
+    (do (is (= (merge
+                empty-interceptor-context
+                input
+                {:states [{:test (* t 2) :test2 t}]}
+                {::sut/history
+                 [[::execute-multiple-interceptors-test-A ::sut/enter]
+                  [::execute-multiple-interceptors-test-B ::sut/enter]
+                  [::execute-multiple-interceptors-test-C ::sut/enter]
+                  [::execute-multiple-interceptors-test-D ::sut/noop ::sut/enter]
+                  [::execute-multiple-interceptors-test-D ::sut/leave]
+                  [::execute-multiple-interceptors-test-C ::sut/noop ::sut/leave]
+                  [::execute-multiple-interceptors-test-B ::sut/noop ::sut/leave]
+                  [::execute-multiple-interceptors-test-A ::sut/leave]]})
+               (dissoc r :leaving-at)))
+        (is (<= epoch-before (:leaving-at r) epoch-after)))))
 
 (deftest execute-promise-based-interceptors-test
   (doseq [[key inter] [[::execute-promise-based-interceptors-test-A
                         {::sut/enter (fn [x]
-                                       (prpr/success-pr
+                                       (pr/resolved
                                         (assoc x :success true)))}]
                        [::execute-promise-based-interceptors-test-B
                         {::sut/leave (fn [x]
-                                       (prpr/chain-pr
-                                        (prpr/success-pr x)
+                                       (pr/chain
+                                        (pr/resolved x)
                                         (fn [x]
                                           (assoc x :chain true))))}]
                        [::execute-promise-based-interceptors-test-C
                         {::sut/enter (fn [x]
-                                       (prpr/ddo
-                                        [:let [x' (assoc x :ddo true)]]
-                                        (prpr/return x')))}]]]
+                                       (pr/let [x' (assoc x :ddo true)]
+                                         x'))}]]]
     (sut/register-interceptor key inter))
 
-  (test-async
-   (prpr/ddo
-    [:let [chain [::execute-promise-based-interceptors-test-A
-                  ::execute-promise-based-interceptors-test-B
-                  ::execute-promise-based-interceptors-test-C]
-           input {}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (=
-          (merge
-           empty-interceptor-context
-           {:chain true
-            :success true
-            :ddo true
+  (pr/let
+      [chain [::execute-promise-based-interceptors-test-A
+              ::execute-promise-based-interceptors-test-B
+              ::execute-promise-based-interceptors-test-C]
+       input {}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (=
+         (merge
+          empty-interceptor-context
+          {:chain true
+           :success true
+           :ddo true
 
-            ::sut/history
-            [[::execute-promise-based-interceptors-test-A ::sut/enter]
-             [::execute-promise-based-interceptors-test-B ::sut/noop ::sut/enter]
-             [::execute-promise-based-interceptors-test-C ::sut/enter]
-             [::execute-promise-based-interceptors-test-C ::sut/noop ::sut/leave]
-             [::execute-promise-based-interceptors-test-B ::sut/leave]
-             [::execute-promise-based-interceptors-test-A ::sut/noop ::sut/leave]]})
-            r))))))
+           ::sut/history
+           [[::execute-promise-based-interceptors-test-A ::sut/enter]
+            [::execute-promise-based-interceptors-test-B ::sut/noop ::sut/enter]
+            [::execute-promise-based-interceptors-test-C ::sut/enter]
+            [::execute-promise-based-interceptors-test-C ::sut/noop ::sut/leave]
+            [::execute-promise-based-interceptors-test-B ::sut/leave]
+            [::execute-promise-based-interceptors-test-A ::sut/noop ::sut/leave]]})
+         r))))
 
 (deftest execute-queue-alteration-test
   (doseq [[key inter] [[::execute-queue-alteration-test-late-arrival
@@ -211,29 +193,27 @@
                        [::execute-queue-alteration-test-alteration
                         {::sut/enter
                          (fn [x]
-                           (prpr/always-pr
+                           (prpr/always
                             (sut/enqueue
                              x
                              [::execute-queue-alteration-test-late-arrival])))}]]]
     (sut/register-interceptor key inter))
 
-  (test-async
-   (prpr/ddo
-    [:let [chain [::execute-queue-alteration-test-alteration]
-           input {}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (= (merge
-             empty-interceptor-context
-             {:arrived :late
-              :left :early
+  (pr/let
+      [chain [::execute-queue-alteration-test-alteration]
+       input {}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (= (merge
+            empty-interceptor-context
+            {:arrived :late
+             :left :early
 
-              ::sut/history
-              [[::execute-queue-alteration-test-alteration ::sut/enter]
-               [::execute-queue-alteration-test-late-arrival ::sut/enter]
-               [::execute-queue-alteration-test-late-arrival ::sut/leave]
-               [::execute-queue-alteration-test-alteration ::sut/noop ::sut/leave]]})
-            r))))))
+             ::sut/history
+             [[::execute-queue-alteration-test-alteration ::sut/enter]
+              [::execute-queue-alteration-test-late-arrival ::sut/enter]
+              [::execute-queue-alteration-test-late-arrival ::sut/leave]
+              [::execute-queue-alteration-test-alteration ::sut/noop ::sut/leave]]})
+           r))))
 
 (deftest execute-stack-alteration-test
   (doseq [[key inter] [[::execute-stack-alteration-test-late-arrival
@@ -242,7 +222,7 @@
 
                        [::execute-stack-alteration-test-alteration
                         {::sut/leave (fn [x]
-                                       (prpr/always-pr
+                                       (prpr/always
                                         (update
                                          x
                                          ::sut/stack
@@ -250,78 +230,71 @@
                                          ::execute-stack-alteration-test-late-arrival)))}]]]
     (sut/register-interceptor key inter))
 
-  (test-async
-   (prpr/ddo
-    [:let [chain [::execute-stack-alteration-test-alteration]
-           input {}]
-     r (sut/execute ::app ::a-frame chain input)]
-    (prpr/return
-     (is (= (merge
-             empty-interceptor-context
-             {:left :early
+  (pr/let
+      [chain [::execute-stack-alteration-test-alteration]
+       input {}
+       r (sut/execute ::app ::a-frame chain input)]
+    (is (= (merge
+            empty-interceptor-context
+            {:left :early
 
-              ::sut/history
-              [[::execute-stack-alteration-test-alteration ::sut/noop ::sut/enter]
-               [::execute-stack-alteration-test-alteration ::sut/leave]
-               [::execute-stack-alteration-test-late-arrival ::sut/leave]]})
-            r))))))
+             ::sut/history
+             [[::execute-stack-alteration-test-alteration ::sut/noop ::sut/enter]
+              [::execute-stack-alteration-test-alteration ::sut/leave]
+              [::execute-stack-alteration-test-late-arrival ::sut/leave]]})
+           r))))
 
 (deftest execute-error-handling-test
-  (let [suppressed-errors (atom [])
+  (tlet [suppressed-errors (atom [])
         wrap-catch-execute (fn [chain input]
                              (reset! suppressed-errors [])
-                             (prpr/catchall
-                              (prpr/chain-pr
+                             (prpr/catch-always
+                              (pr/chain
                                (sut/execute*
                                 (fn [e] (throw e))
                                 (fn [xs] (swap! suppressed-errors concat xs))
                                 (sut/initiate ::app ::a-frame chain input))
                                (fn [r] [::ok r]))
                               (fn [e] [::error e])))]
-    (test-async
-     (testing "captures error in :enter interceptor"
-       (doseq [[k i] [[::execute-error-handline-test-enter-boom
+
+    (testing "captures error in :enter interceptor"
+       (doseq [[k i] [[::execute-error-handling-test-enter-boom
                        {::sut/enter
-                        (fn [_] (throw (prpr/error-ex ::boom {})))}]
-                      [::execute-error-handline-test-enter-unexpected-boom
+                        (fn [_] (throw (ex-info "boom" {:id ::boom})))}]
+                      [::execute-error-handling-test-enter-unexpected-boom
                        {::sut/enter
                         (fn [_]
-                          (throw (prpr/error-ex ::unexpected-boom {})))}]]]
+                          (throw (ex-info
+                                  "unexpected-boom"
+                                  {:id ::unexpected-boom})))}]]]
          (sut/register-interceptor k i))
-
-       (prpr/ddo
-        [:let [chain [::execute-error-handline-test-enter-boom
-                      ::execute-error-handline-test-enter-unexpected-boom
-                      ]]
-         [tag r] (wrap-catch-execute chain {})]
-        (prpr/return
-         (do (is (= ::error tag))
-             (is (= {:tag ::boom
-                     :value {}}
-                    (-> r ex-cause ex-data)))
-             (is (empty? @suppressed-errors))))))
+       (pr/let
+           [chain [::execute-error-handling-test-enter-boom
+                   ::execute-error-handling-test-enter-unexpected-boom]
+            [tag r] (wrap-catch-execute chain {})]
+         (is (= ::error tag))
+         (is (= {:id ::boom} (-> r ex-cause ex-data)))
+         (is (empty? @suppressed-errors))))
 
      (testing "captures error in :leave interceptor"
        (doseq [[k i] [[::execute-error-handling-test-leave-unexpected-boom
                        {::sut/leave
-                        (fn [_] (throw (prpr/error-ex ::unexpected-boom {})))}
+                        (fn [_] (throw (ex-info "unexpected-boom"
+                                               {:id ::unexpected-boom})))}
                        ]
 
                       [::execute-error-handling-test-leave-boom
                        {::sut/leave
-                        (fn [_] (throw (prpr/error-ex ::boom {})))}]]]
+                        (fn [_] (throw (ex-info "boom" {:id ::boom})))}]]]
          (sut/register-interceptor k i))
 
-       (prpr/ddo
-        [:let [chain [::execute-error-handling-test-leave-unexpected-boom
-                      ::execute-error-handling-test-leave-boom]]
-         [tag r] (wrap-catch-execute chain {})]
-        (prpr/return
-         (do (is (= ::error tag))
-             (is (= {:tag ::boom
-                     :value {}}
-                    (-> r ex-cause ex-data)))
-             (is (empty? @suppressed-errors))))))
+       (pr/let
+           [chain [::execute-error-handling-test-leave-unexpected-boom
+                   ::execute-error-handling-test-leave-boom]
+            [tag r] (wrap-catch-execute chain {})]
+         (is (= ::error tag))
+         (is (= {:id ::boom} (-> r ex-cause ex-data)))
+         (is (empty? @suppressed-errors))))
 
      (testing "captures errors in error handlers"
        (let [left-with (atom nil)]
@@ -332,70 +305,73 @@
                     ::sut/leave (fn [x] (reset! left-with ::leave) x)}]
 
                   [::execute-error-handling-test-error-handler-error-error
-                   {::sut/error (fn [_ _] (throw (prpr/error-ex ::error-error {})))}]
+                   {::sut/error (fn [_ _]
+                                  (throw (ex-info
+                                          "error-error"
+                                          {:id ::error-error})))}]
 
                   [::execute-error-handling-test-error-handler-error-boom
-                   {::sut/enter (fn [_] (throw (prpr/error-ex ::boom {})))}]]]
+                   {::sut/enter (fn [_] (throw
+                                        (ex-info
+                                         "boom"
+                                         {:id ::boom})))}]]]
 
            (sut/register-interceptor k i))
 
-         (prpr/ddo
-          [:let [chain
-                 [::execute-error-handling-test-error-handler-error-left-with
-                  ::execute-error-handling-test-error-handler-error-error
-                  ::execute-error-handling-test-error-handler-error-boom]]
+         (pr/let
+             [chain
+              [::execute-error-handling-test-error-handler-error-left-with
+               ::execute-error-handling-test-error-handler-error-error
+               ::execute-error-handling-test-error-handler-error-boom]
 
-           [tag r] (wrap-catch-execute chain {})]
-          (prpr/return
-           (do (is (= ::error @left-with))
-               (is (= ::error tag))
-               (is (= {:tag ::error-error
-                       :value {}}
-                      (-> r ex-cause ex-data)))
-               (is (= [{:tag ::boom
-                        :value {}}]
-                      (map
-                       (comp ex-data ex-cause)
-                       @suppressed-errors))))))))
+              [tag r] (wrap-catch-execute chain {})]
+           (is (= ::error @left-with))
+           (is (= ::error tag))
+           (is (= {:id ::error-error} (-> r ex-cause ex-data)))
+           (is (= [{:id ::boom}]
+                  (map
+                   (comp ex-data ex-cause)
+                   @suppressed-errors))))))
 
      (testing "captures error promises"
        (doseq [[k i]
                [[::execute-error-handling-test-error-promises-boom
-                 {::sut/enter (fn [_] (prpr/error-pr ::boom {}))}]
+                 {::sut/enter (fn [_] (pr/rejected
+                                      (ex-info "boom"
+                                               {:id ::boom})))}]
 
                 [::execute-error-handling-test-error-promises-unexpected-boom
-                 {::sut/enter (fn [_] (throw (prpr/error-ex ::unexpected-boom {})))}]]]
+                 {::sut/enter (fn [_] (throw
+                                      (ex-info
+                                       "unexpected-boom"
+                                       {:id ::unexpected-boom})))}]]]
+
          (sut/register-interceptor k i))
 
-       (prpr/ddo
-        [:let [chain
-               [::execute-error-handling-test-error-promises-boom
-                ::execute-error-handling-test-error-promises-unexpected-boom]]
-         [tag r] (wrap-catch-execute chain {})]
-        (prpr/return
-         (do (is (= ::error tag))
-             (is (= {:tag ::boom
-                     :value {}}
-                    (-> r ex-cause ex-data)))
-             (is (empty? @suppressed-errors))))))
+       (pr/let
+           [chain
+            [::execute-error-handling-test-error-promises-boom
+             ::execute-error-handling-test-error-promises-unexpected-boom]
+            [tag r] (wrap-catch-execute chain {})]
+         (is (= ::error tag))
+         (is (= {:id ::boom} (-> r ex-cause ex-data)))
+         (is (empty? @suppressed-errors))))
 
      (testing "throws if error not cleared"
        (doseq [[k i] [[::execute-error-handline-not-cleared-clear
                        {::sut/error (fn [c _] (sut/clear-errors c))}]
                       [::execute-error-handling-not-cleared-boom
-                       {::sut/enter (fn [_] (prpr/error-pr ::boom {:fail :test}))}]]]
+                       {::sut/enter (fn [_] (pr/rejected "boom" {:fail :test}))}]]]
          (sut/register-interceptor k i))
 
-       (prpr/ddo
-        [:let [chain [::execute-error-handling-not-cleared-boom]]
-         [tag _r] (wrap-catch-execute chain {})]
-        (prpr/return
-         (is (= ::error tag))))
-       (prpr/ddo
-        [:let [chain [::execute-error-handline-not-cleared-clear
-                      ::execute-error-handling-not-cleared-boom]]
-         [tag r] (wrap-catch-execute chain {})]
-        (prpr/return
+       (pr/let
+           [chain [::execute-error-handling-not-cleared-boom]
+            [tag _r] (wrap-catch-execute chain {})]
+         (is (= ::error tag)))
+       (pr/let
+           [chain [::execute-error-handline-not-cleared-clear
+                   ::execute-error-handling-not-cleared-boom]
+            [tag r] (wrap-catch-execute chain {})]
          (do (is (= ::ok tag))
              (is (= (merge
                      empty-interceptor-context
@@ -404,18 +380,17 @@
                        [::execute-error-handling-not-cleared-boom ::sut/enter]
                        [::execute-error-handling-not-cleared-boom ::sut/noop ::sut/error]
                        [::execute-error-handline-not-cleared-clear ::sut/error]]})
-                    r)))))))))
+                    r)))))))
 
-#?(:clj
-   (defmacro wrap-catch
-     [form]
-     `(prpr/catchall
-       (prpr/ddo [ctx# ~form]
-                 (prpr/return-pr
-                  [::ok ctx#]))
-       (fn [e#]
-         (prpr/return-pr
-          [::error e#])))))
+(defmacro wrap-catch
+  [form]
+  `(prpr/catch-always
+
+    (pr/let [ctx# ~form]
+      [::ok ctx#])
+
+    (fn [e#]
+      [::error e#])))
 
 (deftest resume-test
 
@@ -432,21 +407,20 @@
                ::sut/leave (fn [x] (assoc x :left? true))}]]]
       (sut/register-interceptor key inter))
 
-    (test-async
-     (testing "can resume after failure"
-       (prpr/ddo [[tag err] (wrap-catch
-                             (sut/execute
-                              ::app
-                              ::a-frame
-                              [::resume-test-throw-once]
-                              {}))
+    (testing "can resume after failure"
+      (pr/let [[tag err] (wrap-catch
+                          (sut/execute
+                           ::app
+                           ::a-frame
+                           [::resume-test-throw-once]
+                           {}))
 
-                  _ (is (= tag ::error))
+               _ (is (= tag ::error))
 
-                  [resume-tag
-                    {resume-left? :left?
-                     :as _resume-val}] (wrap-catch
-                                        (sut/resume ::app ::a-frame err))]
+               [resume-tag
+                {resume-left? :left?
+                 :as _resume-val}] (wrap-catch
+                                    (sut/resume ::app ::a-frame err))]
 
-                 (is (= ::ok resume-tag))
-                 (is (= true resume-left?)))))))
+        (is (= ::ok resume-tag))
+        (is (= true resume-left?))))))

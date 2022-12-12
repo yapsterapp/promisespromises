@@ -48,10 +48,12 @@
 
 (defmacro test-async
   "the body of test-async is a form or forms that
-   each return a plain value or a promise of a value...
-   test-async serially completes them - waiting on the
-   completion of any promises before proceeding to
-   evaluate the next form"
+   when evaluated return:
+
+   <plain-value> | Promise<plain-value> | fn | Sequence<fn>
+
+   test-async serially evaluates the forms, and any which yield
+   fn or Sequence<fn> will be immediately called, also serially"
   [& forms]
   (let [;; wrap each form into a 0-args fn
         fs (for [form forms]
@@ -87,16 +89,30 @@
     (clojure.test/deftest ~nm ~@body)))
 
 (defmacro deftest
-  "define a test whose body yields a list of promises, which will
-   be resolved before proceeding
+  "define a test whose body will be evaluated with test-async. it
+   looks very like a normal sync deftest, but it is not. there are
+   some caveats, viz:
 
-   use the same name as clojure.test/deftest because CIDER
+   NOTE: if a let form is used to wrap a series for testing forms
+   inside the deftest, then you *must* remember to surround the
+   testing forms in a vector (or list), otherwise only the last
+   form will be evaluated. you can use the tlet form to do this
+   for you
+
+   NOTE: use the same name as clojure.test/deftest because CIDER
    recognizes it and uses it to find tests"
   [name & body]
   `(prpr.test/deftest* ~name
      (println "   " ~(str name))
      (prpr.test/test-async
       ~@body)))
+
+(defmacro tlet
+  "a let which puts its body in a vector, to be used inside deftests
+   so that all the testing forms inside the let are retained"
+  [bindings & body]
+  `(let ~bindings
+     [ ~@body  ]))
 
 (defmacro is
   [& body]
@@ -106,27 +122,26 @@
       (clojure.test/is ~@body))))
 
 (defmacro testing
-  "each testing form is expected to have zero or more
-   child forms (which may be nested testing forms), each
-   of which yields a promise (or plain value), and will
-   be evaluated serially in strict depth-first order"
+  "each testing form body is evaluated in the same manner as a deftest
+   body"
   [s & forms]
   (when (not-empty forms)
     (let [;; wrap each form into a 0-args fn
           fs (for [form forms]
                `(fn [] ~form))]
-      `(prpr.util.macro/if-cljs
-        (do
-          (println "      " ~s)
-          (cljs.test/testing
-              (prpr.test.reduce/reduce-pr-fns
-               [~@fs])))
-        (with-test-binding-frame
+      `(fn []
+         (prpr.util.macro/if-cljs
           (do
             (println "      " ~s)
-            (clojure.test/testing ~s
-              (prpr.test.reduce/reduce-pr-fns
-               [~@fs]))))))))
+            (cljs.test/testing
+                (prpr.test.reduce/reduce-pr-fns
+                 [~@fs])))
+          (with-test-binding-frame
+            (do
+              (println "      " ~s)
+              (clojure.test/testing ~s
+                (prpr.test.reduce/reduce-pr-fns
+                 [~@fs])))))))))
 
 (defmacro with-log-level
   "temporarily set the log-level while executing the forms"

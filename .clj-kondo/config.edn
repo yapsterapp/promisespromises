@@ -1,4 +1,8 @@
 {:lint-as
- {promesa.core/let clojure.core/let
+ {malli.experimental/defn schema.core/defn
+  promesa.core/let clojure.core/let
   promesa.core/loop clojure.core/loop
-  prpr.test/deftest clojure.test/deftest}}
+  prpr.test/deftest clojure.test/deftest}
+ :linters
+ {:unused-namespace
+  {:exclude [taoensso.timbre]}}}

@@ -1,6 +1,6 @@
 (ns prpr.a-frame.interceptor-chain.data-test
   (:require
-   [clojure.test :as t :refer [deftest testing is]]
+   [prpr.test :refer [deftest testing is]]
    [prpr.a-frame.interceptor-chain.data.data-path :refer [->DataPath]]
    [prpr.a-frame.interceptor-chain.data :as sut]))
 

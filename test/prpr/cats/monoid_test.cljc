@@ -1,7 +1,6 @@
 (ns prpr.cats.monoid-test
   (:require
-   #?(:clj [clojure.test :as t :refer [deftest testing is]]
-      :cljs [cljs.test :as t :refer-macros [deftest testing is async]])
+   [prpr.test :refer [deftest testing is]]
    [prpr.cats.monoid :as sut]))
 
 (deftest test-monoid-<>

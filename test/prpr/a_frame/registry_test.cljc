@@ -1,7 +1,6 @@
 (ns prpr.a-frame.registry-test
   (:require
-   #?(:clj [clojure.test :as t :refer [deftest testing is use-fixtures]]
-      :cljs [cljs.test :as t :include-macros true :refer-macros [deftest testing is use-fixtures]])
+   [prpr.test :refer [deftest testing is use-fixtures]]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as sut]
    [prpr.a-frame.registry.test :as registry.test]))

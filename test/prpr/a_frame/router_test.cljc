@@ -1,10 +1,12 @@
 (ns prpr.a-frame.router-test
   (:require
-   [clojure.test :refer [deftest testing is use-fixtures compose-fixtures]]
-   [schema.test :refer [validate-schemas]]
-   [prpr.util.test :refer [with-log-level with-log-level-fixture]]
-   [prpr.promise :as prpr]
+   [prpr.test
+    :refer [deftest testing is use-fixtures compose-fixtures
+            with-log-level-fixture with-log-level]]
+   [prpr.test.malli :as test.malli]
+   [prpr.error :as err]
    [prpr.stream :as stream]
+   [prpr.stream.impl :as stream.impl]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]
@@ -16,7 +18,7 @@
    [taoensso.timbre :refer [error]]))
 
 (use-fixtures :once (compose-fixtures
-                     validate-schemas
+                     test.malli/instrument-fns-fixture
                      (with-log-level-fixture :warn)))
 
 (use-fixtures :each registry.test/reset-registry)
@@ -252,7 +254,7 @@
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
                  (is (= [::foo] event-v))
 
-                 (throw (prpr/error-ex ::boo {::blah 55}))))
+                 (throw (err/ex-info ::boo {::blah 55}))))
 
             r @(sut/handle-event router true (events/coerce-extended-event [::foo]))
 
@@ -271,7 +273,7 @@
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
                  (is (= [::foo] event-v))
 
-                 (throw (prpr/error-ex ::boo {::blah 55}))))
+                 (throw (err/ex-info ::boo {::blah 55}))))
 
             [tag val] (try
                         [::ok @(sut/handle-event
@@ -331,7 +333,7 @@
                  (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
                  (if (odd? n)
-                   (throw (prpr/error-ex ::boo {::boo ::hoo}))
+                   (throw (err/ex-info ::boo {::boo ::hoo}))
                    (do
                      (stream/put! out-s event-v)
                      {}))))
@@ -366,7 +368,7 @@
          [::handle-sync-event-stream-test-no-dispatch 0]))
       @(sut/handle-sync-event-stream router)
       (is (= [0] @out-a))
-      (is (stream/closed? event-s))))
+      (is (stream.impl/closed? event-s))))
 
   (testing "with a dispatch fx"
     (let [{event-s schema/a-frame-router-event-stream
@@ -390,7 +392,7 @@
          [::handle-sync-event-stream-test-with-dispatch 0]))
       @(sut/handle-sync-event-stream router)
       (is (= [0 2 4] @out-a))
-      (is (stream/closed? event-s)))))
+      (is (stream.impl/closed? event-s)))))
 
 (deftest dispatch-sync-test
   (testing "with no dispatch fx"
@@ -415,7 +417,7 @@
 
       (is (= [0] @out-a))
       ;; the main event-s should not be closed
-      (is (not (stream/closed? event-s)))
+      (is (not (stream.impl/closed? event-s)))
 
       (is (= {} r-effects))
       (is (= {:a-frame.coeffect/event [::dispatch-sync-test-no-dispatch 0]}
@@ -444,7 +446,7 @@
                      [::dispatch-sync-test-with-dispatch 0])]
 
       (is (= [0 2 4] @out-a))
-      (is (not (stream/closed? event-s)))
+      (is (not (stream.impl/closed? event-s)))
 
       (is (= {:a-frame/dispatch [::dispatch-sync-test-with-dispatch 2]}
              r-effects))
@@ -475,7 +477,7 @@
 
 
       (is (= [0 2 4] @out-a))
-      (is (not (stream/closed? event-s)))
+      (is (not (stream.impl/closed? event-s)))
 
       (is (= {:a-frame/dispatch-sync
               [::dispatch-sync-test-with-dispatch-sync-cofx 2]}
@@ -497,7 +499,7 @@
 
                  (swap! out-a conj n)
 
-                 (throw (prpr/error-ex
+                 (throw (err/ex-info
                          ::boo
                          {::event-v event-v}))))
 
@@ -515,7 +517,7 @@
 
         (is (= [0] @out-a))
         ;; the main event-s should not be closed
-        (is (not (stream/closed? event-s)))
+        (is (not (stream.impl/closed? event-s)))
 
         (is (= tag ::error))
         (is (= ::boo err-tag))
@@ -549,7 +551,7 @@
                     {::dispatch-sync-propagates-error-from-nested-dispatch-after-dispatch-fx
                      n}]
 
-                   (throw (prpr/error-ex ::boo {::event-v event-v})))))
+                   (throw (err/ex-info ::boo {::event-v event-v})))))
 
             [tag val] (try
                         [::ok
@@ -566,7 +568,7 @@
              :as _err-data} (some-> val ex-cause ex-cause ex-cause ex-data)]
 
         (is (= [0 2 4] @out-a))
-        (is (not (stream/closed? event-s)))
+        (is (not (stream.impl/closed? event-s)))
 
         (is (= tag ::error))
         (is (= ::boo err-tag))
@@ -600,7 +602,7 @@
          [::handle-n-sync-event-stream-test-no-dispatch 1]])
 
       (is (= [0 1] @out-a))
-      (is (not (stream/closed? event-s)))))
+      (is (not (stream.impl/closed? event-s)))))
 
   (testing "with dispatch fx"
     (let [{event-s schema/a-frame-router-event-stream
@@ -628,7 +630,7 @@
              @out-a))
 
       ;; main stream should not be closed
-      (is (not (stream/closed? event-s)))))
+      (is (not (stream.impl/closed? event-s)))))
 
   (testing "with dispatch fx"
     (let [{event-s schema/a-frame-router-event-stream
@@ -658,7 +660,7 @@
              @out-a))
 
       ;; main stream should not be closed
-      (is (not (stream/closed? event-s)))))
+      (is (not (stream.impl/closed? event-s)))))
 
   )
 

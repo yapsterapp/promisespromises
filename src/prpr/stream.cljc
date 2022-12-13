@@ -1,5 +1,5 @@
 (ns prpr.stream
-  (:refer-clojure :exclude [map mapcat filter reductions reduce concat])
+  (:refer-clojure :exclude [concat count filter map mapcat  reduce reductions])
   (:require
    [clojure.core :as clj]
    [promesa.core :as pr]
@@ -521,3 +521,11 @@
            (fn [e]
              (throw
               (reduce-ex-info id e)))))))
+
+(defn count
+  [id s]
+  (reduce
+   id
+   (fn [n _v] (inc n))
+   0
+   s))

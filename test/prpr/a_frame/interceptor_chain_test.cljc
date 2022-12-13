@@ -1,27 +1,15 @@
 (ns prpr.a-frame.interceptor-chain-test
   (:require
-
-   [prpr.test :refer [deftest tlet testing is
-                      use-fixtures
-                      #?(:clj compose-fixtures)]]
-
-   #?(:cljs [schema.core :as s])
-   #?(:clj [schema.test :refer [validate-schemas]])
-
+   [prpr.test :refer [deftest tlet testing is use-fixtures]]
+   [prpr.test.malli :as test.malli]
    [promesa.core :as pr]
    [prpr.promise :as prpr]
    [prpr.a-frame.schema :as af.schema]
    [prpr.a-frame.registry.test :as registry.test]
    [prpr.a-frame.interceptor-chain :as sut]))
 
-#?(:clj (use-fixtures :each (compose-fixtures
-                             validate-schemas
-                             registry.test/reset-registry)))
-
-#?(:cljs (use-fixtures :once {:before (fn [] (s/set-fn-validation! true))
-                              :after (fn [] (s/set-fn-validation! false))}))
-
-#?(:cljs (use-fixtures :each registry.test/reset-registry))
+(use-fixtures :once test.malli/instrument-fns-fixture)
+(use-fixtures :each registry.test/reset-registry)
 
 (defn epoch
   []

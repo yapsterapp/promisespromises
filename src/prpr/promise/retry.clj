@@ -1,6 +1,6 @@
 (ns prpr.promise.retry
   (:require
-   [manifold.deferred :as d]
+   [promesa.core :as pr]
    [taoensso.timbre :refer [warn]]))
 
 (defn retry-n
@@ -15,9 +15,10 @@
    max-retries
    delay-ms]
 
-  (d/loop [n 0
-           p (f 0)]
-    (d/catch
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [n 0
+            p (f 0)]
+    (pr/catch
         p
         (fn [e]
 
@@ -27,13 +28,13 @@
               ;; only warn in the retry case - the exception
               ;; thrown should otherwise be enough
               (warn "retrying promise:" n log-description)
-              (d/chain
-               (d/timeout!
-                (d/deferred)
+              (pr/chain
+               (pr/timeout
+                (pr/deferred)
                 delay-ms
                 ::timeout)
                (fn [_]
-                 (d/recur
+                 (pr/recur
                   (inc n)
                   (f (inc n))))))
 
@@ -44,6 +45,7 @@
    log-description
    max-retries
    delay-ms]
+
   (retry-n
    (fn [_n] (f))
    log-description

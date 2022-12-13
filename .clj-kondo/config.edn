@@ -2,6 +2,7 @@
  {malli.experimental/defn schema.core/defn
   promesa.core/let clojure.core/let
   promesa.core/loop clojure.core/loop
+  promesa.core/recur clojure.core/recur
   prpr.test/deftest clojure.test/deftest
   prpr.test/tlet clojure.core/let}
 

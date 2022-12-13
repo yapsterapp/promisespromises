@@ -246,141 +246,140 @@
 
 (deftest execute-error-handling-test
   (tlet [suppressed-errors (atom [])
-        wrap-catch-execute (fn [chain input]
-                             (reset! suppressed-errors [])
-                             (prpr/catch-always
-                              (pr/chain
-                               (sut/execute*
-                                (fn [e] (throw e))
-                                (fn [xs] (swap! suppressed-errors concat xs))
-                                (sut/initiate ::app ::a-frame chain input))
-                               (fn [r] [::ok r]))
-                              (fn [e] [::error e])))]
+         wrap-catch-execute (fn [chain input]
+                              (reset! suppressed-errors [])
+                              (prpr/catch-always
+                               (pr/chain
+                                (sut/execute*
+                                 (fn [e] (throw e))
+                                 (fn [xs] (swap! suppressed-errors concat xs))
+                                 (sut/initiate ::app ::a-frame chain input))
+                                (fn [r] [::ok r]))
+                               (fn [e] [::error e])))]
 
-    (testing "captures error in :enter interceptor"
-       (doseq [[k i] [[::execute-error-handling-test-enter-boom
-                       {::sut/enter
-                        (fn [_] (throw (ex-info "boom" {:id ::boom})))}]
-                      [::execute-error-handling-test-enter-unexpected-boom
-                       {::sut/enter
-                        (fn [_]
-                          (throw (ex-info
-                                  "unexpected-boom"
-                                  {:id ::unexpected-boom})))}]]]
-         (sut/register-interceptor k i))
-       (pr/let
-           [chain [::execute-error-handling-test-enter-boom
-                   ::execute-error-handling-test-enter-unexpected-boom]
-            [tag r] (wrap-catch-execute chain {})]
-         (is (= ::error tag))
-         (is (= {:id ::boom} (-> r ex-cause ex-data)))
-         (is (empty? @suppressed-errors))))
+        (testing "captures error in :enter interceptor"
+          (doseq [[k i] [[::execute-error-handling-test-enter-boom
+                          {::sut/enter
+                           (fn [_] (throw (ex-info "boom" {:id ::boom})))}]
+                         [::execute-error-handling-test-enter-unexpected-boom
+                          {::sut/enter
+                           (fn [_]
+                             (throw (ex-info
+                                     "unexpected-boom"
+                                     {:id ::unexpected-boom})))}]]]
+            (sut/register-interceptor k i))
+          (pr/let
+              [chain [::execute-error-handling-test-enter-boom
+                      ::execute-error-handling-test-enter-unexpected-boom]
+               [tag r] (wrap-catch-execute chain {})]
+            (is (= ::error tag))
+            (is (= {:id ::boom} (-> r ex-cause ex-data)))
+            (is (empty? @suppressed-errors))))
 
-     (testing "captures error in :leave interceptor"
-       (doseq [[k i] [[::execute-error-handling-test-leave-unexpected-boom
-                       {::sut/leave
-                        (fn [_] (throw (ex-info "unexpected-boom"
-                                               {:id ::unexpected-boom})))}
-                       ]
+        (testing "captures error in :leave interceptor"
+          (doseq [[k i] [[::execute-error-handling-test-leave-unexpected-boom
+                          {::sut/leave
+                           (fn [_] (throw (ex-info "unexpected-boom"
+                                                  {:id ::unexpected-boom})))}
+                          ]
 
-                      [::execute-error-handling-test-leave-boom
-                       {::sut/leave
-                        (fn [_] (throw (ex-info "boom" {:id ::boom})))}]]]
-         (sut/register-interceptor k i))
+                         [::execute-error-handling-test-leave-boom
+                          {::sut/leave
+                           (fn [_] (throw (ex-info "boom" {:id ::boom})))}]]]
+            (sut/register-interceptor k i))
 
-       (pr/let
-           [chain [::execute-error-handling-test-leave-unexpected-boom
-                   ::execute-error-handling-test-leave-boom]
-            [tag r] (wrap-catch-execute chain {})]
-         (is (= ::error tag))
-         (is (= {:id ::boom} (-> r ex-cause ex-data)))
-         (is (empty? @suppressed-errors))))
+          (pr/let
+              [chain [::execute-error-handling-test-leave-unexpected-boom
+                      ::execute-error-handling-test-leave-boom]
+               [tag r] (wrap-catch-execute chain {})]
+            (is (= ::error tag))
+            (is (= {:id ::boom} (-> r ex-cause ex-data)))
+            (is (empty? @suppressed-errors))))
 
-     (testing "captures errors in error handlers"
-       (let [left-with (atom nil)]
+        (testing "captures errors in error handlers"
+          (let [left-with (atom nil)]
 
-         (doseq [[k i]
-                 [[::execute-error-handling-test-error-handler-error-left-with
-                   {::sut/error (fn [x _] (reset! left-with ::error) x)
-                    ::sut/leave (fn [x] (reset! left-with ::leave) x)}]
+            (doseq [[k i]
+                    [[::execute-error-handling-test-error-handler-error-left-with
+                      {::sut/error (fn [x _] (reset! left-with ::error) x)
+                       ::sut/leave (fn [x] (reset! left-with ::leave) x)}]
 
-                  [::execute-error-handling-test-error-handler-error-error
-                   {::sut/error (fn [_ _]
-                                  (throw (ex-info
-                                          "error-error"
-                                          {:id ::error-error})))}]
+                     [::execute-error-handling-test-error-handler-error-error
+                      {::sut/error (fn [_ _]
+                                     (throw (ex-info
+                                             "error-error"
+                                             {:id ::error-error})))}]
 
-                  [::execute-error-handling-test-error-handler-error-boom
-                   {::sut/enter (fn [_] (throw
-                                        (ex-info
-                                         "boom"
-                                         {:id ::boom})))}]]]
+                     [::execute-error-handling-test-error-handler-error-boom
+                      {::sut/enter (fn [_] (throw
+                                           (ex-info
+                                            "boom"
+                                            {:id ::boom})))}]]]
 
-           (sut/register-interceptor k i))
+              (sut/register-interceptor k i))
 
-         (pr/let
-             [chain
-              [::execute-error-handling-test-error-handler-error-left-with
-               ::execute-error-handling-test-error-handler-error-error
-               ::execute-error-handling-test-error-handler-error-boom]
+            (pr/let
+                [chain [::execute-error-handling-test-error-handler-error-left-with
+                        ::execute-error-handling-test-error-handler-error-error
+                        ::execute-error-handling-test-error-handler-error-boom]
 
-              [tag r] (wrap-catch-execute chain {})]
-           (is (= ::error @left-with))
-           (is (= ::error tag))
-           (is (= {:id ::error-error} (-> r ex-cause ex-data)))
-           (is (= [{:id ::boom}]
-                  (map
-                   (comp ex-data ex-cause)
-                   @suppressed-errors))))))
+                 [tag r] (wrap-catch-execute chain {})]
+              (is (= ::error @left-with))
+              (is (= ::error tag))
+              (is (= {:id ::error-error} (-> r ex-cause ex-data)))
+              (is (= [{:id ::boom}]
+                     (map
+                      (comp ex-data ex-cause)
+                      @suppressed-errors))))))
 
-     (testing "captures error promises"
-       (doseq [[k i]
-               [[::execute-error-handling-test-error-promises-boom
-                 {::sut/enter (fn [_] (pr/rejected
-                                      (ex-info "boom"
-                                               {:id ::boom})))}]
+        (testing "captures error promises"
+          (doseq [[k i]
+                  [[::execute-error-handling-test-error-promises-boom
+                    {::sut/enter (fn [_] (pr/rejected
+                                         (ex-info "boom"
+                                                  {:id ::boom})))}]
 
-                [::execute-error-handling-test-error-promises-unexpected-boom
-                 {::sut/enter (fn [_] (throw
-                                      (ex-info
-                                       "unexpected-boom"
-                                       {:id ::unexpected-boom})))}]]]
+                   [::execute-error-handling-test-error-promises-unexpected-boom
+                    {::sut/enter (fn [_] (throw
+                                         (ex-info
+                                          "unexpected-boom"
+                                          {:id ::unexpected-boom})))}]]]
 
-         (sut/register-interceptor k i))
+            (sut/register-interceptor k i))
 
-       (pr/let
-           [chain
-            [::execute-error-handling-test-error-promises-boom
-             ::execute-error-handling-test-error-promises-unexpected-boom]
-            [tag r] (wrap-catch-execute chain {})]
-         (is (= ::error tag))
-         (is (= {:id ::boom} (-> r ex-cause ex-data)))
-         (is (empty? @suppressed-errors))))
+          (pr/let
+              [chain
+               [::execute-error-handling-test-error-promises-boom
+                ::execute-error-handling-test-error-promises-unexpected-boom]
+               [tag r] (wrap-catch-execute chain {})]
+            (is (= ::error tag))
+            (is (= {:id ::boom} (-> r ex-cause ex-data)))
+            (is (empty? @suppressed-errors))))
 
-     (testing "throws if error not cleared"
-       (doseq [[k i] [[::execute-error-handline-not-cleared-clear
-                       {::sut/error (fn [c _] (sut/clear-errors c))}]
-                      [::execute-error-handling-not-cleared-boom
-                       {::sut/enter (fn [_] (pr/rejected "boom" {:fail :test}))}]]]
-         (sut/register-interceptor k i))
+        (testing "throws if error not cleared"
+          (doseq [[k i] [[::execute-error-handline-not-cleared-clear
+                          {::sut/error (fn [c _] (sut/clear-errors c))}]
+                         [::execute-error-handling-not-cleared-boom
+                          {::sut/enter (fn [_] (pr/rejected "boom" {:fail :test}))}]]]
+            (sut/register-interceptor k i))
 
-       (pr/let
-           [chain [::execute-error-handling-not-cleared-boom]
-            [tag _r] (wrap-catch-execute chain {})]
-         (is (= ::error tag)))
-       (pr/let
-           [chain [::execute-error-handline-not-cleared-clear
-                   ::execute-error-handling-not-cleared-boom]
-            [tag r] (wrap-catch-execute chain {})]
-         (do (is (= ::ok tag))
-             (is (= (merge
-                     empty-interceptor-context
-                     {::sut/history
-                      [[::execute-error-handline-not-cleared-clear ::sut/noop ::sut/enter]
-                       [::execute-error-handling-not-cleared-boom ::sut/enter]
-                       [::execute-error-handling-not-cleared-boom ::sut/noop ::sut/error]
-                       [::execute-error-handline-not-cleared-clear ::sut/error]]})
-                    r)))))))
+          (pr/let
+              [chain [::execute-error-handling-not-cleared-boom]
+               [tag _r] (wrap-catch-execute chain {})]
+            (is (= ::error tag)))
+          (pr/let
+              [chain [::execute-error-handline-not-cleared-clear
+                      ::execute-error-handling-not-cleared-boom]
+               [tag r] (wrap-catch-execute chain {})]
+            (do (is (= ::ok tag))
+                (is (= (merge
+                        empty-interceptor-context
+                        {::sut/history
+                         [[::execute-error-handline-not-cleared-clear ::sut/noop ::sut/enter]
+                          [::execute-error-handling-not-cleared-boom ::sut/enter]
+                          [::execute-error-handling-not-cleared-boom ::sut/noop ::sut/error]
+                          [::execute-error-handline-not-cleared-clear ::sut/error]]})
+                       r)))))))
 
 (defmacro wrap-catch
   [form]
@@ -394,33 +393,33 @@
 
 (deftest resume-test
 
-  (let [throw?-a (atom true)]
+  (tlet [throw?-a (atom true)]
 
-    (doseq [[key inter]
-            [[::resume-test-throw-once
-              {::sut/enter (fn [x]
-                             (if @throw?-a
-                               (do
-                                 (reset! throw?-a false)
-                                 (throw (ex-info "boo" {})))
-                               x))
-               ::sut/leave (fn [x] (assoc x :left? true))}]]]
-      (sut/register-interceptor key inter))
+        (doseq [[key inter]
+                [[::resume-test-throw-once
+                  {::sut/enter (fn [x]
+                                 (if @throw?-a
+                                   (do
+                                     (reset! throw?-a false)
+                                     (throw (ex-info "boo" {})))
+                                   x))
+                   ::sut/leave (fn [x] (assoc x :left? true))}]]]
+          (sut/register-interceptor key inter))
 
-    (testing "can resume after failure"
-      (pr/let [[tag err] (wrap-catch
-                          (sut/execute
-                           ::app
-                           ::a-frame
-                           [::resume-test-throw-once]
-                           {}))
+        (testing "can resume after failure"
+          (pr/let [[tag err] (wrap-catch
+                              (sut/execute
+                               ::app
+                               ::a-frame
+                               [::resume-test-throw-once]
+                               {}))
 
-               _ (is (= tag ::error))
+                   _ (is (= tag ::error))
 
-               [resume-tag
-                {resume-left? :left?
-                 :as _resume-val}] (wrap-catch
-                                    (sut/resume ::app ::a-frame err))]
+                   [resume-tag
+                    {resume-left? :left?
+                     :as _resume-val}] (wrap-catch
+                                        (sut/resume ::app ::a-frame err))]
 
-        (is (= ::ok resume-tag))
-        (is (= true resume-left?))))))
+            (is (= ::ok resume-tag))
+            (is (= true resume-left?))))))

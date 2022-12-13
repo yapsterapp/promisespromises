@@ -1,9 +1,10 @@
 (ns prpr.a-frame.cofx
   (:require
-   [prpr.promise :as prpr :refer [ddo return]]
+   [promesa.core :as pr]
+   [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.cofx.data.tag-readers #?@(:cljs [:include-macros true])]
+   [prpr.a-frame.cofx.data.tag-readers]
    [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [taoensso.timbre :refer [info warn]]))
 
@@ -48,13 +49,12 @@
            has-arg? (contains? data ::arg)]
 
        (if (some? handler)
-         (ddo [coeffects' (if has-arg?
-                            (handler app coeffects arg)
-                            (handler app coeffects))]
-              (return
-               (assoc context schema/a-frame-coeffects coeffects')))
+         (pr/let [coeffects' (if has-arg?
+                               (handler app coeffects arg)
+                               (handler app coeffects))]
+           (assoc context schema/a-frame-coeffects coeffects'))
 
-         (throw (prpr/error-ex
+         (throw (err/ex-info
                  ::no-cofx-handler
                  {::id id
                   ::arg arg})))))})

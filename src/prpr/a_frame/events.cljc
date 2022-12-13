@@ -1,7 +1,7 @@
 (ns prpr.a-frame.events
   (:require
    [schema.core :as s]
-   [prpr.promise :as prpr]
+   [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.std-interceptors :as std-interceptors]
@@ -125,6 +125,6 @@
          init-ctx))
 
       (throw
-       (prpr/error-ex
+       (err/ex-info
         ::no-event-handler
         {:event-v event-v})))))

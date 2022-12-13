@@ -1,15 +1,14 @@
 (ns prpr.a-frame.fx
   (:require
+   [promesa.core :as pr]
+   [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
-   [prpr.promise :as prpr :refer [ddo return]]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.events :as events]
    [prpr.a-frame.router :as router]
    [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [schema.core :as s]
-   [taoensso.timbre :refer [warn]]
-   #?(:clj [manifold.deferred :as p]
-      :cljs [promesa.core :as p])))
+   [taoensso.timbre :refer [warn]]))
 
 (defn reg-fx
   "register an fx which will be called with:
@@ -36,10 +35,10 @@
   [context fx-id fx-data]
   (let [handler (registry/get-handler schema/a-frame-kind-fx fx-id)]
     (if (some? handler)
-      (ddo [r (handler context fx-data)]
-        (return {fx-id r}))
+      (pr/let [r (handler context fx-data)]
+        {fx-id r})
       (throw
-       (prpr/error-ex
+       (err/ex-info
         ::no-fx-handler
         {:id fx-id
          :data fx-data})))))
@@ -48,26 +47,27 @@
   [context effects]
 
   ;; do individual effects from the map concurrently
-  (ddo [:let [result-ps (for [[id data] effects]
-                          (do-single-effect context id data))]
-        all-results (-> (apply prpr/all-pr result-ps)
-                        (prpr/chain-pr
-                         #(apply merge %)))]
-    (return
-     all-results)))
+  (pr/let [result-ps (for [[id data] effects]
+                       (do-single-effect context id data))
+           all-results (-> (apply pr/all result-ps)
+                           (pr/chain
+                            #(apply merge %)))]
+    all-results))
 
 (defn do-seq-of-effects
   [context effects]
 
   ;; do the seq-of-maps-of-effects in strict sequential order
-  (p/chain
-   (p/loop [[results [first-map-fx & rest-map-fx]] [[] effects]]
-     (p/chain
+  (pr/chain
+
+   #_{:clj-kondo/ignore [:loop-without-recur]}
+   (pr/loop [[results [first-map-fx & rest-map-fx]] [[] effects]]
+     (pr/chain
       (do-map-of-effects context first-map-fx)
       (fn [r]
         (if (empty? rest-map-fx)
           [(conj results r) []]
-          (p/recur [(conj results r) rest-map-fx])))))
+          (pr/recur [(conj results r) rest-map-fx])))))
    (fn [[results _remaining]]
      results)))
 
@@ -82,10 +82,10 @@
        effects schema/a-frame-effects
        :as context}]
 
-     (ddo [_ (if (map? effects)
-               (do-map-of-effects context effects)
-               (do-seq-of-effects context effects))]
-          context))})
+     (pr/let [_ (if (map? effects)
+                  (do-map-of-effects context effects)
+                  (do-seq-of-effects context effects))]
+       context))})
 
 (interceptor-chain/register-interceptor
  ::do-fx

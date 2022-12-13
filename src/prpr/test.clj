@@ -90,14 +90,13 @@
 
 (defmacro deftest
   "define a test whose body will be evaluated with test-async. it
-   looks very like a normal sync deftest, but it is not. there are
+   looks very like a normal sync deftest, **but it is not**. there are
    some caveats, viz:
 
-   NOTE: if a let form is used to wrap a series for testing forms
-   inside the deftest, then you *must* remember to surround the
-   testing forms in a vector (or list), otherwise only the last
-   form will be evaluated. you can use the tlet form to do this
-   for you
+   NOTE: when using a let to provide common values to a series of
+   testing forms, use a tlet instead - it will wrap the forms
+   as a vector of 0-args fns, so none get forgotten (let only
+   returns its final value) and they all get evaluated serially
 
    NOTE: use the same name as clojure.test/deftest because CIDER
    recognizes it and uses it to find tests"
@@ -108,11 +107,15 @@
       ~@body)))
 
 (defmacro tlet
-  "a let which puts its body in a vector, to be used inside deftests
-   so that all the testing forms inside the let are retained"
-  [bindings & body]
-  `(let ~bindings
-     [ ~@body  ]))
+  "a let which turns its body forms into a vector of 0-args fns,
+   to be used inside deftests so that all the testing forms inside
+   the let are retained and evaluated serially"
+  [bindings & forms]
+  (let [;; wrap each form into a 0-args fn
+        fs (for [form forms]
+             `(fn [] ~form))]
+    `(let ~bindings
+       [ ~@fs ])))
 
 (defmacro is
   [& body]

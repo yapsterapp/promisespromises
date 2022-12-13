@@ -1,26 +1,38 @@
 (ns prpr.promise.lastcall
+  #?(:cljs (:require-macros [prpr.promise.lastcall]))
   (:require
    #?(:clj [clojure.tools.macro :refer [name-with-attributes]])
-   [prpr.promise :refer [factory-pr branch-pr success-pr error-ex error-pr]]))
+   [promesa.core :as pr]
+   [prpr.error :as err]))
 
 (defn lastcall-fn-impl
   [in-flight-atom fn-name params p]
   (reset! in-flight-atom p)
-  (factory-pr
+  (pr/create
    (fn [resolve reject]
-     (branch-pr
+     (pr/handle
       p
-      (fn [v]
-        (if (= @in-flight-atom p)
-          (resolve v)
-          (reject
-           (error-ex
-            [:cancelled
-             {:fn fn-name
-              :params params}]))))
-      (fn [e]
-        (when (= @in-flight-atom p)
-          (reject e)))))))
+      (fn [v e]
+
+        (if (some? e)
+
+          (if (= @in-flight-atom p)
+            (reject e)
+            (reject
+             (err/ex-info
+              ::cancelled
+              {:fn fn-name
+               :params params})))
+
+          (if (= @in-flight-atom p)
+
+            (resolve v)
+
+            (reject
+             (err/ex-info
+              ::cancelled
+              {:fn fn-name
+               :params params})))))))))
 
 #?(:clj
    (defn lastcall-fn*
@@ -44,10 +56,12 @@
               in-flight-atom#
               (quote ~fn-name)
               nil
-              (prpr.promise/error-pr
-               [:cancelled {:fn (quote ~fn-name)
-                            :params nil}]))
-             (success-pr true))
+              (pr/rejected
+               (prpr.error/ex-info
+                ::cancelled
+                {:fn (quote ~fn-name)
+                 :params nil})))
+             (pr/resolved true))
             (~params
              (let [val-p# ~@body]
                (prpr.promise.lastcall/lastcall-fn-impl

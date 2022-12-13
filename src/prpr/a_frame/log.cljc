@@ -2,6 +2,7 @@
   "overrides of the timbre logging macros
    which set a context from an a-frame
    interceptor-context key, or app-ctx key"
+  #?(:cljs (:require-macros [prpr.a-frame.log]))
   (:require
    [taoensso.timbre :as timbre]
    [prpr.a-frame.schema :as af.schema]))

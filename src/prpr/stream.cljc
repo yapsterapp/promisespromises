@@ -143,7 +143,7 @@
                     (let [chunk-vals (pt/-chunk-values v)
 
                           ;; chunks cannot be empty!
-                          chunk-vals-count (count chunk-vals)
+                          chunk-vals-count (clj/count chunk-vals)
 
                           chunk-vals-but-last (->> chunk-vals
                                                    (take (dec chunk-vals-count)))
@@ -360,7 +360,7 @@
              (let [rs (clj/reductions
                        (@#'clj/preserving-reduced f)
                        (pt/-chunk-values chk))
-                   cnt (count rs)]
+                   cnt (clj/count rs)]
 
                [(take (dec cnt) rs)
                 (last rs)]))
@@ -370,7 +370,7 @@
                        (@#'clj/preserving-reduced f)
                        init
                        (pt/-chunk-values chk))
-                   cnt (count rs)]
+                   cnt (clj/count rs)]
 
                ;; NOTE we remove the init value from
                ;; the front of the intermediates...

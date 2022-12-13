@@ -168,5 +168,10 @@
          (fn [_# _#]
            (taoensso.timbre/set-level! cl#))))))
 
+(defn with-log-level-fixture
+  [level]
+  (fn [f]
+    (with-log-level level (f))))
+
 (def compose-fixtures
   clojure.test/compose-fixtures)

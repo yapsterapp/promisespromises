@@ -24,3 +24,10 @@
                             {:before f2})]
     {:before (cljs.test/compose-fixtures f1-before f2-before)
      :after (cljs.test/compose-fixtures f1-after f2-after)}))
+
+(defn with-log-level-fixture
+  [level]
+  (let [cl (or (:level taoensso.timbre/*config*)
+               :info)]
+    {:before (fn [] (taoensso.timbre/set-level! level))
+     :after (fn [] (taoensso.timbre/set-level! cl))}))

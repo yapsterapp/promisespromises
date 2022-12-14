@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [concat count filter map mapcat  reduce reductions])
   (:require
    [clojure.core :as clj]
+   [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
@@ -551,3 +552,87 @@
   ([buffer-size target-chunk-size partition-by-fn s]
    (let [xform (chunk/make-chunker-xform target-chunk-size partition-by-fn)]
      (transform xform (or buffer-size 0) s))))
+
+(def KeySpec
+  [:or
+   ;; keyword for a call to get
+   :keyword
+
+   ;; list of args for a call to get-in
+   [:+ [:or :keyword :int :string]]])
+
+;; a variety of merge, join, and set operations are possible
+;; when crossing streams
+;;
+;; all operations require that every input stream is sorted in the
+;; same key
+(def CrossStreamsOp
+  [:enum
+   ;; the merge phase of a sort-merge join.
+   ;; output is merged but input values are unchanged
+   :prpr.stream.cross/sorted-merge
+
+   ;; inner join
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/inner-join
+
+   ;; full outer join
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/outer-join
+
+   ;; left join requiring at least n leftmost values (default 1)
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/n-left-join
+
+   ;; set intersection
+   ;; output is sorted, but remaining input values are unchanged
+   :prpr.stream.cross/intersect
+
+   ;; set union
+   ;; output is sorted, but input values are unchanged
+   :prpr.stream.cross/union
+
+   ;; set difference
+   ;; output is sorted, but input values are unchanged
+   :prpr.stream.cross/difference])
+
+(def CrossSpec
+  [:map
+
+   ;; there must be 1 entry per stream, specifying how to
+   ;; extract the key from a value on that stream
+   [:prpr.stream.cross/keys [:map-of :keyword KeySpec]]
+
+   ;; the cross-streams operation
+   [:prpr.stream.cross/op CrossStreamsOp]
+
+   ;; optional compare fn for keys - defaults to `compare`
+   [:prpr.stream.cross/compare {:optional true} fn?]
+
+   ;; optional number of leftmost values required for
+   ;; a non-nil n-left-join result
+   [:prpr.stream.cross.n-left-join/n {:optional true} :int]
+
+   ;; optional function to finalize an output value
+   [:prpr.stream.cross/finalizer {:optional true} fn?]])
+
+(def StreamMapSpec
+  [:map-of :keyword [:fn stream?]])
+
+(mx/defn cross
+  "cross some sorted streams returning a stream according to the cross-spec
+
+   every stream must be sorted in the same key - how to extract the key value
+   from each stream is specified in the :prpr.stream.cross/keys map, and
+   key-values are compared with the :prpr.stream.cross/compare function
+
+   e.g. this invocations inner-joins a stream of users, sorted by :org-id, to a
+     stream of orgs, sorted by :id
+
+   (cross
+      {:prpr.stream.cross/keys {:users :org-id :orgs :id}
+       :prpr.stream.cross/op :prpr.stream.cross/inner-join}
+      {:users <users-stream>
+       :orgs <orgs-stream>})"
+  [cross-spec :- CrossSpec
+   streams :- StreamMapSpec])

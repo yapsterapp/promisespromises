@@ -32,6 +32,7 @@
      (async/put! sink val #(pr/resolve! r %))
      r))
   ([sink val timeout timeout-val]
+   ;; TODO use alts! here instead of promise timeout
    (let [r (pr/deferred)
          timeout-r (pr/timeout
                     r
@@ -63,6 +64,7 @@
        (async/take! source #(pr/resolve! r %))
        dr))
     ([source default-val timeout timeout-val]
+     ;; TODO use alts! here instead of promise timeout
      (let [r (pr/deferred)
            dr (pr/chain r (fn [v] (if (some? v) v default-val)))
            tdr (pr/timeout dr timeout timeout-val)]

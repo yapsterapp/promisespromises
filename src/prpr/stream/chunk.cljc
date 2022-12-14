@@ -85,19 +85,21 @@
     false))
 
 (defn make-chunker-xform
-  "make a transducer which builds chunks from a stream
+  "return a transducer which builds chunks from a stream, optionally
+   partition-by the stream ensuring that partitions never span
+   chunk boundaries
 
    NOTE that no timeout is possible with a transducer
 
    - target-chunk-size : will wrap a chunk when this size is exceeded,
        or as soon as possible afterwards (if a chunk is received, or
        partition-by is given)
-   - partition-by-fn : will not wrap a chunk until the partition-by-fn
-       returns a changed value - overriding target-chunk-size and
-       ensuring that all members of a partition reside in the same chunk"
+   - partition-by-fn : also partition-by the stream with this fn and
+       ensure partitions never cross chunk boundaries"
   ([target-chunk-size]
    (make-chunker-xform target-chunk-size nil))
-  ([target-chunk-size partition-by]
+
+  ([target-chunk-size partition-by-fn]
    (let [cb (stream-chunk-builder)]
      (fn [rf]
        (fn
@@ -111,10 +113,17 @@
          ([result input]
           (if (pt/-building-chunk? cb)
 
-            (if (should-finish-chunk? cb target-chunk-size partition-by input)
+            (if (should-finish-chunk? cb target-chunk-size partition-by-fn input)
               (do
-                (rf result (pt/-finish-chunk cb))
+                (let [ch (pt/-finish-chunk cb)]
+                  (rf result (if (some? partition-by-fn)
+                               (types/stream-chunk
+                                (partition-by
+                                 partition-by-fn
+                                 (pt/-chunk-values ch)))
+                               ch)))
                 (pt/-start-chunk cb input))
+
               (pt/-add-to-chunk cb input))
 
             (pt/-start-chunk cb input))

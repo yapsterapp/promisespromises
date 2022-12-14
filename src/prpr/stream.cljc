@@ -523,9 +523,31 @@
               (reduce-ex-info id e)))))))
 
 (defn count
+  "count the items on a stream
+
+   returns: Promise<count>"
   [id s]
   (reduce
    id
    (fn [n _v] (inc n))
    0
    s))
+
+(defn chunkify
+  "chunkify a stream - chunk a stream with a target chunk size, and optionally
+     also partition-by, ensuring partitions never span chunk boundaries
+
+   - buffer-size - output-stream buffer size
+   - target-chunk-size - in the absence of partition-by-fn, output chunks
+       will be this size or smaller
+   - partition-by-fn - also partition-by the stream - ensuring that partitions
+       never span chunk boundaries"
+  ([target-chunk-size s]
+   (chunkify 0 target-chunk-size nil s))
+
+  ([target-chunk-size partition-by-fn s]
+   (chunkify 0 target-chunk-size partition-by-fn s))
+
+  ([buffer-size target-chunk-size partition-by-fn s]
+   (let [xform (chunk/make-chunker-xform target-chunk-size partition-by-fn)]
+     (transform xform (or buffer-size 0) s))))

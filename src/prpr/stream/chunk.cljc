@@ -2,6 +2,7 @@
   (:require
    #?(:clj [clojure.core :refer [print-method]])
    [promesa.core :as pr]
+   [prpr.error :as err]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
    [prpr.stream.types :as types]))
@@ -12,29 +13,29 @@
   pt/IStreamChunkBuilder
   (-start-chunk [_]
     (when (some? @records-a)
-      (throw (ex-info "chunk already building!" {:records-a @records-a})))
+      (throw (err/ex-info ::chunk-already-building {:records-a @records-a})))
     (reset! records-a (transient [])))
 
   (-start-chunk [_ val]
     (when (some? @records-a)
-      (throw (ex-info "chunk already building!" {:records-a @records-a})))
+      (throw (err/ex-info ::chunk-already-building {:records-a @records-a})))
     (reset! records-a (transient [val])))
 
   (-add-to-chunk [_ val]
     (when (nil? @records-a)
-      (throw (ex-info "no chunk building!" {})))
+      (throw (err/ex-info ::no-chunk-building {})))
     (swap! records-a conj! val))
 
   (-finish-chunk [_]
     (when (nil? @records-a)
-      (throw (ex-info "no chunk building!" {})))
+      (throw (err/ex-info ::no-chunk-building {})))
     (let [records (persistent! @records-a)]
       (reset! records-a nil)
       (types/stream-chunk records)))
 
   (-finish-chunk [_ val]
     (when (nil? @records-a)
-      (throw (ex-info "no chunk building!" {})))
+      (throw (err/ex-info ::no-chunk-building {})))
     (swap! records-a conj! val)
     (let [records (persistent! @records-a)]
       (reset! records-a nil)
@@ -57,21 +58,68 @@
   []
   (->StreamChunkBuilder (atom nil)))
 
-(defn chunker-xform
-  "a transducer which can build chunks"
-  [chunk-builder rf]
-  (fn
-    ([] (rf))
-    ([result]
-     (if (pt/-building-chunk? chunk-builder)
-       (throw (ex-info "finalisation while building a chunk!" {}))
-       (rf result)))
-    ([result input]
-     (if (pt/-building-chunk? chunk-builder)
-         (pt/-add-to-chunk chunk-builder input)
-         result)
-     (rf result input))))
+(defn should-finish-chunk?
+  "true if building a chunk and:
 
+   - (nil? partition-by) and (>= chunk-size target-chunk-size)
+   - (some? partition-by-fn)
+     and (>= chunk-size target-chunk-size)
+     and (not= (partition-by-fn (last chunk-state) (partition-by next-value)))"
+
+  [chunk-builder target-chunk-size partition-by-fn next-value]
+  (if (pt/-building-chunk? chunk-builder)
+
+    (or
+
+     (and (nil? partition-by-fn)
+          (>= (count (pt/-chunk-state chunk-builder))
+              target-chunk-size))
+
+     (let [ch-data(pt/-chunk-state chunk-builder)]
+       (and (some? partition-by-fn)
+            (>= (count ch-data)
+                target-chunk-size)
+            (not= (partition-by-fn (nth ch-data (-> ch-data count dec)))
+                  (partition-by-fn next-value)))))
+
+    false))
+
+(defn make-chunker-xform
+  "make a transducer which builds chunks from a stream
+
+   NOTE that no timeout is possible with a transducer
+
+   - target-chunk-size : will wrap a chunk when this size is exceeded,
+       or as soon as possible afterwards (if a chunk is received, or
+       partition-by is given)
+   - partition-by-fn : will not wrap a chunk until the partition-by-fn
+       returns a changed value - overriding target-chunk-size and
+       ensuring that all members of a partition reside in the same chunk"
+  ([target-chunk-size]
+   (make-chunker-xform target-chunk-size nil))
+  ([target-chunk-size partition-by]
+   (let [cb (stream-chunk-builder)]
+     (fn [rf]
+       (fn
+         ([] (rf))
+
+         ([result]
+          (when (pt/-building-chunk? cb)
+            (rf result (pt/-finish-chunk cb)))
+          (rf result))
+
+         ([result input]
+          (if (pt/-building-chunk? cb)
+
+            (if (should-finish-chunk? cb target-chunk-size partition-by input)
+              (do
+                (rf result (pt/-finish-chunk cb))
+                (pt/-start-chunk cb input))
+              (pt/-add-to-chunk cb input))
+
+            (pt/-start-chunk cb input))
+
+          result))))))
 
 (defn dechunk
   "given a stream of mixed unchunked-values and chunks

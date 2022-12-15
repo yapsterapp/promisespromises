@@ -11,5 +11,5 @@
   ([type map cause]
    (clj/ex-info
     (str type)
-    (assoc map ::type type)
+    (assoc map :error/type type)
     cause)))

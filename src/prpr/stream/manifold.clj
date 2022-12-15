@@ -134,19 +134,7 @@
     ([d f]
      (-> d (->promesa) (promise.p/-bind f)))
     ([d f executor]
-    (-> d (->promesa) (promise.p/-bind f executor))))
-
-  (-finally
-    ([d f]
-     (-> d (->promesa) (promise.p/-finally f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-finally f executor))))
-
-  (-handle
-    ([d f]
-     (-> d (->promesa) (promise.p/-handle f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-handle f executor))))
+     (-> d (->promesa) (promise.p/-bind f executor))))
 
   (-map
     ([d f]
@@ -154,42 +142,30 @@
     ([d f executor]
      (-> d (->promesa) (promise.p/-map f executor))))
 
-  (-mapErr
+  (-catch
     ([d f]
-     (-> d (->promesa) (promise.p/-mapErr f)))
+     (-> d (->promesa) (promise.p/-catch f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-mapErr f executor))))
+     (-> d (->promesa) (promise.p/-catch f executor))))
 
-  (-then
+  (-handle
     ([d f]
-     (-> d (->promesa) (promise.p/-then f)))
+     (-> d (->promesa) (promise.p/-handle f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-then f executor))))
+     (-> d (->promesa) (promise.p/-handle f executor))))
 
-  (-thenErr
+  (-finally
     ([d f]
-     (-> d (->promesa) (promise.p/-thenErr f)))
+     (-> d (->promesa) (promise.p/-finally f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-thenErr f executor))))
+     (-> d (->promesa) (promise.p/-finally f executor))))
 
   SuccessDeferred
   (-bind
     ([d f]
      (-> d (->promesa) (promise.p/-bind f)))
     ([d f executor]
-    (-> d (->promesa) (promise.p/-bind f executor))))
-
-  (-finally
-    ([d f]
-     (-> d (->promesa) (promise.p/-finally f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-finally f executor))))
-
-  (-handle
-    ([d f]
-     (-> d (->promesa) (promise.p/-handle f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-handle f executor))))
+     (-> d (->promesa) (promise.p/-bind f executor))))
 
   (-map
     ([d f]
@@ -197,42 +173,30 @@
     ([d f executor]
      (-> d (->promesa) (promise.p/-map f executor))))
 
-  (-mapErr
+  (-catch
     ([d f]
-     (-> d (->promesa) (promise.p/-mapErr f)))
+     (-> d (->promesa) (promise.p/-catch f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-mapErr f executor))))
+     (-> d (->promesa) (promise.p/-catch f executor))))
 
-  (-then
+  (-handle
     ([d f]
-     (-> d (->promesa) (promise.p/-then f)))
+     (-> d (->promesa) (promise.p/-handle f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-then f executor))))
+     (-> d (->promesa) (promise.p/-handle f executor))))
 
-  (-thenErr
+  (-finally
     ([d f]
-     (-> d (->promesa) (promise.p/-thenErr f)))
+     (-> d (->promesa) (promise.p/-finally f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-thenErr f executor))))
+     (-> d (->promesa) (promise.p/-finally f executor))))
 
   ErrorDeferred
   (-bind
     ([d f]
      (-> d (->promesa) (promise.p/-bind f)))
     ([d f executor]
-    (-> d (->promesa) (promise.p/-bind f executor))))
-
-  (-finally
-    ([d f]
-     (-> d (->promesa) (promise.p/-finally f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-finally f executor))))
-
-  (-handle
-    ([d f]
-     (-> d (->promesa) (promise.p/-handle f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-handle f executor))))
+     (-> d (->promesa) (promise.p/-bind f executor))))
 
   (-map
     ([d f]
@@ -240,42 +204,30 @@
     ([d f executor]
      (-> d (->promesa) (promise.p/-map f executor))))
 
-  (-mapErr
+  (-catch
     ([d f]
-     (-> d (->promesa) (promise.p/-mapErr f)))
+     (-> d (->promesa) (promise.p/-catch f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-mapErr f executor))))
+     (-> d (->promesa) (promise.p/-catch f executor))))
 
-  (-then
+  (-handle
     ([d f]
-     (-> d (->promesa) (promise.p/-then f)))
+     (-> d (->promesa) (promise.p/-handle f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-then f executor))))
+     (-> d (->promesa) (promise.p/-handle f executor))))
 
-  (-thenErr
+  (-finally
     ([d f]
-     (-> d (->promesa) (promise.p/-thenErr f)))
+     (-> d (->promesa) (promise.p/-finally f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-thenErr f executor))))
+     (-> d (->promesa) (promise.p/-finally f executor))))
 
   LeakAwareDeferred
   (-bind
     ([d f]
      (-> d (->promesa) (promise.p/-bind f)))
     ([d f executor]
-    (-> d (->promesa) (promise.p/-bind f executor))))
-
-  (-finally
-    ([d f]
-     (-> d (->promesa) (promise.p/-finally f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-finally f executor))))
-
-  (-handle
-    ([d f]
-     (-> d (->promesa) (promise.p/-handle f)))
-    ([d f executor]
-     (-> d (->promesa) (promise.p/-handle f executor))))
+     (-> d (->promesa) (promise.p/-bind f executor))))
 
   (-map
     ([d f]
@@ -283,20 +235,20 @@
     ([d f executor]
      (-> d (->promesa) (promise.p/-map f executor))))
 
-  (-mapErr
+  (-catch
     ([d f]
-     (-> d (->promesa) (promise.p/-mapErr f)))
+     (-> d (->promesa) (promise.p/-catch f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-mapErr f executor))))
+     (-> d (->promesa) (promise.p/-catch f executor))))
 
-  (-then
+  (-handle
     ([d f]
-     (-> d (->promesa) (promise.p/-then f)))
+     (-> d (->promesa) (promise.p/-handle f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-then f executor))))
+     (-> d (->promesa) (promise.p/-handle f executor))))
 
-  (-thenErr
+  (-finally
     ([d f]
-     (-> d (->promesa) (promise.p/-thenErr f)))
+     (-> d (->promesa) (promise.p/-finally f)))
     ([d f executor]
-     (-> d (->promesa) (promise.p/-thenErr f executor)))))
+     (-> d (->promesa) (promise.p/-finally f executor)))))

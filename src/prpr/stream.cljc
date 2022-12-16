@@ -631,6 +631,7 @@
    [:prpr.stream.cross/select-fn fn?]
    [:prpr.stream.cross/merge-fn fn?]
    [:prpr.stream.cross/product-sort-fn fn?]
+   [:prpr.stream.cross/finalizer-fn fn?]
    [:prpr.stream.cross/key-comparator-fn fn?]
    [:prpr.stream.cross/key-extractor-fns
     [:map-of :keyword fn?]]])

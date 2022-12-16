@@ -12,9 +12,7 @@
    [prpr.stream.types :as stream.types]
    [prpr.stream.chunk :as stream.chunk]
 
-   [prpr.stream.cross :as-alias stream.cross])
-  (:import
-   [linked.map LinkedMap]))
+   [prpr.stream.cross :as-alias stream.cross]))
 
 ;;; cross mkII
 ;;;
@@ -206,9 +204,12 @@
      updated-id-partition-buffers]))
 
 (defn generate-output
-  "given partition-selections, generate output according to the operation"
+  "given partition-selections, cartesion-product the selected partitions,
+   merging each row into a {<stream-id> <val>} map, and applying the
+   merge-fn and any finalizer"
   [{merge-fn ::stream.cross/merge-fn
     product-sort-fn ::stream.cross/product-sort-fn
+    finalizer-fn ::stream.cross/finalizer-fn
     :as _cross-spec}
    selected-id-partitions]
 
@@ -222,6 +223,7 @@
          (map (fn [id-vals]
                 (into (linked/map) id-vals)))
          (map merge-fn)
+         (map finalizer-fn)
          (product-sort-fn))))
 
 (defn chunk-full?
@@ -316,37 +318,21 @@
 
             (pr/recur id-partition-buffers)))))))
 
-(defn coerce-linked-map
-  "coerce a map to a linked/map with reliable insertion-based ordering"
-  [m]
-  (cond
-    (instance? LinkedMap m)
-    m
-
-    (sequential? m)
-    (into (linked/map) m)
-
-    (map? m)
-    (into (linked/map) (sort m))
-
-    :else
-    (throw
-     (err/ex-info
-      ::coerce-to-linked-map-failed
-      {:m m}))))
-
 (defn select-first
-  "selector-fn which takes the first element from the offered set of elements"
+  "select-fn which takes the first id-partition from the offered
+   list of id-partitions"
   [id-partitions]
   ;; (info "select-first" skey-head-values)
   (first id-partitions))
 
 (defn select-all
-  "selector-fn which takes all offered elements"
+  "select-fn which takes all offered id-partitions"
   [id-partitions]
   id-partitions)
 
 (defn set-select-all
+  "select-fn which takes all offered id-partitions and additionlly checks
+   that no partition has more than a single element (as required of a set)"
   [id-partitions]
   (let [set? (->> (for [[_id partition] id-partitions]
                     (count partition))
@@ -373,7 +359,7 @@
   [{op ::stream.cross/op
     :as _cross-spec}]
   (case op
-    ::stream.cross/sorted-merge #(-> % vals first)
+    ::stream.cross/sorted-merge (fn [m] (-> m vals first))
     ::stream.cross/inner-join identity
     ::stream.cross/outer-join identity
     ::stream.cross/n-left-join identity
@@ -381,11 +367,21 @@
     ::stream.cross/union identity
     ::stream.cross/difference identity))
 
+;; TODO we should implement the different behavious in the merge-fn
+;; these are wrong
+
 (defn ->product-sort-fn
   [{product-sort ::stream.cross/product-sort
     :as _cross-spec}]
 
   (or product-sort
+      identity))
+
+(defn ->finalizer-fn
+  [{finalizer ::stream.cross/finalizer
+    :as _cross-spec}]
+
+  (or finalizer
       identity))
 
 (defn ->key-comparator-fn
@@ -445,6 +441,7 @@
          {::stream.cross/select-fn (->select-fn cross-spec)
           ::stream.cross/merge-fn (->merge-fn cross-spec)
           ::stream.cross/product-sort-fn (->product-sort-fn cross-spec)
+          ::stream.cross/finalizer-fn (->finalizer-fn cross-spec)
           ::stream.cross/key-comparator-fn (->key-comparator-fn cross-spec)
           ::stream.cross/key-extractor-fns (->key-extractor-fns cross-spec
                                                                 id-streams)})

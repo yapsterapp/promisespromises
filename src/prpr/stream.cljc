@@ -3,6 +3,7 @@
   (:require
    [clojure.core :as clj]
    [malli.experimental :as mx]
+   [malli.util :as mu]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.impl :as impl]
@@ -606,18 +607,46 @@
    ;; the cross-streams operation
    [:prpr.stream.cross/op CrossStreamsOp]
 
-   ;; optional compare fn for keys - defaults to `compare`
-   [:prpr.stream.cross/compare {:optional true} fn?]
+   ;; optional comparator fn for keys - defaults to `compare`
+   [:prpr.stream.cross/key-comparator {:optional true} fn?]
+
+   ;; optional product-sort fn to sort cartesian product output
+   ;; defaults to `identity`
+   [:prpr.streams.cross/product-sort {:optional true} fn?]
 
    ;; optional number of leftmost values required for
    ;; a non-nil n-left-join result
    [:prpr.stream.cross.n-left-join/n {:optional true} :int]
 
    ;; optional function to finalize an output value
-   [:prpr.stream.cross/finalizer {:optional true} fn?]])
+   [:prpr.stream.cross/finalizer {:optional true} fn?]
 
-(def StreamMapSpec
-  [:map-of :keyword [:fn stream?]])
+   ;; target-chunk-size for crosssed output
+   [:prpr.stream.cross/target-chunk-size {:optional true} :int]])
+
+
+(def CrossSupportFns
+  "the fns which implement cross behaviour, derived from the CrossSpec"
+  [:map
+   [:prpr.stream.cross/select-fn fn?]
+   [:prpr.stream.cross/merge-fn fn?]
+   [:prpr.stream.cross/product-sort-fn fn?]
+   [:prpr.stream.cross/key-comparator-fn fn?]
+   [:prpr.stream.cross/key-extractor-fns
+    [:map-of :keyword fn?]]])
+
+(def CrossSpecAndSupportFns
+  (mu/merge
+   CrossSpec
+   CrossSupportFns))
+
+(def IdStreams
+  "id->stream mappings, either in a map, or a
+   list of pairs - the latter providing order for
+   operations like n-left-join which require it"
+  [:or
+   [:map-of :keyword [:fn stream?]]
+   [:+ [:tuple :keyword [:fn stream?]]]])
 
 (mx/defn cross
   "cross some sorted streams returning a stream according to the cross-spec
@@ -635,4 +664,4 @@
       {:users <users-stream>
        :orgs <orgs-stream>})"
   [cross-spec :- CrossSpec
-   streams :- StreamMapSpec])
+   streams :- IdStreams])

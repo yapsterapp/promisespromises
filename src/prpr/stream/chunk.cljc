@@ -26,6 +26,17 @@
       (throw (err/ex-info ::no-chunk-building {})))
     (swap! records-a conj! val))
 
+  (-add-all-to-chunk [_ vals]
+    (when (nil? @records-a)
+      (throw (err/ex-info ::no-chunk-building {})))
+    (swap!
+     records-a
+     (fn [records]
+       (reduce
+        (fn [r v] (conj! r v))
+        records
+        vals))))
+
   (-finish-chunk [_]
     (when (nil? @records-a)
       (throw (err/ex-info ::no-chunk-building {})))

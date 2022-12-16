@@ -44,6 +44,7 @@
 (defprotocol IStreamChunkBuilder
   (-start-chunk [_] [_ val])
   (-add-to-chunk [_ val])
+  (-add-all-to-chunk [_ vals])
   (-finish-chunk [_] [_ val])
   (-discard-chunk [_])
   (-building-chunk? [_])

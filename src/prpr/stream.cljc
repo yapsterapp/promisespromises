@@ -61,6 +61,14 @@
       (impl/put! sink chk)
       (pr/resolved true))))
 
+(defn put-all-and-close!
+  [sink vals]
+  (pr/chain
+   (put-all! sink vals)
+   (fn [r]
+     (impl/close! sink)
+     r)))
+
 (defn ->source
   "turns a collection into a stream
    (with the collection as a chunk on the stream), otherwise does nothing

@@ -51,7 +51,10 @@
 
          (stream.types/stream-chunk? v)
          (let [kxfn (get key-extractor-fns stream-id)
-               new-key-partitions (->> v
+
+               chunk-data (stream.pt/-chunk-values v)
+
+               new-key-partitions (->> chunk-data
                                        (partition-by kxfn)
                                        (map (fn [p]
                                               [(kxfn (first p)) p])))
@@ -374,15 +377,13 @@
   [{product-sort ::stream.cross/product-sort
     :as _cross-spec}]
 
-  (or product-sort
-      identity))
+  (or product-sort identity))
 
 (defn ->finalizer-fn
   [{finalizer ::stream.cross/finalizer
     :as _cross-spec}]
 
-  (or finalizer
-      identity))
+  (or finalizer identity))
 
 (defn ->key-comparator-fn
   [{key-comparator ::stream.cross/key-compartor
@@ -404,11 +405,10 @@
 
 (defn ->key-extractor-fns
   [{keys ::stream.cross/keys
-    :as _cross-spec}
-   id-streams]
+    :as _cross-spec}]
   (->>
-   (for [[id _stream] id-streams]
-     [id (->key-extractor-fn (get keys id))])
+   (for [[id keyspec] keys]
+     [id (->key-extractor-fn keyspec)])
    (into (linked/map))))
 
 (defn partition-streams
@@ -421,6 +421,20 @@
          (let [partition-by-fn (get key-extractor-fns sid)]
            [sid (stream/chunkify target-chunk-size partition-by-fn stream)]))
        (into (linked/map))))
+
+(defn configure-cross-op
+  "assemble helper functions to allow the core cross-stream* impl
+   to perform the specified operation"
+  [cross-spec]
+  (merge
+   {::stream.cross/target-chunk-size 1000}
+   cross-spec
+   {::stream.cross/select-fn (->select-fn cross-spec)
+    ::stream.cross/merge-fn (->merge-fn cross-spec)
+    ::stream.cross/product-sort-fn (->product-sort-fn cross-spec)
+    ::stream.cross/finalizer-fn (->finalizer-fn cross-spec)
+    ::stream.cross/key-comparator-fn (->key-comparator-fn cross-spec)
+    ::stream.cross/key-extractor-fns (->key-extractor-fns cross-spec)}))
 
 (defn cross-streams
   "cross some sorted streams
@@ -435,16 +449,7 @@
    id-streams]
 
   (let [;; configure the specific support fns for the operation
-        cross-spec
-        (merge
-         cross-spec
-         {::stream.cross/select-fn (->select-fn cross-spec)
-          ::stream.cross/merge-fn (->merge-fn cross-spec)
-          ::stream.cross/product-sort-fn (->product-sort-fn cross-spec)
-          ::stream.cross/finalizer-fn (->finalizer-fn cross-spec)
-          ::stream.cross/key-comparator-fn (->key-comparator-fn cross-spec)
-          ::stream.cross/key-extractor-fns (->key-extractor-fns cross-spec
-                                                                id-streams)})
+        cross-spec (configure-cross-op cross-spec)
 
         ;; chunk+partition the streams
         id-streams (partition-streams cross-spec id-streams)]

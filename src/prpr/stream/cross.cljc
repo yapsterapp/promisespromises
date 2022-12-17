@@ -319,7 +319,9 @@
                    _put-ok? (when (chunk-full? cb cross-spec)
                               (stream.impl/put! out (stream.pt/-finish-chunk cb)))]
 
-            (pr/recur id-partition-buffers)))))))
+            (pr/recur id-partition-buffers)))))
+
+    out))
 
 (defn select-first
   "select-fn which takes the first id-partition from the offered

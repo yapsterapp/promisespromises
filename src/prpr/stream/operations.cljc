@@ -7,7 +7,7 @@
    [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
-   [prpr.stream.consumer :as consumer]))
+   [prpr.stream.zip :as zip]))
 
 ;; a clj+cljs cross-platform streams lib, in the style of manifold
 ;;
@@ -219,7 +219,7 @@
      s'))
 
   ([f s & rest]
-   (->> (apply consumer/chunk-zip s rest)
+   (->> (apply zip/chunk-zip s rest)
         (map #(apply f %)))))
 
 (defn mapcon
@@ -264,7 +264,7 @@
    which terminates"
   ([a] (map vector a))
   ([a & rest]
-   (apply consumer/chunk-zip a rest)))
+   (apply zip/chunk-zip a rest)))
 
 (defn mapcat
   ([f s]
@@ -289,7 +289,7 @@
      s'))
 
   ([f s & rest]
-   (->> (apply consumer/chunk-zip s rest)
+   (->> (apply zip/chunk-zip s rest)
         (mapcat #(apply f %)))))
 
 (defn filter

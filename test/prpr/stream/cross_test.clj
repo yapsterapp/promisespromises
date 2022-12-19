@@ -30,7 +30,7 @@
   (is (sut/stream-finished? [::stream.cross/errored])))
 
 
-(deftest buffer-chunk-test
+(deftest buffer-chunk!-test
   (testing "initialises a partition buffer")
   (testing "appends to a partition buffer")
   (testing "deals with stream-end")
@@ -38,11 +38,11 @@
   (testing "deals with empty stream")
   (testing "errors if stream not sorted"))
 
-(deftest init-partition-buffers-test)
+(deftest init-partition-buffers!-test)
 
 (deftest partition-buffer-needs-filling?-test)
 
-(deftest fill-partition-buffers-test)
+(deftest fill-partition-buffers!-test)
 
 (deftest min-key-val-test)
 

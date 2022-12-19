@@ -46,7 +46,7 @@
       (last)
       (stream-finished-markers)))
 
-(defn buffer-chunk
+(defn buffer-chunk!
   "given a stream of chunks of partitions, and a
    buffer of [key partition] tuples, retrieve another
    chunk of partitions and add them to the partitions buffer
@@ -118,14 +118,14 @@
             ::partition-buffer partition-buffer
             ::value v}))))))
 
-(defn init-partition-buffers
+(defn init-partition-buffers!
   "returns partition buffers for each stream with
    partitions from the first chunk"
   [cross-spec id-streams]
 
   (-> (for [[sid _] id-streams]
         (pr/chain
-         (buffer-chunk
+         (buffer-chunk!
           []
           cross-spec
           sid
@@ -152,12 +152,12 @@
     ;; fill when there is a single partition left and
     ;; the stream is not drained - we don't wait until
     ;; the buffer is empty so that we can validate the
-    ;; stream ordering in buffer-chunk
+    ;; stream ordering in buffer-chunk!
     (and
      (<= (count partition-buffer) 1)
      (not= stream-finished-drained-marker (first partition-buffer)))))
 
-(defn fill-partition-buffers
+(defn fill-partition-buffers!
   "buffer another chunk from any streams which are down to a single
    partition and have not yet been stream-finished-drained-marker"
   [id-partition-buffers cross-spec id-streams]
@@ -166,7 +166,7 @@
         (if (partition-buffer-needs-filling? sid partition-buffer)
 
           (pr/chain
-           (buffer-chunk
+           (buffer-chunk!
             partition-buffer
             cross-spec
             sid
@@ -326,7 +326,7 @@
   (let [cb (stream.chunk/stream-chunk-builder)
         out (stream.transport/stream)]
 
-    (pr/let [id-partition-buffers (init-partition-buffers cross-spec id-streams)]
+    (pr/let [id-partition-buffers (init-partition-buffers! cross-spec id-streams)]
 
       #_{:clj-kondo/ignore [:loop-without-recur]}
       (pr/loop [id-partition-buffers id-partition-buffers]
@@ -342,7 +342,7 @@
 
           ;; fetch more input, generate more output, and send a chunk
           ;; to the output stream when filled
-          (pr/let [id-partition-buffers (fill-partition-buffers
+          (pr/let [id-partition-buffers (fill-partition-buffers!
                                          id-partition-buffers
                                          cross-spec
                                          id-streams)

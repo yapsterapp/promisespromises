@@ -26,8 +26,8 @@
 (deftest stream-finished?-test
   (is (not (sut/stream-finished? [])))
   (is (not (sut/stream-finished? [["blah" '({:id "blah"})]])))
-  (is (sut/stream-finished? [::stream.cross/drained]))
-  (is (sut/stream-finished? [::stream.cross/errored])))
+  (is (sut/stream-finished? [[::stream.cross/drained]]))
+  (is (sut/stream-finished? [[::stream.cross/errored]])))
 
 
 (deftest buffer-chunk!-test

@@ -197,7 +197,7 @@
           nil
           ks))
 
-(defn content-drained?
+(defn partition-buffer-content-drained?
   "returns true when a partition-buffer has no more content
    and the associated stream is finished (drained or errored)"
   [partition-buffer]
@@ -205,6 +205,14 @@
        (some?
         (stream-finished-markers
          (-> partition-buffer first first)))))
+
+(defn partition-buffer-errored?
+  "returns true when a partition-buffer has no more content
+   and the associated stream errored"
+  [partition-buffer]
+  (and (= 1 (count partition-buffer))
+       (= stream-finished-errored-marker
+          (-> partition-buffer first first))))
 
 (defn next-selections
   "select partitions for the operation
@@ -215,7 +223,7 @@
    id-partition-buffers]
 
   (let [mkv (->> id-partition-buffers
-                 (filter (fn [[_stream_id pb]] (not (content-drained? pb))))
+                 (filter (fn [[_stream_id pb]] (not (partition-buffer-content-drained? pb))))
                  (map (fn [[_stream-id key-partitions]]
                         (->> key-partitions
                              first ;; first partition
@@ -285,9 +293,28 @@
        (> (count (stream.pt/-chunk-state chunk-builder))
           0)))
 
-(defn finished?
+(defn op-finished?
   [id-partition-buffers]
-  (every? content-drained? (vals id-partition-buffers)))
+  (every? partition-buffer-content-drained? (vals id-partition-buffers)))
+
+(defn op-errored?
+  [id-partition-buffers]
+  (some partition-buffer-errored? (vals id-partition-buffers)))
+
+(defn op-input-errors
+  [id-partition-buffers]
+  (->> (vals id-partition-buffers)
+       (filter (fn [[_id pb]] (partition-buffer-errored? pb)))
+       (into (linked/map))))
+
+(defn first-input-error
+  "use the first input error"
+  [id-partition-buffers]
+  (->> (vals id-partition-buffers)
+       (filter (fn [[_id pb]] (partition-buffer-errored? pb)))
+       (map second) ;; partition-buffers
+       (first) ;; [::errored <error>]
+       (second)))
 
 (defn cross*
   "the implementation, which relies on the support functions:
@@ -327,9 +354,14 @@
           #_{:clj-kondo/ignore [:loop-without-recur]}
           (pr/loop [id-partition-buffers id-partition-buffers]
 
-            (if (finished? id-partition-buffers)
+            (cond
+
+              (op-errored? id-partition-buffers)
+              (throw
+               (first-input-error id-partition-buffers))
 
               ;; finish up - output any in-progress chunk, and close the output
+              (op-finished? id-partition-buffers)
               (if (chunk-not-empty? cb)
                 (pr/chain
                  (stream.transport/put! out (stream.pt/-finish-chunk cb))
@@ -338,6 +370,7 @@
 
               ;; fetch more input, generate more output, and send a chunk
               ;; to the output stream when filled
+              :else
               (pr/let [id-partition-buffers (fill-partition-buffers!
                                              id-partition-buffers
                                              cross-spec

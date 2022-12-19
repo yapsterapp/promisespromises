@@ -4,7 +4,7 @@
    [promesa.core :as pr]
    [prpr.error :as err]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as impl]
+   [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]))
 
 (def default-chunk-size 1000)
@@ -146,8 +146,8 @@
    return a stream of
    [::unchunked|::chunk-start|::chunk|::chunk-end val]"
   [s]
-  (let [s' (impl/stream)]
-    (impl/connect-via
+  (let [s' (transport/stream)]
+    (transport/connect-via
      s
      (fn [v]
        (cond
@@ -155,10 +155,10 @@
          (let [vals (pt/-chunk-values v)
                n (count vals)]
            (pr/chain
-            (impl/put! s' [::chunk-start (first vals)])
+            (transport/put! s' [::chunk-start (first vals)])
             (fn [_]
               (when (> n 2)
-                (impl/put-all!
+                (transport/put-all!
                  s'
                  (-> vals
                      (subvec 1 (- n 2))
@@ -167,10 +167,10 @@
                                 [::chunk v])
                               %))))))
             (fn [_]
-              (impl/put! s' [::chunk-end (last vals)]))))
+              (transport/put! s' [::chunk-end (last vals)]))))
 
          :else
-         (impl/put! s' [::unchunked v])))
+         (transport/put! s' [::unchunked v])))
      s')))
 
 (defn rechunk
@@ -178,9 +178,9 @@
    [::unchunked|::chunk-start|::chunk|::chunk-end val]
    return a stream of unchunked values and chunks"
   [s]
-  (let [s' (impl/stream)
+  (let [s' (transport/stream)
         chunk-builder-a (atom (stream-chunk-builder))]
-    (impl/connect-via
+    (transport/connect-via
      s
      (fn [[k v]]
        (condp = k
@@ -197,9 +197,9 @@
 
          ::chunk-end
          (let [chunk (pt/-finish-chunk @chunk-builder-a v)]
-           (impl/put! s' chunk))
+           (transport/put! s' chunk))
 
 
          ::unchunked
-         (impl/put! s' v)))
+         (transport/put! s' v)))
      s')))

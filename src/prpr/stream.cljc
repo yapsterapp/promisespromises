@@ -6,7 +6,7 @@
    [malli.util :as mu]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as impl]
+   [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]))
@@ -37,11 +37,11 @@
 ;;   - in manifold, timeouts cancel the operation. in core.async they
 ;;     don't
 
-(def stream impl/stream)
-(def stream? impl/stream?)
-(def close! impl/close!)
-(def put! impl/put!)
-(def error! impl/error!)
+(def stream transport/stream)
+(def stream? transport/stream?)
+(def close! transport/close!)
+(def put! transport/put!)
+(def error! transport/error!)
 
 (defn put-all!
   "puts all values onto a stream - first flattens any chunks from
@@ -58,7 +58,7 @@
         chk (when (not-empty flat-vals)
              (types/stream-chunk flat-vals))]
     (if (some? chk)
-      (impl/put! sink chk)
+      (transport/put! sink chk)
       (pr/resolved true))))
 
 (defn put-all-and-close!
@@ -66,7 +66,7 @@
   (pr/chain
    (put-all! sink vals)
    (fn [r]
-     (impl/close! sink)
+     (transport/close! sink)
      r)))
 
 (defn ->source
@@ -74,12 +74,12 @@
    (with the collection as a chunk on the stream), otherwise does nothing
    to a stream"
   [stream-or-coll]
-  (if (impl/stream? stream-or-coll)
+  (if (transport/stream? stream-or-coll)
     stream-or-coll
-    (let [s (impl/stream 1)]
+    (let [s (transport/stream 1)]
 
       (pr/let [_ (put-all! s stream-or-coll)]
-        (impl/close! s))
+        (transport/close! s))
 
       s)))
 
@@ -87,20 +87,20 @@
 ;; don't currently have a good way of using a consumer/ChunkConsumer
 ;; in the public API, since i don't really want to wrap the underlying stream
 ;; or channel in something else
-(def take! impl/take!)
+(def take! transport/take!)
 
-(def connect-via impl/connect-via)
+(def connect-via transport/connect-via)
 
 (defn realize-each
   "convert a Stream<Promise<val>|val> into Stream<val>"
   [s]
-  (let [s' (impl/stream)]
+  (let [s' (transport/stream)]
     (connect-via
      s
      (fn [v]
        (cond
          (types/stream-error? v)
-         (impl/error! s' v)
+         (transport/error! s' v)
 
          (pr/promise? v)
          (pr/chain
@@ -133,19 +133,19 @@
         ([] (try
               (rf)
               (catch #?(:clj Throwable :cljs :default) e
-                (impl/error! out e)
+                (transport/error! out e)
                 (throw e))))
 
         ([rs] (try
                 (rf rs)
                 (catch #?(:clj Throwable :cljs :default) e
-                  (impl/error! out e)
+                  (transport/error! out e)
                   (throw e))))
 
         ([rs v] (cond
                   (types/stream-error? v)
                   (do
-                    (impl/error! out v)
+                    (transport/error! out v)
                     (throw v))
 
                   (types/stream-chunk? v)
@@ -165,14 +165,14 @@
                       (rf rs' chunk-vals-last))
 
                     (catch #?(:clj Throwable :cljs :default) e
-                      (impl/error! out e)
+                      (transport/error! out e)
                       (throw e)))
 
                   :else
                   (try
                     (rf rs v)
                     (catch #?(:clj Throwable :cljs :default) e
-                      (impl/error! out e)
+                      (transport/error! out e)
                       (throw e)))))))))
 
 
@@ -212,14 +212,14 @@
 (defn map
   "(map f Stream<val>) -> Stream<(f val)>"
   ([f s]
-   (let [s' (impl/stream)]
+   (let [s' (transport/stream)]
 
      (connect-via
       s
       (fn [v]
         (cond
           (types/stream-error? v)
-          (impl/error! s' v)
+          (transport/error! s' v)
 
           (types/stream-chunk? v)
           (put!
@@ -282,7 +282,7 @@
 
 (defn mapcat
   ([f s]
-   (let [s' (impl/stream)]
+   (let [s' (transport/stream)]
      (connect-via
       s
       (fn [v]
@@ -308,7 +308,7 @@
 
 (defn filter
   [pred s]
-  (let [s' (impl/stream)]
+  (let [s' (transport/stream)]
     (connect-via
      s
      (fn [v]
@@ -360,7 +360,7 @@
   ([id f s]
    (reductions id f ::none s))
   ([id f initial-val s]
-   (let [s' (impl/stream)
+   (let [s' (transport/stream)
 
          ;; run clojure.core/reductions on chunks
          ;; returning a pair of

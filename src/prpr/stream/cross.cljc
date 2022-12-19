@@ -8,7 +8,7 @@
    [prpr.error :as err]
    [prpr.stream :as stream]
    [prpr.stream.protocols :as stream.pt]
-   [prpr.stream.transport :as stream.impl]
+   [prpr.stream.transport :as stream.transport]
    [prpr.stream.types :as stream.types]
    [prpr.stream.chunk :as stream.chunk]
 
@@ -57,7 +57,7 @@
    stream]
 
   (pr/chain
-     (stream.impl/take! stream stream-finished-drained-marker)
+     (stream.transport/take! stream stream-finished-drained-marker)
 
      (fn [v]
        (cond
@@ -318,7 +318,7 @@
    id-streams]
 
   (let [cb (stream.chunk/stream-chunk-builder)
-        out (stream.impl/stream)]
+        out (stream.transport/stream)]
 
     (pr/let [id-partition-buffers (init-partition-buffers cross-spec id-streams)]
 
@@ -330,9 +330,9 @@
           ;; finish up - output any in-progress chunk, and close the output
           (if (chunk-not-empty? cb)
             (pr/chain
-             (stream.impl/put! out (stream.pt/-finish-chunk cb))
-             (fn [_] (stream.impl/close! out)))
-            (stream.impl/close! out))
+             (stream.transport/put! out (stream.pt/-finish-chunk cb))
+             (fn [_] (stream.transport/close! out)))
+            (stream.transport/close! out))
 
           ;; fetch more input, generate more output, and send a chunk
           ;; to the output stream when filled
@@ -361,7 +361,7 @@
                        (stream.pt/-add-all-to-chunk cb output-records))
 
                    _put-ok? (when (chunk-full? cb cross-spec)
-                              (stream.impl/put! out (stream.pt/-finish-chunk cb)))]
+                              (stream.transport/put! out (stream.pt/-finish-chunk cb)))]
 
 
             (pr/recur id-partition-buffers)))))

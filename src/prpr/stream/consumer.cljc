@@ -4,7 +4,7 @@
   (:require
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as impl]
+   [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]))
 
 ;; maintains some state
@@ -23,7 +23,7 @@
 
         (first buf)
 
-        (pr/let [v (impl/take! s :prpr.stream/end)]
+        (pr/let [v (transport/take! s :prpr.stream/end)]
           (cond
 
             ;; terminal conditions
@@ -62,7 +62,7 @@
             (swap! buf-a rest)
             fv))
 
-        (pr/let [v (impl/take! s :prpr.stream/end)]
+        (pr/let [v (transport/take! s :prpr.stream/end)]
           (cond
 
             ;; terminal conditions
@@ -92,7 +92,7 @@
     (let [buf @buf-a]
       (if (not-empty buf)
         (first buf)
-        (pr/let [v (impl/take! s :prpr.stream/end)]
+        (pr/let [v (transport/take! s :prpr.stream/end)]
           (swap! buf-a conj v)
           v))))
 
@@ -113,7 +113,7 @@
             fv))
 
         (pr/let [;; _ (info "about to -take!")
-                 v (impl/take! s :prpr.stream/end)]
+                 v (transport/take! s :prpr.stream/end)]
           (cond
 
             ;; buffer and return terminal conditions
@@ -163,9 +163,9 @@
         ;; their only downstream channels (manifold behaviour)
         intermediates (repeatedly
                        (count srcs)
-                       impl/stream)
+                       transport/stream)
 
-        out (impl/stream)
+        out (transport/stream)
         consumers (->> intermediates
                        (map chunk-consumer)
                        (into []))
@@ -229,7 +229,7 @@
                  errors?
                  (let [first-err (->> chunk-or-vals (filter types/stream-error?) first)]
                    (pr/chain
-                    (impl/error! out first-err)
+                    (transport/error! out first-err)
                     (fn [_] (close-all))
                     (fn [_] false)))
 
@@ -290,7 +290,7 @@
         ;; catchall cleanup
         (fn [e]
           ;; (error e "zip error")
-          (impl/error! out e)
+          (transport/error! out e)
           (close-all)))
 
     out))

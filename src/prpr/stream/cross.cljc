@@ -1,6 +1,7 @@
 (ns prpr.stream.cross
   (:require
    [clojure.math.combinatorics :as combo]
+   [clojure.set :as set]
    [linked.core :as linked]
    [malli.experimental :as mx]
    [malli.util :as mu]
@@ -14,7 +15,9 @@
    [prpr.stream.types :as stream.types]
    [prpr.stream.chunk :as stream.chunk]
 
-   [prpr.stream.cross :as-alias stream.cross]))
+   [prpr.stream.cross :as-alias cross]
+   [prpr.stream.cross.op :as-alias cross.op]
+   [prpr.stream.cross.op.n-left-join :as-alias cross.op.n-left-join]))
 
 ;;; cross mkII
 ;;;
@@ -25,8 +28,8 @@
 ;;;   same key + target-size constraints
 ;;; - rinse / repeat
 
-(def stream-finished-drained-marker ::drained)
-(def stream-finished-errored-marker ::errored)
+(def stream-finished-drained-marker ::cross/drained)
+(def stream-finished-errored-marker ::cross/errored)
 
 (def stream-finished-markers
   "the partition buffer marker values indicating that
@@ -52,8 +55,8 @@
 
    returns Promise<[ [<partition-key> <partition>]* ::drained?]"
   [partition-buffer
-   {key-comparator-fn ::stream.cross/key-comparator-fn
-    key-extractor-fns ::stream.cross/key-extractor-fns
+   {key-comparator-fn ::cross/key-comparator-fn
+    key-extractor-fns ::cross/key-extractor-fns
     :as cross-spec}
    stream-id
    stream]
@@ -195,8 +198,8 @@
 (defn next-selections
   "select partitions for the operation
    return [[[<stream-id> <partition>]+] updated-id-partition-buffers]"
-  [{select-fn ::stream.cross/select-fn
-    key-comparator-fn ::stream.cross/key-comparator-fn
+  [{select-fn ::cross/select-fn
+    key-comparator-fn ::cross/key-comparator-fn
     :as _cross-spec}
    id-partition-buffers]
 
@@ -239,9 +242,9 @@
   "given partition-selections, cartesion-product the selected partitions,
    merging each row into a {<stream-id> <val>} map, and applying the
    merge-fn and any finalizer"
-  [{merge-fn ::stream.cross/merge-fn
-    product-sort-fn ::stream.cross/product-sort-fn
-    finalizer-fn ::stream.cross/finalizer-fn
+  [{merge-fn ::cross/merge-fn
+    product-sort-fn ::cross/product-sort-fn
+    finalizer-fn ::cross/finalizer-fn
     :as _cross-spec}
    selected-id-partitions]
 
@@ -255,13 +258,14 @@
          (map (fn [id-vals]
                 (into (linked/map) id-vals)))
          (map merge-fn)
+         (filter #(not= % ::none))
          (map finalizer-fn)
          (product-sort-fn))))
 
 (defn chunk-full?
   "should the current chunk be wrapped?"
   [chunk-builder
-   {target-chunk-size ::stream.cross/target-chunk-size
+   {target-chunk-size ::cross/target-chunk-size
     :as _cross-spec}]
   (and (stream.pt/-building-chunk? chunk-builder)
        (> (count (stream.pt/-chunk-state chunk-builder))
@@ -285,7 +289,7 @@
    (fn [[_sid pb]] (= stream-finished-drained-marker (first pb)))
    id-partition-buffers))
 
-(defn intput-errored?
+(defn input-errored?
   [id-partition-buffers]
   (some
    (fn [[_sid pb]] (= stream-finished-errored-marker (first pb)))
@@ -396,46 +400,78 @@
     id-partitions))
 
 (defn ->select-fn
-  [{op ::stream.cross/op
+  [{op ::cross/op
     :as _cross-spec}]
   (case op
-    ::stream.cross/sorted-merge select-first
-    ::stream.cross/inner-join select-all
-    ::stream.cross/outer-join select-all
-    ::stream.cross/n-left-join select-all
-    ::stream.cross/intersect set-select-all
-    ::stream.cross/union set-select-all
-    ::stream.cross/difference set-select-all))
+    ::cross.op/sorted-merge select-first
+    ::cross.op/inner-join select-all
+    ::cross.op/outer-join select-all
+    ::cross.op/n-left-join select-all
+    ::cross.op/intersect set-select-all
+    ::cross.op/union set-select-all
+    ::cross.op/difference set-select-all))
 
 (defn ->merge-fn
-  [{op ::stream.cross/op
-    :as _cross-spec}]
+  [{ks ::cross/keys
+    op ::cross/op
+    :as cross-spec}]
+
   (case op
-    ::stream.cross/sorted-merge (fn [m] (-> m vals first))
-    ::stream.cross/inner-join identity
-    ::stream.cross/outer-join identity
-    ::stream.cross/n-left-join identity
-    ::stream.cross/intersect identity
-    ::stream.cross/union identity
-    ::stream.cross/difference identity))
+    ::cross.op/sorted-merge
+    (fn [m] (-> m vals first))
+
+    ::cross.op/inner-join
+    (fn [m] (if (= (count m) (count ks))
+             m
+             ::none))
+
+    ::cross.op/outer-join
+    identity
+
+    ::cross.op/n-left-join
+    (let [{n ::cross.op.n-left-join/n} cross-spec
+          n-left-ids (->> ks (take n) (map first) set)]
+      (fn [m]
+        (if (= n-left-ids
+               (set/intersection
+                (-> m keys set)
+                n-left-ids))
+          m
+          ::none)))
+
+    ::cross.op/intersect
+    (fn [m] (if (= (count m) (count ks))
+             m
+             ::none))
+
+    ::cross.op/union
+    identity
+
+    ::cross.op/difference
+    (fn [m]
+      (if (and
+           (= (count m) 1)
+           (contains? m (-> ks first first)))
+        m
+        ::none))))
 
 ;; TODO we should implement the different behavious in the merge-fn
 ;; these are wrong
 
 (defn ->product-sort-fn
-  [{product-sort ::stream.cross/product-sort
+  [{product-sort ::cross/product-sort
     :as _cross-spec}]
 
   (or product-sort identity))
 
 (defn ->finalizer-fn
-  [{finalizer ::stream.cross/finalizer
+  [{finalizer ::cross/finalizer
     :as _cross-spec}]
 
   (or finalizer identity))
 
 (defn ->key-comparator-fn
-  [{key-comparator ::stream.cross/key-compartor
+  [{key-comparator ::cross/key-compartor
     :as _cross-spec}]
 
   (cond
@@ -454,7 +490,7 @@
     :else (throw (err/ex-info ::unknown-key-spec {:key-spec key-spec}))))
 
 (defn ->key-extractor-fns
-  [{keys ::stream.cross/keys
+  [{keys ::cross/keys
     :as _cross-spec}]
   (->>
    (for [[id keyspec] keys]
@@ -463,8 +499,8 @@
 
 (defn partition-streams
   "returns {<stream-id> <partitioned-stream>}"
-  [{target-chunk-size ::stream.cross/target-chunk-size
-    key-extractor-fns ::stream.cross/key-extractor-fns
+  [{target-chunk-size ::cross/target-chunk-size
+    key-extractor-fns ::cross/key-extractor-fns
     :as _cross-spec}
    id-streams]
   (->> (for [[sid stream] id-streams]
@@ -477,14 +513,14 @@
    to perform the specified operation"
   [cross-spec]
   (merge
-   {::stream.cross/target-chunk-size 1000}
+   {::cross/target-chunk-size 1000}
    cross-spec
-   {::stream.cross/select-fn (->select-fn cross-spec)
-    ::stream.cross/merge-fn (->merge-fn cross-spec)
-    ::stream.cross/product-sort-fn (->product-sort-fn cross-spec)
-    ::stream.cross/finalizer-fn (->finalizer-fn cross-spec)
-    ::stream.cross/key-comparator-fn (->key-comparator-fn cross-spec)
-    ::stream.cross/key-extractor-fns (->key-extractor-fns cross-spec)}))
+   {::cross/select-fn (->select-fn cross-spec)
+    ::cross/merge-fn (->merge-fn cross-spec)
+    ::cross/product-sort-fn (->product-sort-fn cross-spec)
+    ::cross/finalizer-fn (->finalizer-fn cross-spec)
+    ::cross/key-comparator-fn (->key-comparator-fn cross-spec)
+    ::cross/key-extractor-fns (->key-extractor-fns cross-spec)}))
 
 (def KeySpec
   [:or
@@ -505,69 +541,68 @@
   [:enum
    ;; the merge phase of a sort-merge join.
    ;; output is merged but input values are unchanged
-   :prpr.stream.cross/sorted-merge
+   ::cross.op/sorted-merge
 
    ;; inner join
    ;; output is maps with {<stream-id> <value>...}
-   :prpr.stream.cross/inner-join
+   ::cross.op/inner-join
 
    ;; full outer join
    ;; output is maps with {<stream-id> <value>...}
-   :prpr.stream.cross/outer-join
+   ::cross.op/outer-join
 
    ;; left join requiring at least n leftmost values (default 1)
    ;; output is maps with {<stream-id> <value>...}
-   :prpr.stream.cross/n-left-join
+   ::cross.op/n-left-join
 
    ;; set intersection
    ;; output is sorted, but remaining input values are unchanged
-   :prpr.stream.cross/intersect
+   ::cross.op/intersect
 
    ;; set union
    ;; output is sorted, but input values are unchanged
-   :prpr.stream.cross/union
+   ::cross.op/union
 
    ;; set difference
    ;; output is sorted, but input values are unchanged
-   :prpr.stream.cross/difference])
+   ::cross.op/difference])
 
 (def CrossSpec
   [:map
 
    ;; there must be 1 entry per stream, specifying how to
    ;; extract the key from a value on that stream
-   [:prpr.stream.cross/keys [:map-of :keyword KeySpec]]
+   [::cross/keys [:map-of :keyword KeySpec]]
 
    ;; the cross-streams operation
-   [:prpr.stream.cross/op CrossStreamsOp]
+   [::cross/op CrossStreamsOp]
 
    ;; optional comparator fn for keys - defaults to `compare`
-   [:prpr.stream.cross/key-comparator {:optional true} fn?]
+   [::cross/key-comparator {:optional true} fn?]
 
    ;; optional product-sort fn to sort cartesian product output
    ;; defaults to `identity`
-   [:prpr.streams.cross/product-sort {:optional true} fn?]
+   [::cross/product-sort {:optional true} fn?]
 
    ;; optional number of leftmost values required for
    ;; a non-nil n-left-join result
-   [:prpr.stream.cross.n-left-join/n {:optional true} :int]
+   [::cross.op.n-left-join/n {:optional true} :int]
 
    ;; optional function to finalize an output value
-   [:prpr.stream.cross/finalizer {:optional true} fn?]
+   [::cross/finalizer {:optional true} fn?]
 
    ;; target-chunk-size for crosssed output
-   [:prpr.stream.cross/target-chunk-size {:optional true} :int]])
-
+   [::cross/target-chunk-size {:optional true} :int]])
 
 (def CrossSupportFns
   "the fns which implement cross behaviour, derived from the CrossSpec"
   [:map
-   [:prpr.stream.cross/select-fn fn?]
-   [:prpr.stream.cross/merge-fn fn?]
-   [:prpr.stream.cross/product-sort-fn fn?]
-   [:prpr.stream.cross/finalizer-fn fn?]
-   [:prpr.stream.cross/key-comparator-fn fn?]
-   [:prpr.stream.cross/key-extractor-fns
+   [::cross/select-fn fn?]
+   [::cross/merge-fn fn?]
+   [::cross/product-sort-fn fn?]
+   [::cross/finalizer-fn fn?]
+   [::cross/key-comparator-fn fn?]
+   [::cross/key-extractor-fns
     [:map-of :keyword fn?]]])
 
 (def CrossSpecAndSupportFns
@@ -583,14 +618,13 @@
    [:map-of :keyword [:fn stream.transport/stream?]]
    [:+ [:tuple :keyword [:fn stream.transport/stream?]]]])
 
-
 (mx/defn cross
   "cross some sorted streams, returning a stream according to the cross-spec
 
    each input stream must be sorted ascending in the key specified in cross-spec
    at
-     [::stream.cross/keys <stream-id>]
-   with the comparator fn from ::stream.cross/comparator
+     [::cross/keys <stream-id>]
+   with the comparator fn from ::cross/comparator
 
    - cross-spec : a description of the operation to cross the streams
    - id-streams : {<stream-id> <stream>}

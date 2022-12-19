@@ -48,10 +48,10 @@
 
 (defn buffer-chunk!
   "given a stream of chunks of partitions, and a
-   buffer of [key partition] tuples, retrieve another
-   chunk of partitions and add them to the partitions buffer
+   partition-buffer of [key partition] tuples, retrieve another
+   chunk of partitions and add them to the partition-buffer
    (or add the keyword ::drained if the end of the
-    stream is reached)
+    stream is reached, or ::errored if the stream errored)
 
    returns Promise<[ [<partition-key> <partition>]* ::drained?]"
   [partition-buffer
@@ -61,21 +61,21 @@
    stream-id
    stream]
 
-  (pr/chain
+  (pr/handle
      (stream.transport/take! stream stream-finished-drained-marker)
 
-     (fn [v]
+     (fn [v err]
        (cond
+
+         (some? err)
+         (if (stream-finished? partition-buffer)
+           partition-buffer
+           (conj partition-buffer stream-finished-errored-marker))
 
          (= stream-finished-drained-marker v)
          (if (stream-finished? partition-buffer)
            partition-buffer
            (conj partition-buffer stream-finished-drained-marker))
-
-         (stream.types/stream-error? v)
-         (if (stream-finished? partition-buffer)
-           partition-buffer
-           (conj partition-buffer stream-finished-errored-marker))
 
          (stream.types/stream-chunk? v)
          (let [kxfn (get key-extractor-fns stream-id)
@@ -155,7 +155,7 @@
     ;; stream ordering in buffer-chunk!
     (and
      (<= (count partition-buffer) 1)
-     (not= stream-finished-drained-marker (first partition-buffer)))))
+     (not (stream-finished? partition-buffer)))))
 
 (defn fill-partition-buffers!
   "buffer another chunk from any streams which are down to a single
@@ -250,15 +250,13 @@
 
   (let [id-val-seqs (->> selected-id-partitions
                          (map (fn [[sid partition]]
-                                (->> partition
-                                     (map (fn [v] [sid v]))))))]
+                                (map (fn [v] [sid v]) partition))))]
 
     (->> id-val-seqs
          (apply combo/cartesian-product)
-         (map (fn [id-vals]
-                (into (linked/map) id-vals)))
+         (map (fn [id-vals] (into (linked/map) id-vals)))
          (map merge-fn)
-         (filter #(not= % ::none))
+         (filter #(not= % ::cross/none))
          (map finalizer-fn)
          (product-sort-fn))))
 
@@ -361,6 +359,8 @@
                                    cross-spec
                                    selected-id-partitions)
 
+                   _ (prn "output-records" output-records)
+
                    _ (do
                        (when-not (stream.pt/-building-chunk? cb)
                          (stream.pt/-start-chunk cb))
@@ -412,7 +412,7 @@
     ::cross.op/difference set-select-all))
 
 (defn ->merge-fn
-  [{ks ::cross/keys
+  [{kxfns ::cross/key-extractor-fns
     op ::cross/op
     :as cross-spec}]
 
@@ -421,28 +421,28 @@
     (fn [m] (-> m vals first))
 
     ::cross.op/inner-join
-    (fn [m] (if (= (count m) (count ks))
+    (fn [m] (if (= (count m) (count kxfns))
              m
-             ::none))
+             ::cross/none))
 
     ::cross.op/outer-join
     identity
 
     ::cross.op/n-left-join
     (let [{n ::cross.op.n-left-join/n} cross-spec
-          n-left-ids (->> ks (take n) (map first) set)]
+          n-left-ids (->> kxfns (take n) (map first) set)]
       (fn [m]
         (if (= n-left-ids
                (set/intersection
                 (-> m keys set)
                 n-left-ids))
           m
-          ::none)))
+          ::cross/none)))
 
     ::cross.op/intersect
-    (fn [m] (if (= (count m) (count ks))
+    (fn [m] (if (= (count m) (count kxfns))
              m
-             ::none))
+             ::cross/none))
 
     ::cross.op/union
     identity
@@ -451,9 +451,9 @@
     (fn [m]
       (if (and
            (= (count m) 1)
-           (contains? m (-> ks first first)))
+           (contains? m (-> kxfns first first)))
         m
-        ::none))))
+        ::cross/none))))
 
 ;; TODO we should implement the different behavious in the merge-fn
 ;; these are wrong
@@ -471,7 +471,7 @@
   (or finalizer identity))
 
 (defn ->key-comparator-fn
-  [{key-comparator ::cross/key-compartor
+  [{key-comparator ::cross/key-comparator
     :as _cross-spec}]
 
   (cond
@@ -490,37 +490,46 @@
     :else (throw (err/ex-info ::unknown-key-spec {:key-spec key-spec}))))
 
 (defn ->key-extractor-fns
-  [{keys ::cross/keys
+  [{keyspecs ::cross/keys
     :as _cross-spec}]
-  (->>
-   (for [[id keyspec] keys]
-     [id (->key-extractor-fn keyspec)])
-   (into (linked/map))))
+  (->> (for [[id keyspec] keyspecs]
+         [id (->key-extractor-fn keyspec)])
+       (into (linked/map))))
 
 (defn partition-streams
-  "returns {<stream-id> <partitioned-stream>}"
+  "returns a linked/map with {<stream-id> <partitioned-stream>}, and
+   in the same order as specifed in the ::cross/keys config"
   [{target-chunk-size ::cross/target-chunk-size
+    kxfns ::cross/key-extractor-fns
     key-extractor-fns ::cross/key-extractor-fns
     :as _cross-spec}
    id-streams]
-  (->> (for [[sid stream] id-streams]
-         (let [partition-by-fn (get key-extractor-fns sid)]
-           [sid (stream.ops/chunkify target-chunk-size partition-by-fn stream)]))
-       (into (linked/map))))
+  (let [sids (keys kxfns)]
+    (->> (for [sid sids]
+           (let [stream (get id-streams sid)
+                 partition-by-fn (get key-extractor-fns sid)]
+             [sid (stream.ops/chunkify target-chunk-size partition-by-fn stream)]))
+         (into (linked/map)))))
 
 (defn configure-cross-op
   "assemble helper functions to allow the core cross-stream* impl
    to perform the specified operation"
   [cross-spec]
-  (merge
-   {::cross/target-chunk-size 1000}
-   cross-spec
-   {::cross/select-fn (->select-fn cross-spec)
-    ::cross/merge-fn (->merge-fn cross-spec)
-    ::cross/product-sort-fn (->product-sort-fn cross-spec)
-    ::cross/finalizer-fn (->finalizer-fn cross-spec)
-    ::cross/key-comparator-fn (->key-comparator-fn cross-spec)
-    ::cross/key-extractor-fns (->key-extractor-fns cross-spec)}))
+
+  (let [;; merge-fn is dependent on key-extractor-fns
+        cross-spec (assoc cross-spec
+                          ::cross/key-extractor-fns
+                          (->key-extractor-fns cross-spec))]
+    (merge
+     {::cross/target-chunk-size 1000}
+
+     cross-spec
+
+     {::cross/select-fn (->select-fn cross-spec)
+      ::cross/merge-fn (->merge-fn cross-spec)
+      ::cross/product-sort-fn (->product-sort-fn cross-spec)
+      ::cross/finalizer-fn (->finalizer-fn cross-spec)
+      ::cross/key-comparator-fn (->key-comparator-fn cross-spec)})))
 
 (def KeySpec
   [:or
@@ -567,12 +576,16 @@
    ;; output is sorted, but input values are unchanged
    ::cross.op/difference])
 
+;; an order must be given for keyspecs in the CrossSpec
+(def OrderedKeySpecs
+  [:+ [:tuple :keyword KeySpec]])
+
 (def CrossSpec
   [:map
 
    ;; there must be 1 entry per stream, specifying how to
    ;; extract the key from a value on that stream
-   [::cross/keys [:map-of :keyword KeySpec]]
+   [::cross/keys OrderedKeySpecs]
 
    ;; the cross-streams operation
    [::cross/op CrossStreamsOp]
@@ -605,10 +618,9 @@
    [::cross/key-extractor-fns
     [:map-of :keyword fn?]]])
 
-(def CrossSpecAndSupportFns
-  (mu/merge
-   CrossSpec
-   CrossSupportFns))
+(def ConfiguredCrossOperation
+  (-> CrossSpec
+      (mu/merge CrossSupportFns)))
 
 (def IdStreams
   "id->stream mappings, either in a map, or a

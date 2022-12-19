@@ -94,7 +94,7 @@
              [{:id 0 :b "b00"} {:id 1 :b "b10"} {:id 3 :b "b30"}])
 
           o-s (sut/cross
-               {::stream.cross/keys {:a :id :b :id}
+               {::stream.cross/keys [[:a :id] [:b :id]]
                 ::stream.cross/op ::stream.cross.op/inner-join}
                {:a a :b b})]
 
@@ -113,7 +113,7 @@
           b (stream-of [1 3 5])
 
           o-s (sut/cross
-               {::stream.cross/keys {:a identity :b identity}
+               {::stream.cross/keys [[:a identity] [:b identity]]
                 ::stream.cross/op ::stream.cross.op/difference}
                {:a a :b b})]
 
@@ -124,4 +124,5 @@
                     o-s)]
 
         (is (= [{:a 0} {:a 2} {:a 4} {:a 6}]
-               ovs))))))
+               ovs)))))
+  )

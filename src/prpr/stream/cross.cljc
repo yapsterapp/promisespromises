@@ -44,6 +44,7 @@
   [partition-buffer]
   (-> partition-buffer
       (last)
+      (first)
       (stream-finished-markers)))
 
 (defn buffer-chunk!
@@ -70,12 +71,12 @@
          (some? err)
          (if (stream-finished? partition-buffer)
            partition-buffer
-           (conj partition-buffer stream-finished-errored-marker))
+           (conj partition-buffer [stream-finished-errored-marker err]))
 
          (= stream-finished-drained-marker v)
          (if (stream-finished? partition-buffer)
            partition-buffer
-           (conj partition-buffer stream-finished-drained-marker))
+           (conj partition-buffer [stream-finished-drained-marker]))
 
          (stream.types/stream-chunk? v)
          (let [kxfn (get key-extractor-fns stream-id)
@@ -142,7 +143,8 @@
 
     ;; the count should never be less than 1 - even
     ;; when the stream is drained there should be the
-    ;; [stream-finished-drained-marker] keyword remaining
+    ;; [[stream-finished-drained-marker]] or
+    ;; [[stream-finished-errored-marker <err>]] remaining
     (when (< n 1)
       (throw
        (err/ex-info
@@ -195,6 +197,15 @@
           nil
           ks))
 
+(defn content-drained?
+  "returns true when a partition-buffer has no more content
+   and the associated stream is finished (drained or errored)"
+  [partition-buffer]
+  (and (= 1 (count partition-buffer))
+       (some?
+        (stream-finished-markers
+         (-> partition-buffer first first)))))
+
 (defn next-selections
   "select partitions for the operation
    return [[[<stream-id> <partition>]+] updated-id-partition-buffers]"
@@ -204,8 +215,7 @@
    id-partition-buffers]
 
   (let [mkv (->> id-partition-buffers
-                 (filter (fn [[_stream_id [p1]]]
-                           (not= stream-finished-drained-marker p1)))
+                 (filter (fn [[_stream_id pb]] (not (content-drained? pb))))
                  (map (fn [[_stream-id key-partitions]]
                         (->> key-partitions
                              first ;; first partition
@@ -277,21 +287,7 @@
 
 (defn finished?
   [id-partition-buffers]
-  (every?
-   (fn [[_sid pb]] (stream-finished-markers (first pb)))
-   id-partition-buffers))
-
-(defn op-completed?
-  [id-partition-buffers]
-  (every?
-   (fn [[_sid pb]] (= stream-finished-drained-marker (first pb)))
-   id-partition-buffers))
-
-(defn input-errored?
-  [id-partition-buffers]
-  (some
-   (fn [[_sid pb]] (= stream-finished-errored-marker (first pb)))
-   id-partition-buffers))
+  (every? content-drained? (vals id-partition-buffers)))
 
 (defn cross*
   "the implementation, which relies on the support functions:
@@ -324,53 +320,61 @@
   (let [cb (stream.chunk/stream-chunk-builder)
         out (stream.transport/stream)]
 
-    (pr/let [id-partition-buffers (init-partition-buffers! cross-spec id-streams)]
+    (pr/catch
 
-      #_{:clj-kondo/ignore [:loop-without-recur]}
-      (pr/loop [id-partition-buffers id-partition-buffers]
+        (pr/let [id-partition-buffers (init-partition-buffers! cross-spec id-streams)]
 
-        (if (finished? id-partition-buffers)
+          #_{:clj-kondo/ignore [:loop-without-recur]}
+          (pr/loop [id-partition-buffers id-partition-buffers]
 
-          ;; finish up - output any in-progress chunk, and close the output
-          (if (chunk-not-empty? cb)
-            (pr/chain
-             (stream.transport/put! out (stream.pt/-finish-chunk cb))
-             (fn [_] (stream.transport/close! out)))
-            (stream.transport/close! out))
+            (if (finished? id-partition-buffers)
 
-          ;; fetch more input, generate more output, and send a chunk
-          ;; to the output stream when filled
-          (pr/let [id-partition-buffers (fill-partition-buffers!
-                                         id-partition-buffers
-                                         cross-spec
-                                         id-streams)
+              ;; finish up - output any in-progress chunk, and close the output
+              (if (chunk-not-empty? cb)
+                (pr/chain
+                 (stream.transport/put! out (stream.pt/-finish-chunk cb))
+                 (fn [_] (stream.transport/close! out)))
+                (stream.transport/close! out))
 
-                   _ (prn "id-partition-buffers" id-partition-buffers)
+              ;; fetch more input, generate more output, and send a chunk
+              ;; to the output stream when filled
+              (pr/let [id-partition-buffers (fill-partition-buffers!
+                                             id-partition-buffers
+                                             cross-spec
+                                             id-streams)
 
-                   [selected-id-partitions
-                    id-partition-buffers] (next-selections
-                                           cross-spec
-                                           id-partition-buffers)
+                       _ (prn "id-partition-buffers" id-partition-buffers)
 
-                   _ (prn "selected-id-partitions" selected-id-partitions)
-                   _ (prn "next-id-partition-buffers" id-partition-buffers)
+                       [selected-id-partitions
+                        id-partition-buffers] (next-selections
+                                               cross-spec
+                                               id-partition-buffers)
 
-                   output-records (generate-output
-                                   cross-spec
-                                   selected-id-partitions)
+                       _ (prn "selected-id-partitions" selected-id-partitions)
+                       _ (prn "next-id-partition-buffers" id-partition-buffers)
 
-                   _ (prn "output-records" output-records)
+                       output-records (generate-output
+                                       cross-spec
+                                       selected-id-partitions)
 
-                   _ (do
-                       (when-not (stream.pt/-building-chunk? cb)
-                         (stream.pt/-start-chunk cb))
-                       (stream.pt/-add-all-to-chunk cb output-records))
+                       _ (prn "output-records" output-records)
 
-                   _put-ok? (when (chunk-full? cb cross-spec)
-                              (stream.transport/put! out (stream.pt/-finish-chunk cb)))]
+                       _ (do
+                           (when-not (stream.pt/-building-chunk? cb)
+                             (stream.pt/-start-chunk cb))
+                           (stream.pt/-add-all-to-chunk cb output-records))
+
+                       _put-ok? (when (chunk-full? cb cross-spec)
+                                  (stream.transport/put! out (stream.pt/-finish-chunk cb)))]
 
 
-            (pr/recur id-partition-buffers)))))
+                (pr/recur id-partition-buffers)))))
+
+        (fn [err]
+          (doseq [[id stream] id-streams]
+            (stream.transport/close! stream))
+
+          (stream.transport/error! out err)))
 
     out))
 
@@ -454,9 +458,6 @@
            (contains? m (-> kxfns first first)))
         m
         ::cross/none))))
-
-;; TODO we should implement the different behavious in the merge-fn
-;; these are wrong
 
 (defn ->product-sort-fn
   [{product-sort ::cross/product-sort

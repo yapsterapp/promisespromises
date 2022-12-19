@@ -114,7 +114,12 @@
 
    note that timeout behaviour may vary by platform. on
    manifold, timed out take!s do not eventually take anything
-   from the stream, whereas on core.async they may"
+   from the stream, whereas on core.async they may
+
+   NOTE take! API would ideally not return chunks, but it curently does...
+   don't currently have a good way of using a consumer/ChunkConsumer
+   in the public API, since i don't really want to wrap the underlying stream
+   or channel in something else"
   ([source]
    (pr/chain
     (pt/-take! source)

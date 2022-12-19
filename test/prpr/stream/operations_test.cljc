@@ -1,4 +1,4 @@
-(ns prpr.stream-test
+(ns prpr.stream.operations-test
   (:require
    [prpr.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]

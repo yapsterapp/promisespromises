@@ -2,11 +2,13 @@
   (:require
    [clojure.math.combinatorics :as combo]
    [linked.core :as linked]
+   [malli.experimental :as mx]
+   [malli.util :as mu]
    [promesa.core :as pr]
    [taoensso.timbre :refer [trace debug info warn error]]
 
    [prpr.error :as err]
-   [prpr.stream :as stream]
+   [prpr.stream.operations :as stream.ops]
    [prpr.stream.protocols :as stream.pt]
    [prpr.stream.transport :as stream.transport]
    [prpr.stream.types :as stream.types]
@@ -289,7 +291,7 @@
    (fn [[_sid pb]] (= stream-finished-errored-marker (first pb)))
    id-partition-buffers))
 
-(defn cross-streams*
+(defn cross*
   "the implementation, which relies on the support functions:
 
     - select-fn - select from partitions with matching keys
@@ -467,7 +469,7 @@
    id-streams]
   (->> (for [[sid stream] id-streams]
          (let [partition-by-fn (get key-extractor-fns sid)]
-           [sid (stream/chunkify target-chunk-size partition-by-fn stream)]))
+           [sid (stream.ops/chunkify target-chunk-size partition-by-fn stream)]))
        (into (linked/map))))
 
 (defn configure-cross-op
@@ -484,17 +486,125 @@
     ::stream.cross/key-comparator-fn (->key-comparator-fn cross-spec)
     ::stream.cross/key-extractor-fns (->key-extractor-fns cross-spec)}))
 
-(defn cross-streams
-  "cross some sorted streams
+(def KeySpec
+  [:or
+   ;; keyword for a call to get
+   :keyword
 
-   each stream must be sorted ascending in the key specified in cross-spec at
-    [::stream.cross/keys <stream-id>], with the comparator fn from
-    ::stream.cross/comparator
+   fn?
+
+   ;; list of args for a call to get-in
+   [:+ [:or :keyword :int :string]]])
+
+;; a variety of merge, join, and set operations are possible
+;; when crossing streams
+;;
+;; all operations require that every input stream is sorted in the
+;; same key
+(def CrossStreamsOp
+  [:enum
+   ;; the merge phase of a sort-merge join.
+   ;; output is merged but input values are unchanged
+   :prpr.stream.cross/sorted-merge
+
+   ;; inner join
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/inner-join
+
+   ;; full outer join
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/outer-join
+
+   ;; left join requiring at least n leftmost values (default 1)
+   ;; output is maps with {<stream-id> <value>...}
+   :prpr.stream.cross/n-left-join
+
+   ;; set intersection
+   ;; output is sorted, but remaining input values are unchanged
+   :prpr.stream.cross/intersect
+
+   ;; set union
+   ;; output is sorted, but input values are unchanged
+   :prpr.stream.cross/union
+
+   ;; set difference
+   ;; output is sorted, but input values are unchanged
+   :prpr.stream.cross/difference])
+
+(def CrossSpec
+  [:map
+
+   ;; there must be 1 entry per stream, specifying how to
+   ;; extract the key from a value on that stream
+   [:prpr.stream.cross/keys [:map-of :keyword KeySpec]]
+
+   ;; the cross-streams operation
+   [:prpr.stream.cross/op CrossStreamsOp]
+
+   ;; optional comparator fn for keys - defaults to `compare`
+   [:prpr.stream.cross/key-comparator {:optional true} fn?]
+
+   ;; optional product-sort fn to sort cartesian product output
+   ;; defaults to `identity`
+   [:prpr.streams.cross/product-sort {:optional true} fn?]
+
+   ;; optional number of leftmost values required for
+   ;; a non-nil n-left-join result
+   [:prpr.stream.cross.n-left-join/n {:optional true} :int]
+
+   ;; optional function to finalize an output value
+   [:prpr.stream.cross/finalizer {:optional true} fn?]
+
+   ;; target-chunk-size for crosssed output
+   [:prpr.stream.cross/target-chunk-size {:optional true} :int]])
+
+
+(def CrossSupportFns
+  "the fns which implement cross behaviour, derived from the CrossSpec"
+  [:map
+   [:prpr.stream.cross/select-fn fn?]
+   [:prpr.stream.cross/merge-fn fn?]
+   [:prpr.stream.cross/product-sort-fn fn?]
+   [:prpr.stream.cross/finalizer-fn fn?]
+   [:prpr.stream.cross/key-comparator-fn fn?]
+   [:prpr.stream.cross/key-extractor-fns
+    [:map-of :keyword fn?]]])
+
+(def CrossSpecAndSupportFns
+  (mu/merge
+   CrossSpec
+   CrossSupportFns))
+
+(def IdStreams
+  "id->stream mappings, either in a map, or a
+   list of pairs - the latter providing order for
+   operations like n-left-join which require it"
+  [:or
+   [:map-of :keyword [:fn stream.transport/stream?]]
+   [:+ [:tuple :keyword [:fn stream.transport/stream?]]]])
+
+
+(mx/defn cross
+  "cross some sorted streams, returning a stream according to the cross-spec
+
+   each input stream must be sorted ascending in the key specified in cross-spec
+   at
+     [::stream.cross/keys <stream-id>]
+   with the comparator fn from ::stream.cross/comparator
 
    - cross-spec : a description of the operation to cross the streams
-   - id-streams : {<stream-id> <stream>}"
-  [cross-spec
-   id-streams]
+   - id-streams : {<stream-id> <stream>}
+
+   e.g. this invocations inner-joins a stream of users, sorted by :org-id, to a
+     stream of orgs, sorted by :id
+
+   (cross
+      {:prpr.stream.cross/keys {:users :org-id :orgs :id}
+       :prpr.stream.cross/op :prpr.stream.cross/inner-join}
+      {:users <users-stream>
+       :orgs <orgs-stream>})"
+  [cross-spec :- CrossSpec
+   id-streams :- IdStreams]
 
   (let [;; configure the specific support fns for the operation
         cross-spec (configure-cross-op cross-spec)
@@ -503,4 +613,4 @@
         id-streams (partition-streams cross-spec id-streams)]
 
     ;; cross those streams!
-    (cross-streams* cross-spec id-streams)))
+    (cross* cross-spec id-streams)))

@@ -35,7 +35,6 @@
 ;;   - in manifold, timeouts cancel the operation. in core.async they
 ;;     don't
 
-
 (defn put-all!
   "puts all values onto a stream - first flattens any chunks from
    the vals, and creates a new chunk, then puts the chunk on the
@@ -56,11 +55,13 @@
 
 (defn put-all-and-close!
   [sink vals]
-  (pr/chain
+  (pr/handle
    (put-all! sink vals)
-   (fn [r]
+   (fn [s e]
      (transport/close! sink)
-     r)))
+     (if (some? e)
+       (pr/rejected e)
+       s))))
 
 (defn ->source
   "turns a collection into a stream

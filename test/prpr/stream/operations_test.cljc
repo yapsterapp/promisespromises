@@ -4,19 +4,15 @@
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [prpr.stream.transport :as impl]
-   [prpr.stream :as sut]))
-
-(defn put-all-and-close!
-  [s vs]
-  (pr/chain
-   (impl/put-all! s vs)
-   (fn [_] (sut/close! s))))
+   [prpr.stream.transport :as transport]
+   [prpr.stream.operations :as sut]))
 
 (defn stream-of
+  "returns a stream of the individual values
+   (*not* chunked)"
   [vs]
-  (let [s (sut/stream)]
-    (put-all-and-close! s vs)
+  (let [s (transport/stream)]
+    (transport/put-all-and-close! s vs)
     s))
 
 (defn safe-take!
@@ -25,7 +21,7 @@
   [s & args]
   (pr/catch
       (pr/chain
-       (apply sut/take! s args)
+       (apply transport/take! s args)
        (fn [v]
          [::ok v]))
       (fn [e]
@@ -116,7 +112,7 @@
 (deftest safe-chunk-xform-test
   (testing "receiving a plain value behaviours"
     (testing "simple map transform with no error"
-      (let [out (sut/stream)]
+      (let [out (transport/stream)]
         (is (= [1 2 3]
                (into [] (sut/safe-chunk-xform (map inc) out) [0 1 2])))
         (is (not (pt/-closed? out)))
@@ -126,7 +122,7 @@
         (is (not (pt/-closed? out)))))
 
     (testing "stateful transducer with no errors"
-      (let [out (sut/stream)]
+      (let [out (transport/stream)]
         (is (= [[0 2 4] [3 7] [8 10]]
                (into []
                      (sut/safe-chunk-xform
@@ -145,7 +141,7 @@
 
   (testing "receiving a chunk behaviours"
     (testing "simple map transform with chunks and no error"
-      (let [out (sut/stream)]
+      (let [out (transport/stream)]
         (is (= [1 2 3]
                (into []
                      (sut/safe-chunk-xform (map inc) out)
@@ -166,7 +162,7 @@
         (is (not (pt/-closed? out)))))
 
     (testing "stateful transducer with chunks and no error"
-      (let [out (sut/stream)]
+      (let [out (transport/stream)]
         (is (= [[0 2] [3 5] [8]]
                (into []
                      (sut/safe-chunk-xform
@@ -209,7 +205,7 @@
 
       ;; we expect an error in the into xform to throw immediately, and
       ;; also to error the out stream
-      (let [out (sut/stream)
+      (let [out (transport/stream)
             [rk rv] (try
                       [:ok (into []
                                  (sut/safe-chunk-xform
@@ -222,7 +218,7 @@
                         [:error e]))
 
             [vk vv] @(pr/catch
-                         (pr/let [r (sut/take! out ::closed)]
+                         (pr/let [r (transport/take! out ::closed)]
                            [:ok r])
                          (fn [e]
                            [:error e]))]
@@ -238,7 +234,7 @@
 
       ;; we expect an error in the into xform to throw immediately, and
       ;; also to error the out stream
-      (let [out (sut/stream)
+      (let [out (transport/stream)
             [rk rv] (try
                       [:ok (into []
                                  (sut/safe-chunk-xform
@@ -251,7 +247,7 @@
                         [:error e]))
 
             [vk vv] @(pr/catch
-                         (pr/let [r (sut/take! out ::closed)]
+                         (pr/let [r (transport/take! out ::closed)]
                            [:ok r])
                          (fn [e]
                            [:error e]))]
@@ -422,7 +418,7 @@
           t (sut/map inc s)]
 
       (pr/let [vs (->> (range 0 5)
-                       (map (fn [_](sut/take! t ::closed)))
+                       (map (fn [_](transport/take! t ::closed)))
                        (pr/all))]
         (is (= [1 2 3 4 ::closed] vs)))))
 
@@ -433,18 +429,18 @@
             t (sut/map #(+ %1 %2) a b)]
 
         (pr/let [vs (->> (range 0 5)
-                         (map (fn [_](sut/take! t ::closed)))
+                         (map (fn [_](transport/take! t ::closed)))
                          (pr/all))]
           (is (= [0 2 4 6 ::closed] vs))))))
 
   (testing "terminates the output when any of the inputs terminates"
     (let [a (stream-of [0 1 2 3])
-          b (sut/stream)
-          _ (impl/put-all! b [0 1 2 3 4 5])
+          b (transport/stream)
+          _ (transport/put-all! b [0 1 2 3 4 5])
           t (sut/map #(+ %1 %2) a b)]
 
       (pr/let [vs (->> (range 0 5)
-                       (map (fn [_](sut/take! t ::closed)))
+                       (map (fn [_](transport/take! t ::closed)))
                        (pr/all))]
         (is (= [0 2 4 6 ::closed] vs)))))
 
@@ -457,7 +453,7 @@
         (pr/let [[a b c [ek ev]] (->> (range 0 4)
                                       (map (fn [_]
                                              (pr/catch
-                                                 (sut/take! t ::closed)
+                                                 (transport/take! t ::closed)
                                                  (fn [e]
                                                    [::error e]))))
                                       (pr/all))]
@@ -467,8 +463,8 @@
 
     (testing "error propagation when mapping multiple streams"
       (let [a (stream-of [0 1 2])
-            b (sut/stream)
-            _ (impl/put-all! b [0 1 2
+            b (transport/stream)
+            _ (transport/put-all! b [0 1 2
                                 (types/stream-error (ex-info "boo" {:boo 100}))
                                 4])
 
@@ -477,7 +473,7 @@
         (pr/let [[a b c [ek ev]] (->> (range 0 4)
                                       (map (fn [_]
                                              (pr/catch
-                                                 (sut/take! t ::closed)
+                                                 (transport/take! t ::closed)
                                                  (fn [e]
                                                    [::error e]))))
                                       (pr/all))]
@@ -490,7 +486,7 @@
           t (sut/map #(some-> %1 inc) a )]
 
       (pr/let [[a b] (->> (range 0 2)
-                          (map (fn [_] (sut/take! t ::closed)))
+                          (map (fn [_] (transport/take! t ::closed)))
                           (pr/all))]
         (is (= [1 nil] [a b])))))
   #?(:cljs
@@ -514,7 +510,7 @@
                                (map
                                 (fn [_]
                                   (pr/catch
-                                      (sut/take! t ::closed)
+                                      (transport/take! t ::closed)
                                       (fn [e]
                                         [::error e]))))
                                (pr/all))]
@@ -550,7 +546,7 @@
             s (sut/zip a b)]
 
         (pr/let [[r0 r1 r2 r3 r4] (->> (range 0 5)
-                                       (map (fn [_] (sut/take! s ::closed)))
+                                       (map (fn [_] (transport/take! s ::closed)))
                                        (pr/all))]
 
           (is (= [0 :a] r0))
@@ -566,7 +562,7 @@
             s (sut/zip a b)]
 
         (pr/let [[r0 r1 r2] (->> (range 0 3)
-                                 (map (fn [_] (sut/take! s ::closed)))
+                                 (map (fn [_] (transport/take! s ::closed)))
                                  (pr/all))]
 
           (is (= [0 :a] r0))
@@ -580,7 +576,7 @@
               s (sut/zip a b)]
 
           (pr/let [[r0] (->> (range 0 1)
-                             (map (fn [_] (sut/take! s ::closed)))
+                             (map (fn [_] (transport/take! s ::closed)))
                              (pr/all))]
 
             (is (= ::closed r0))))))))
@@ -775,22 +771,22 @@
       (testing "reductions of an empty stream"
         (let [s (stream-of [])
               t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v (sut/take! t ::closed)]
+          (pr/let [v (transport/take! t ::closed)]
             (is (= ::closed v )))))
       (testing "reductions of a single-element stream"
         (let [s (stream-of [5])
               t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
             (is (= 5 v1))
             (is (= ::closed v2)))))
       (testing "reductions of a multi-element stream"
         (let [s (stream-of [1 2 3])
               t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)
-                   v4 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)]
             (is (= 1 v1))
             (is (= 3 v2))
             (is (= 6 v3))
@@ -800,25 +796,25 @@
       (testing "reductions of a single-element stream"
         (let [s (stream-of [(types/stream-chunk [5])])
               t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
             (is (= (types/stream-chunk [5]) v1))
             (is (= ::closed v2)))))
       (testing "reductions of a multi-element stream"
         (let [s (stream-of [(types/stream-chunk [1 2 3])])
               t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
             (is (= (types/stream-chunk [1 3 6]) v1))
             (is (= ::closed v2))))))
 
     (testing "reductions of a mix of chunks and plain values"
       (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
             t (sut/reductions ::reductions-empty-stream + s)]
-        (pr/let [v1 (sut/take! t ::closed)
-                 v2 (sut/take! t ::closed)
-                 v3 (sut/take! t ::closed)
-                 v4 (sut/take! t ::closed)]
+        (pr/let [v1 (transport/take! t ::closed)
+                 v2 (transport/take! t ::closed)
+                 v3 (transport/take! t ::closed)
+                 v4 (transport/take! t ::closed)]
           (is (= 1 v1))
           (is (= (types/stream-chunk [3 6]) v2))
           (is (= 10 v3))
@@ -885,9 +881,9 @@
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
                  s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)]
             (is (= 1 v1))
             (is (= 4 v2))
             (is (= ::closed v3)))))
@@ -897,10 +893,10 @@
                  ::reductions-empty-stream
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
                  s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)
-                   v4 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)]
             (is (= 2 v1))
             (is (= 6 v2))
             (is (= 9 v3))
@@ -913,9 +909,9 @@
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
                  1
                  s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)]
             (is (= 1 v1))
             (is (= 2 v2))
             (is (= ::closed v3)))))
@@ -926,11 +922,11 @@
                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
                  1
                  s)]
-          (pr/let [v1 (sut/take! t ::closed)
-                   v2 (sut/take! t ::closed)
-                   v3 (sut/take! t ::closed)
-                   v4 (sut/take! t ::closed)
-                   v5 (sut/take! t ::closed)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)
+                   v5 (transport/take! t ::closed)]
             (is (= 1 v1))
             (is (= 3 v2))
             (is (= 7 v3))

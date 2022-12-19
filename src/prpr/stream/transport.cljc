@@ -103,6 +103,16 @@
            (pr/recur (rest vals))
            false))))))
 
+(defn put-all-and-close!
+  [sink vals]
+  (pr/handle
+   (put-all! sink vals)
+   (fn [s e]
+     (close! sink)
+     (if (some? e)
+       (pr/rejected e)
+       s))))
+
 (defn take!
   "take a value from a stream - returns Promise<value|error>
    which evantually resolves to:

@@ -8,6 +8,7 @@
    [promesa.core :as pr]
    [taoensso.timbre :refer [trace debug info warn error]]
 
+   [prpr.promise :as prpr]
    [prpr.error :as err]
    [prpr.stream.operations :as stream.ops]
    [prpr.stream.protocols :as stream.pt]
@@ -347,7 +348,7 @@
   (let [cb (stream.chunk/stream-chunk-builder)
         out (stream.transport/stream)]
 
-    (pr/catch
+    (prpr/catch-always
 
         (pr/let [id-partition-buffers (init-partition-buffers! cross-spec id-streams)]
 

@@ -294,22 +294,16 @@
        (> (count (stream.pt/-chunk-state chunk-builder))
           0)))
 
-(defn op-finished?
+(defn cross-finished?
   [id-partition-buffers]
   (every? partition-buffer-content-drained? (vals id-partition-buffers)))
 
-(defn op-errored?
+(defn cross-input-errored?
   [id-partition-buffers]
   (some partition-buffer-errored? (vals id-partition-buffers)))
 
-(defn op-input-errors
-  [id-partition-buffers]
-  (->> (vals id-partition-buffers)
-       (filter (fn [[_id pb]] (partition-buffer-errored? pb)))
-       (into (linked/map))))
-
-(defn first-input-error
-  "use the first input error"
+(defn first-cross-input-error
+  "use the first input error for an output error"
   [id-partition-buffers]
   (->> (vals id-partition-buffers)
        (filter (fn [[_id pb]] (partition-buffer-errored? pb)))
@@ -357,12 +351,12 @@
 
             (cond
 
-              (op-errored? id-partition-buffers)
+              (cross-input-errored? id-partition-buffers)
               (throw
-               (first-input-error id-partition-buffers))
+               (first-cross-input-error id-partition-buffers))
 
               ;; finish up - output any in-progress chunk, and close the output
-              (op-finished? id-partition-buffers)
+              (cross-finished? id-partition-buffers)
               (if (chunk-not-empty? cb)
                 (pr/chain
                  (stream.transport/put! out (stream.pt/-finish-chunk cb))
@@ -405,7 +399,7 @@
                 (pr/recur id-partition-buffers)))))
 
         (fn [err]
-          (doseq [[id stream] id-streams]
+          (doseq [[_id stream] id-streams]
             (stream.transport/close! stream))
 
           (stream.transport/error! out err)))

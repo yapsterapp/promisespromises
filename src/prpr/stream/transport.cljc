@@ -1,5 +1,5 @@
-(ns prpr.stream.impl
-  "core implementation - covers put!ing onto and
+(ns prpr.stream.transport
+  "low-level transport - covers put!ing onto and
    take!ing from a stream, error propagation,
    special value wrapping/unwrapping and
    stream connection"

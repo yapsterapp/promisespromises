@@ -1,4 +1,4 @@
-(ns prpr.stream.impl-test
+(ns prpr.stream.transport-test
   (:require
    [promesa.core :as pr]
    #?(:clj [prpr.test
@@ -7,7 +7,7 @@
              :refer-macros [deftest testing is]])
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [prpr.stream.impl :as sut]))
+   [prpr.stream.transport :as sut]))
 
 (deftest stream-test
   (testing "returns an object which tests stream?"

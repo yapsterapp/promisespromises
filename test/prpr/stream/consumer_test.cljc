@@ -7,7 +7,7 @@
              :refer-macros [deftest testing is]])
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [prpr.stream.impl :as impl]
+   [prpr.stream.transport :as impl]
    [prpr.stream.consumer :as sut]))
 
 (defn put-all-and-close!

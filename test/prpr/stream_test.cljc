@@ -4,7 +4,7 @@
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [prpr.stream.impl :as impl]
+   [prpr.stream.transport :as impl]
    [prpr.stream :as sut]))
 
 (defn put-all-and-close!

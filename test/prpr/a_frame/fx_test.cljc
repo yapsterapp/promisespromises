@@ -3,7 +3,7 @@
    [prpr.test
     :refer [deftest is testing use-fixtures with-log-level-fixture]]
    [promesa.core :as pr]
-   [prpr.stream.impl :as stream.impl]
+   [prpr.stream.transport :as stream.impl]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]

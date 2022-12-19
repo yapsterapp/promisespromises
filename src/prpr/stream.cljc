@@ -1,12 +1,12 @@
 (ns prpr.stream
-  (:refer-clojure :exclude [concat count filter map mapcat  reduce reductions])
+  (:refer-clojure :exclude [concat count filter map mapcat reduce reductions])
   (:require
    [clojure.core :as clj]
    [malli.experimental :as mx]
    [malli.util :as mu]
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.impl :as impl]
+   [prpr.stream.transport :as impl]
    [prpr.stream.types :as types]
    [prpr.stream.chunk :as chunk]
    [prpr.stream.consumer :as consumer]))

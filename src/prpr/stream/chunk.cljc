@@ -4,7 +4,7 @@
    [promesa.core :as pr]
    [prpr.error :as err]
    [prpr.stream.protocols :as pt]
-   [prpr.stream.impl :as impl]
+   [prpr.stream.transport :as impl]
    [prpr.stream.types :as types]))
 
 (def default-chunk-size 1000)

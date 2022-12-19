@@ -8,7 +8,7 @@
    [prpr.error :as err]
    [prpr.stream :as stream]
    [prpr.stream.protocols :as stream.pt]
-   [prpr.stream.impl :as stream.impl]
+   [prpr.stream.transport :as stream.impl]
    [prpr.stream.types :as stream.types]
    [prpr.stream.chunk :as stream.chunk]
 

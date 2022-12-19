@@ -23,6 +23,24 @@
 ;;;   same key + target-size constraints
 ;;; - rinse / repeat
 
+(def stream-finished-drained-marker ::drained)
+(def stream-finished-errored-marker ::errored)
+
+(def stream-finished-markers
+  "the partition buffer marker values indicating that
+   a stream is finished"
+  #{stream-finished-drained-marker
+    stream-finished-errored-marker})
+
+(defn stream-finished?
+  "takes a partition-buffer and returns true
+   if there are no more values to consumer from the
+   corresponding stream"
+  [partition-buffer]
+  (-> partition-buffer
+      (last)
+      (stream-finished-markers)))
+
 (defn buffer-chunk
   "given a stream of chunks of partitions, and a
    buffer of [key partition] tuples, retrieve another
@@ -39,15 +57,20 @@
    stream]
 
   (pr/chain
-     (stream.impl/take! stream ::drained)
+     (stream.impl/take! stream stream-finished-drained-marker)
 
      (fn [v]
        (cond
 
-         (= ::drained v)
-         (if (= ::drained (last partition-buffer))
+         (= stream-finished-drained-marker v)
+         (if (stream-finished? partition-buffer)
            partition-buffer
-           (conj partition-buffer ::drained))
+           (conj partition-buffer stream-finished-drained-marker))
+
+         (stream.types/stream-error? v)
+         (if (stream-finished? partition-buffer)
+           partition-buffer
+           (conj partition-buffer stream-finished-errored-marker))
 
          (stream.types/stream-chunk? v)
          (let [kxfn (get key-extractor-fns stream-id)
@@ -114,7 +137,7 @@
 
     ;; the count should never be less than 1 - even
     ;; when the stream is drained there should be the
-    ;; [::drained] keyword remaining
+    ;; [stream-finished-drained-marker] keyword remaining
     (when (< n 1)
       (throw
        (err/ex-info
@@ -127,11 +150,11 @@
     ;; stream ordering in buffer-chunk
     (and
      (<= (count partition-buffer) 1)
-     (not= ::drained (first partition-buffer)))))
+     (not= stream-finished-drained-marker (first partition-buffer)))))
 
 (defn fill-partition-buffers
   "buffer another chunk from any streams which are down to a single
-   partition and have not yet been ::drained"
+   partition and have not yet been stream-finished-drained-marker"
   [id-partition-buffers cross-spec id-streams]
   (-> (for [[sid partition-buffer] id-partition-buffers]
 
@@ -170,12 +193,14 @@
 (defn next-selections
   "select partitions for the operation
    return [[[<stream-id> <partition>]+] updated-id-partition-buffers]"
-  [{select-fn ::select-fn
-    key-comparator-fn ::key-comparator-fn
+  [{select-fn ::stream.cross/select-fn
+    key-comparator-fn ::stream.cross/key-comparator-fn
     :as _cross-spec}
    id-partition-buffers]
 
   (let [mkv (->> id-partition-buffers
+                 (filter (fn [[_stream_id [p1]]]
+                           (not= stream-finished-drained-marker p1)))
                  (map (fn [[_stream-id key-partitions]]
                         (->> key-partitions
                              first ;; first partition
@@ -185,6 +210,8 @@
 
         min-key-id-partitions
         (->> id-partition-buffers
+             (filter (fn [[_stream_id [p1]]]
+                           (not= stream-finished-drained-marker p1)))
              (filter (fn [[_stream-id [[partition-key _partition]]]]
                        (= mkv partition-key)))
              (map (fn [[stream-id [[_partition-key partition]]]]
@@ -247,7 +274,19 @@
 (defn finished?
   [id-partition-buffers]
   (every?
-   (fn [[_sid pb]] (#{::drained ::errored} (first pb)))
+   (fn [[_sid pb]] (stream-finished-markers (first pb)))
+   id-partition-buffers))
+
+(defn op-completed?
+  [id-partition-buffers]
+  (every?
+   (fn [[_sid pb]] (= stream-finished-drained-marker (first pb)))
+   id-partition-buffers))
+
+(defn intput-errored?
+  [id-partition-buffers]
+  (some
+   (fn [[_sid pb]] (= stream-finished-errored-marker (first pb)))
    id-partition-buffers))
 
 (defn cross-streams*
@@ -279,7 +318,7 @@
    id-streams]
 
   (let [cb (stream.chunk/stream-chunk-builder)
-        out (stream/stream)]
+        out (stream.impl/stream)]
 
     (pr/let [id-partition-buffers (init-partition-buffers cross-spec id-streams)]
 
@@ -302,10 +341,15 @@
                                          cross-spec
                                          id-streams)
 
+                   _ (prn "id-partition-buffers" id-partition-buffers)
+
                    [selected-id-partitions
                     id-partition-buffers] (next-selections
                                            cross-spec
                                            id-partition-buffers)
+
+                   _ (prn "selected-id-partitions" selected-id-partitions)
+                   _ (prn "next-id-partition-buffers" id-partition-buffers)
 
                    output-records (generate-output
                                    cross-spec
@@ -318,6 +362,7 @@
 
                    _put-ok? (when (chunk-full? cb cross-spec)
                               (stream.impl/put! out (stream.pt/-finish-chunk cb)))]
+
 
             (pr/recur id-partition-buffers)))))
 
@@ -402,6 +447,7 @@
   [key-spec]
   (cond
     (keyword? key-spec) key-spec
+    (fn? key-spec) key-spec
     (sequential? key-spec) #(get-in % key-spec)
     :else (throw (err/ex-info ::unknown-key-spec {:key-spec key-spec}))))
 

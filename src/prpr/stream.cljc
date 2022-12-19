@@ -567,6 +567,8 @@
    ;; keyword for a call to get
    :keyword
 
+   fn?
+
    ;; list of args for a call to get-in
    [:+ [:or :keyword :int :string]]])
 

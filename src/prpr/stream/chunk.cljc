@@ -118,7 +118,13 @@
 
          ([result]
           (when (pt/-building-chunk? cb)
-            (rf result (pt/-finish-chunk cb)))
+            (let [ch (pt/-finish-chunk cb)]
+              (rf result (if (some? partition-by-fn)
+                           (types/stream-chunk
+                            (partition-by
+                             partition-by-fn
+                             (pt/-chunk-values ch)))
+                           ch))))
           (rf result))
 
          ([result input]

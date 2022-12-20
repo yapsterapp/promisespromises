@@ -48,6 +48,21 @@
       (first)
       (stream-finished-markers)))
 
+(defn values-sorted?
+  "returns true if vs are sorted according to comparator-fn"
+  [comparator-fn vs]
+  (let [[r _] (reduce
+               (fn [[r pv] nv]
+                 (if (nil? r)
+                   [true nv]
+                   (if (<= (comparator-fn pv nv) 0)
+                     [true nv]
+                     (reduced [false nv])))
+                 )
+               [nil nil]
+               vs)]
+    r))
+
 (defn buffer-chunk!
   "given a stream of chunks of partitions, and a
    partition-buffer of [key partition] tuples, retrieve another
@@ -95,19 +110,31 @@
 
                first-new-partition-key (->> new-key-partitions
                                             first
-                                            first)]
+                                            first)
+
+               chunk-data-sorted? (values-sorted?
+                                   key-comparator-fn
+                                   (map kxfn chunk-data))
+
+               chunk-starts-after-previous-end?
+               (or (nil? last-current-partition-key)
+                   (<= (key-comparator-fn last-current-partition-key
+                                          first-new-partition-key)
+                       0))]
 
            ;; double-check that the stream is sorted
-           (when (and (some? last-current-partition-key)
-                      (> (key-comparator-fn last-current-partition-key
-                                            first-new-partition-key)
-                         0))
+           (when (or (not chunk-data-sorted?)
+                     (not chunk-starts-after-previous-end?))
+
              (throw (err/ex-info
                      ::stream-not-sorted
                      {::cross-spec cross-spec
                       ::stream-id stream-id
-                      ::prev-partition-key last-current-partition-key
-                      ::next-partition-key first-new-partition-key})))
+                      ::chunk-data chunk-data
+                      ::last-prev-partition-key last-current-partition-key
+                      ::first-new-partition-key first-new-partition-key
+                      ::chunk-data-sorted? chunk-data-sorted?
+                      ::chunk-starts-after-previous-end? chunk-starts-after-previous-end?})))
 
            (into partition-buffer new-key-partitions))
 
@@ -443,49 +470,67 @@
     ::cross.op/union set-select-all
     ::cross.op/difference set-select-all))
 
-(defn ->merge-fn
+(defn merge-sorted-merge
+  [m]
+  (-> m vals first))
+
+(defn make-merge-inner-join
   [{kxfns ::cross/key-extractor-fns
-    op ::cross/op
-    :as cross-spec}]
+    :as _cross-spec}]
+  (fn [m]
+    (if (= (count m) (count kxfns))
+      m
+      ::cross/none)))
 
-  (case op
-    ::cross.op/sorted-merge
-    (fn [m] (-> m vals first))
-
-    ::cross.op/inner-join
-    (fn [m] (if (= (count m) (count kxfns))
-             m
-             ::cross/none))
-
-    ::cross.op/outer-join
-    identity
-
-    ::cross.op/n-left-join
-    (let [{n ::cross.op.n-left-join/n} cross-spec
-          n-left-ids (->> kxfns (take n) (map first) set)]
-      (fn [m]
+(defn make-merge-n-left-join
+  [{kxfns ::cross/key-extractor-fns
+    n ::cross.op.n-left-join/n
+    :as _cross-spec}]
+  (let [n-left-ids (->> kxfns (take n) (map first) set)]
+    (fn [m]
         (if (= n-left-ids
                (set/intersection
                 (-> m keys set)
                 n-left-ids))
           m
-          ::cross/none)))
+          ::cross/none))))
 
-    ::cross.op/intersect
-    (fn [m] (if (= (count m) (count kxfns))
-             m
-             ::cross/none))
+(defn make-merge-intersect
+  [{kxfns ::cross/key-extractor-fns
+    :as _cross-spec}]
+  (fn [m]
+    (if (= (count m) (count kxfns))
+      m
+      ::cross/none)))
 
-    ::cross.op/union
-    identity
+(defn make-merge-difference
+  [{kxfns ::cross/key-extractor-fns
+    :as _cross-spec}]
+  (fn [m]
+    (if (and
+         (= (count m) 1)
+         (contains? m (-> kxfns first first)))
+      m
+      ::cross/none)))
 
-    ::cross.op/difference
-    (fn [m]
-      (if (and
-           (= (count m) 1)
-           (contains? m (-> kxfns first first)))
-        m
-        ::cross/none))))
+(defn ->merge-fn
+  [{op ::cross/op
+    :as cross-spec}]
+
+  (case op
+    ::cross.op/sorted-merge merge-sorted-merge
+
+    ::cross.op/inner-join (make-merge-inner-join cross-spec)
+
+    ::cross.op/outer-join identity
+
+    ::cross.op/n-left-join (make-merge-n-left-join cross-spec)
+
+    ::cross.op/intersect (make-merge-intersect cross-spec)
+
+    ::cross.op/union identity
+
+    ::cross.op/difference (make-merge-difference cross-spec)))
 
 (defn ->product-sort-fn
   [{product-sort ::cross/product-sort
@@ -530,13 +575,12 @@
    in the same order as specifed in the ::cross/keys config"
   [{target-chunk-size ::cross/target-chunk-size
     kxfns ::cross/key-extractor-fns
-    key-extractor-fns ::cross/key-extractor-fns
     :as _cross-spec}
    id-streams]
   (let [sids (keys kxfns)]
     (->> (for [sid sids]
            (let [stream (get id-streams sid)
-                 partition-by-fn (get key-extractor-fns sid)]
+                 partition-by-fn (get kxfns sid)]
              [sid (stream.ops/chunkify target-chunk-size partition-by-fn stream)]))
          (into (linked/map)))))
 

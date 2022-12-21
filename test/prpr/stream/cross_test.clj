@@ -63,42 +63,42 @@
                                [::stream.cross/errored]]))))
 
 (deftest buffer-chunk!-test
+
   (testing "initialises, appends and terminates a partition buffer"
     (let [cfg (sut/configure-cross-op
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
-                ::stream.cross/key-comparator-fn compare})
-          init-pb []
-          s (stream-of [(stream.types/stream-chunk [0 0 0 1 1 1])
-                        (stream.types/stream-chunk [2 2 2])])]
+                ;; given the data, puts 2 partitions in each chunk
+                ::stream.cross/target-chunk-size 6})
 
-      (pr/let [pb1 (sut/buffer-chunk! init-pb cfg :a s)
-               pb2 (sut/buffer-chunk! pb1 cfg :a s)
-               pb3 (sut/buffer-chunk! pb2 cfg :a s)]
+          a (->> (stream-of [0 0 0 1 1 1 2 2 2])
+                 (sut/partition-stream cfg :a))]
+
+      (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)
+               pb2 (sut/buffer-chunk! pb1 cfg :a a)
+               pb3 (sut/buffer-chunk! pb2 cfg :a a)]
 
         (is (= [[0 '(0 0 0)] [1 '(1 1 1)]] pb1))
 
         (is (= [[0 '(0 0 0)] [1 '(1 1 1)] [2 '(2 2 2)]] pb2))
 
         (is (= [[0 '(0 0 0)] [1 '(1 1 1)] [2 '(2 2 2)]
-                [::stream.cross/drained]
-                ] pb3)))))
+                [::stream.cross/drained]] pb3)))))
 
   (testing "deals with stream error"
     (let [cfg (sut/configure-cross-op
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
-                ::stream.cross/key-comparator-fn compare})
-          init-pb []
-          s (->> (stream-of [(stream.types/stream-chunk [0 0 0 2 2 2])
-                             (stream.types/stream-chunk [4 4 4 5 5 5])])
-                 (stream/map (fn [v]
-                               (if (odd? v)
-                                 (throw (ex-info "boo" {:v v}))
-                                 v))))]
+                ::stream.cross/target-chunk-size 6})
 
-      (pr/let [pb1 (sut/buffer-chunk! init-pb cfg :a s)
-               [_ _ [k v]:as pb2] (sut/buffer-chunk! pb1 cfg :a s)]
+          a (->> (stream-of [0 0 0 2 2 2 4 4 4 5 5 5])
+                 (stream/map (fn [v] (if (odd? v)
+                                      (throw (ex-info "boo" {:v v}))
+                                      v)))
+                 (sut/partition-stream cfg :a))]
+
+      (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)
+               [_ _ [k v]:as pb2] (sut/buffer-chunk! pb1 cfg :a a)]
 
         (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] pb1))
         (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] (take 2 pb2)))
@@ -109,11 +109,12 @@
     (let [cfg (sut/configure-cross-op
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
-                ::stream.cross/key-comparator-fn compare})
+                ::stream.cross/target-chunk-size 6})
           init-pb []
-          s (stream-of [])]
+          a (->> (stream-of [])
+                 (sut/partition-stream cfg :a))]
 
-      (pr/let [pb1 (sut/buffer-chunk! init-pb cfg :a s)]
+      (pr/let [pb1 (sut/buffer-chunk! init-pb cfg :a a)]
         (is (= [[::stream.cross/drained]] pb1)))))
 
   (testing "throws an error if stream not sorted"
@@ -121,11 +122,12 @@
       (let [cfg (sut/configure-cross-op
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
-                  ::stream.cross/key-comparator-fn compare})
+                  ::stream.cross/target-chunk-size 6})
             init-pb []
-            s (stream-of [(stream.types/stream-chunk [1 1 1 0 0 0])])]
+            a (->> (stream-of [(stream.types/stream-chunk [1 1 1 0 0 0])])
+                   (sut/partition-stream cfg :a))]
 
-        (-> (sut/buffer-chunk! init-pb cfg :a s)
+        (-> (sut/buffer-chunk! init-pb cfg :a a)
             (merge-pr
              (fn [[k v]]
                (is (= ::error k)))))))
@@ -134,11 +136,12 @@
       (let [cfg (sut/configure-cross-op
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
-                  ::stream.cross/key-comparator-fn compare})
+                  ::stream.cross/target-chunk-size 6})
             init-pb []
-            s (stream-of [(stream.types/stream-chunk [0 0 0])])]
+            a (->> (stream-of [(stream.types/stream-chunk [0 0 0])])
+                   (sut/partition-stream cfg :a))]
 
-        (-> (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a s)
+        (-> (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a)
             (merge-pr
              (fn [[k v]]
                (is (= ::error k))
@@ -148,7 +151,28 @@
                       ::stream.cross/chunk-starts-after-previous-end?
                       :as exd} (ex-data v)]
                  (is (= ::sut/stream-not-sorted error-type))
-                 (is (false? chunk-starts-after-previous-end?))))))))))
+                 (is (false? chunk-starts-after-previous-end?)))))))))
+
+  (testing "throws an error if key extraction returns nil"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/sorted-merge
+                ::stream.cross/keys [[:a identity]]
+                ::stream.cross/target-chunk-size 6})
+          init-pb []
+          a (->> (stream-of [(stream.types/stream-chunk [0 0 0])])
+                 (sut/partition-stream cfg :a))]
+
+      (-> (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a)
+          (merge-pr
+           (fn [[k v]]
+             (is (= ::error k))
+             (let [{error-type :error/type
+
+                    chunk-starts-after-previous-end?
+                    ::stream.cross/chunk-starts-after-previous-end?
+                    :as exd} (ex-data v)]
+               (is (= ::sut/stream-not-sorted error-type))
+               (is (false? chunk-starts-after-previous-end?)))))))))
 
 (deftest init-partition-buffers!-test)
 
@@ -260,21 +284,21 @@
                 {:a {:id 0, :a "a01"}, :b {:id 0, :b "b00"}}]
                ovs)))))
 
-  (testing "difference"
-    (let [a (stream-of [0 1 2 3 4 5 6])
-          b (stream-of [1 3 5])
+  ;; (testing "difference"
+  ;;   (let [a (stream-of [0 1 2 3 4 5 6])
+  ;;         b (stream-of [1 3 5])
 
-          o-s (sut/cross
-               {::stream.cross/keys [[:a identity] [:b identity]]
-                ::stream.cross/op ::stream.cross.op/difference}
-               {:a a :b b})]
+  ;;         o-s (sut/cross
+  ;;              {::stream.cross/keys [[:a identity] [:b identity]]
+  ;;               ::stream.cross/op ::stream.cross.op/difference}
+  ;;              {:a a :b b})]
 
-      (pr/let [ovs (stream.ops/reduce
-                    ::cross-test-inner-join
-                    conj
-                    []
-                    o-s)]
+  ;;     (pr/let [ovs (stream.ops/reduce
+  ;;                   ::cross-test-inner-join
+  ;;                   conj
+  ;;                   []
+  ;;                   o-s)]
 
-        (is (= [{:a 0} {:a 2} {:a 4} {:a 6}]
-               ovs)))))
+  ;;       (is (= [{:a 0} {:a 2} {:a 4} {:a 6}]
+  ;;              ovs)))))
   )

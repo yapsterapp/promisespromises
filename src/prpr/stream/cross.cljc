@@ -98,11 +98,21 @@
          (let [kxfn (get key-extractor-fns stream-id)
 
                chunk-data (stream.pt/-chunk-values v)
+               _ (prn "buffer-chunk!" chunk-data)
 
                new-key-partitions (->> chunk-data
-                                       (partition-by kxfn)
+                                       ;; chunk is already partitioned
+                                       ;; (partition-by kxfn)
                                        (map (fn [p]
-                                              [(kxfn (first p)) p])))
+                                              (let [pk (some-> p first kxfn)]
+                                                (when (nil? pk)
+                                                  (throw
+                                                   (err/ex-info
+                                                    ::nil-partition-key
+                                                    {::cross-spec cross-spec
+                                                     ::stream-id stream-id
+                                                     ::chunk-data chunk-data})))
+                                                [pk p]))))
 
                last-current-partition-key (->> partition-buffer
                                                last
@@ -112,15 +122,21 @@
                                             first
                                             first)
 
+               ;; check the partitions in the new chunk are sorted in the key
                chunk-data-sorted? (values-sorted?
                                    key-comparator-fn
-                                   (map kxfn chunk-data))
+                                   (map first new-key-partitions))
 
+               ;; check that the first partition in the new chunk is sorted
+               ;; in the key with respect to the final partition in the previous
+               ;; chunk
                chunk-starts-after-previous-end?
                (or (nil? last-current-partition-key)
                    (<= (key-comparator-fn last-current-partition-key
                                           first-new-partition-key)
                        0))]
+
+           ;; (prn "buffer-chunk!" chunk-data new-key-partitions)
 
            ;; double-check that the stream is sorted
            (when (or (not chunk-data-sorted?)
@@ -570,18 +586,24 @@
          [id (->key-extractor-fn keyspec)])
        (into (linked/map))))
 
-(defn partition-streams
-  "returns a linked/map with {<stream-id> <partitioned-stream>}, and
-   in the same order as specifed in the ::cross/keys config"
+(defn partition-stream
   [{target-chunk-size ::cross/target-chunk-size
     kxfns ::cross/key-extractor-fns
     :as _cross-spec}
+   stream-id
+   stream]
+  (let [partition-by-fn (get kxfns stream-id)]
+    (stream.ops/chunkify target-chunk-size partition-by-fn stream)))
+
+(defn partition-streams
+  "returns a linked/map with {<stream-id> <partitioned-stream>}, and
+   in the same order as specifed in the ::cross/keys config"
+  [{kxfns ::cross/key-extractor-fns
+    :as cross-spec}
    id-streams]
   (let [sids (keys kxfns)]
     (->> (for [sid sids]
-           (let [stream (get id-streams sid)
-                 partition-by-fn (get kxfns sid)]
-             [sid (stream.ops/chunkify target-chunk-size partition-by-fn stream)]))
+           [sid (partition-stream cross-spec sid (get id-streams sid))])
          (into (linked/map)))))
 
 (defn configure-cross-op

@@ -122,7 +122,7 @@
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
                   ::stream.cross/target-chunk-size 6})
-            a (->> (stream-of [(stream.types/stream-chunk [1 1 1 0 0 0])])
+            a (->> (stream-of [1 1 1 0 0 0])
                    (sut/partition-stream cfg :a))]
 
         (-> (merge-pr (sut/buffer-chunk! [] cfg :a a))
@@ -134,7 +134,7 @@
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
                   ::stream.cross/target-chunk-size 6})
-            a (->> (stream-of [(stream.types/stream-chunk [0 0 0])])
+            a (->> (stream-of [0 0 0])
                    (sut/partition-stream cfg :a))]
 
         (-> (merge-pr (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
@@ -154,7 +154,7 @@
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
                 ::stream.cross/target-chunk-size 6})
-          a (->> (stream-of [(stream.types/stream-chunk [0 0 0])])
+          a (->> (stream-of [0 0 0])
                  (sut/partition-stream cfg :a))]
 
       (-> (merge-pr (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
@@ -170,21 +170,21 @@
                (is (false? chunk-starts-after-previous-end?)))))))))
 
 (deftest init-partition-buffers!-test
-  (testing "initially fills partition-buffers and correctly orders the map")
-  (let [cfg (sut/configure-cross-op
-             {::stream.cross/op ::stream.cross.op/sorted-merge
-              ::stream.cross/keys [[:a identity] [:b identity]]
-              ::stream.cross/target-chunk-size 6})
-        id-streams (->> (linked/map
-                         :b (stream-of [(stream.types/stream-chunk [1 1 1])])
-                         :a (stream-of [(stream.types/stream-chunk [0 0 0])]))
-                        (sut/partition-streams cfg))]
+  (testing "initially fills partition-buffers and correctly orders the map"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/sorted-merge
+                ::stream.cross/keys [[:a identity] [:b identity]]
+                ::stream.cross/target-chunk-size 6})
+          id-streams (->> (linked/map
+                           :b (stream-of [1 1 1])
+                           :a (stream-of [0 0 0]))
+                          (sut/partition-streams cfg))]
 
-    (pr/let [pbs (sut/init-partition-buffers! cfg id-streams)]
-      (is (= [:a :b] (keys pbs)))
-      (is (= {:a [[0 [0 0 0]]]
-              :b [[1 [1 1 1]]]}
-             pbs)))))
+      (pr/let [pbs (sut/init-partition-buffers! cfg id-streams)]
+        (is (= [:a :b] (keys pbs)))
+        (is (= {:a [[0 [0 0 0]]]
+                :b [[1 [1 1 1]]]}
+               pbs))))))
 
 (deftest partition-buffer-needs-filling?-test
   (testing "true if there is a single partition remaining and the stream is not finished"
@@ -202,7 +202,33 @@
       (is (= ::sut/partition-buffer-emptied error-type))
       (is (= :foo stream-id)))))
 
-(deftest fill-partition-buffers!-test)
+(deftest fill-partition-buffers!-test
+  (testing "fills partition-buffers which need filling"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/sorted-merge
+                ::stream.cross/keys [[:a identity] [:b identity] [:c identity]]
+                ::stream.cross/target-chunk-size 6})
+          id-streams (->> (linked/map
+                           :d (stream-of [])
+                           :c (stream-of [])
+                           :b (stream-of [12 12 12])
+                           :a (stream-of [1 1 1]))
+                          (sut/partition-streams cfg))]
+
+      (pr/let [pbs (sut/fill-partition-buffers!
+                    (linked/map
+                     :a [[0 '(0)]]
+                     :b [[10 '(10)] [11 '(11)]]
+                     :c [[20 '(20)] [::sut/drained]]
+                     :d [[20 '(30)] [::sut/errored]])
+                    cfg
+                    id-streams)]
+
+        (is (= {:a [[0 '(0)] [1 '(1 1 1)]]
+                :b [[10 '(10)] [11 '(11)]]
+                :c [[20 '(20)] [::sut/drained]]
+                :d [[20 '(30)] [::sut/errored]]}
+               pbs))))))
 
 (deftest min-key-val-test)
 

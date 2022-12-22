@@ -16,7 +16,9 @@
    [prpr.stream.cross :as sut]
    [prpr.stream.cross :as-alias stream.cross]
    [prpr.stream.cross.op :as-alias stream.cross.op]
-   )
+
+   [prpr.stream.chunk :as stream.chunk]
+   [prpr.stream.protocols :as stream.pt])
   (:import
    [linked.map LinkedMap]))
 
@@ -320,15 +322,48 @@
               cfg
               selected-id-partitions))))))
 
-(deftest chunk-full?-test)
+(deftest chunk-full?-test
+  (let [cb (stream.chunk/stream-chunk-builder)
+        _ (stream.pt/-start-chunk cb)
+        _ (stream.pt/-add-all-to-chunk cb (vec (repeat 10 :foo)))]
 
-(deftest chunk-not-empty?-test)
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a :id] [:b :org_id]]
+                ::stream.cross/target-chunk-size 9})]
+      (is (true? (sut/chunk-full? cb cfg))))
 
-(deftest finished?-test)
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a :id] [:b :org_id]]
+                ::stream.cross/target-chunk-size 10})]
+      (is (true? (sut/chunk-full? cb cfg))))
 
-(deftest op-completed?-test)
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a :id] [:b :org_id]]
+                ::stream.cross/target-chunk-size 11})]
+      (is (false? (sut/chunk-full? cb cfg))))))
 
-(deftest input-errored?-test)
+(deftest chunk-not-empty?-test
+  (let [cb (stream.chunk/stream-chunk-builder)
+        _ (stream.pt/-start-chunk cb)
+        _ (stream.pt/-add-all-to-chunk cb (vec (repeat 10 :foo)))]
+    (is (true? (sut/chunk-not-empty? cb))))
+
+  (let [cb (stream.chunk/stream-chunk-builder)
+        _ (stream.pt/-start-chunk cb)]
+    (is (false? (sut/chunk-not-empty? cb))))
+
+  (let [cb (stream.chunk/stream-chunk-builder)]
+    (is (false? (sut/chunk-not-empty? cb)))))
+
+(deftest cross-finished?-test
+  )
+
+(deftest cross-input-errored?-test)
+
+(deftest first-cross-input-error-test)
 
 (deftest cross*-test)
 

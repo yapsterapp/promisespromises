@@ -337,9 +337,10 @@
   [chunk-builder
    {target-chunk-size ::cross/target-chunk-size
     :as _cross-spec}]
+  (prn "chunk-full?" target-chunk-size (count (stream.pt/-chunk-state chunk-builder)))
   (and (stream.pt/-building-chunk? chunk-builder)
-       (> (count (stream.pt/-chunk-state chunk-builder))
-          (or target-chunk-size default-target-chunk-size))))
+       (>= (count (stream.pt/-chunk-state chunk-builder))
+           (or target-chunk-size default-target-chunk-size))))
 
 (defn chunk-not-empty?
   [chunk-builder]

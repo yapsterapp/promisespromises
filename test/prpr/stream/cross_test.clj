@@ -230,11 +230,95 @@
                 :d [[20 '(30)] [::sut/errored]]}
                pbs))))))
 
-(deftest min-key-val-test)
+(deftest min-key-val-test
+  (is (= 0 (sut/min-key-val compare [1 3 7 0 9])))
+  (is (= 9 (sut/min-key-val (comp - compare) [1 3 7 9 5]))))
 
-(deftest next-selections-test)
+(deftest partition-buffer-content-drained?-test
+  (is (true? (sut/partition-buffer-content-drained? [[::sut/drained]])))
+  (is (false? (sut/partition-buffer-content-drained? [[0 '(0)][::sut/drained]]))))
 
-(deftest generate-output-test)
+(deftest partition-buffer-content-errored?-test
+  (is (true? (sut/partition-buffer-content-drained? [[::sut/errored]])))
+  (is (false? (sut/partition-buffer-content-drained? [[0 '(0)][::sut/errored]]))))
+
+(deftest next-selections-test
+
+  (testing "selects just the first min-key partition for sorted-merge"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/sorted-merge
+                ::stream.cross/keys [[:a identity] [:b identity] [:c identity]]
+                ::stream.cross/target-chunk-size 6})]
+      (is (= [[[:a '(0 0 0)]]
+
+              {:a [[1 '(1 1 1)]]
+               :b [[1 '(1 1 1)] [2 '(2 2 2)]]
+               :c [[0 '(0 0)] [3 '(3 3)]]}]
+             (sut/next-selections
+              cfg
+              (linked/map
+               :a [[0 '(0 0 0)] [1 '(1 1 1)]]
+               :b [[1 '(1 1 1)] [2 '(2 2 2)]]
+               :c [[0 '(0 0)] [3 '(3 3)]]))))))
+
+  (testing "selects all min-key partitions for inner-join"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a identity] [:b identity] [:c identity]]
+                ::stream.cross/target-chunk-size 6})]
+      (is (= [[[:a '(0 0 0)] [:c '(0 0)]]
+
+              {:a [[1 '(1 1 1)]]
+               :b [[1 '(1 1 1)] [2 '(2 2 2)]]
+               :c [[3 '(3 3)]]}]
+             (sut/next-selections
+              cfg
+              (linked/map
+               :a [[0 '(0 0 0)] [1 '(1 1 1)]]
+               :b [[1 '(1 1 1)] [2 '(2 2 2)]]
+               :c [[0 '(0 0)] [3 '(3 3)]])))))))
+
+(deftest generate-output-test
+  (testing "cartesian products the selected partitions"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a :id] [:b :org_id]]
+                ::stream.cross/target-chunk-size 6})
+
+          selected-id-partitions (linked/map
+                                  :a [{:id 0 :a "a0_0"} {:id 0 :a "a0_1"}]
+                                  :b [{:org_id 0 :b "b0_0"} {:org_id 0 :b "b0_1"}])]
+
+      (is (= [{:a {:id 0, :a "a0_0"}, :b {:org_id 0, :b "b0_0"}}
+              {:a {:id 0, :a "a0_0"}, :b {:org_id 0, :b "b0_1"}}
+              {:a {:id 0, :a "a0_1"}, :b {:org_id 0, :b "b0_0"}}
+              {:a {:id 0, :a "a0_1"}, :b {:org_id 0, :b "b0_1"}}]
+             (sut/generate-output
+              cfg
+              selected-id-partitions)))))
+
+  (testing "optionally finalizes and sorts the output"
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/inner-join
+                ::stream.cross/keys [[:a :id] [:b :org_id]]
+                ::stream.cross/target-chunk-size 6
+                ::stream.cross/finalizer (fn [m] (->> m (vals) (apply merge)))
+                ::stream.cross/product-sort (fn [ms]
+                                              (sort-by
+                                               (fn [{n :n m :m}] (+ n m))
+                                               ms))})
+
+          selected-id-partitions (linked/map
+                                  :a [{:id 0 :a "a0_0" :n 20} {:id 0 :a "a0_1" :n 10}]
+                                  :b [{:org_id 0 :b "b0_0" :m 0} {:org_id 0 :b "b0_1" :m 100}])]
+
+      (is (= [{:id 0, :a "a0_1", :n 10, :org_id 0, :b "b0_0", :m 0}
+              {:id 0, :a "a0_0", :n 20, :org_id 0, :b "b0_0", :m 0}
+              {:id 0, :a "a0_1", :n 10, :org_id 0, :b "b0_1", :m 100}
+              {:id 0, :a "a0_0", :n 20, :org_id 0, :b "b0_1", :m 100}]
+             (sut/generate-output
+              cfg
+              selected-id-partitions))))))
 
 (deftest chunk-full?-test)
 

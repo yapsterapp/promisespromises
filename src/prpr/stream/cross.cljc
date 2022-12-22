@@ -22,11 +22,17 @@
 
 ;;; cross mkII
 ;;;
+;;; crossing sorted streams, with
+;;; chunking. allows merge, joins and set operations
+;;; on streams sorted in a key - perfect if you
+;;; have a database like cassandra and need some in-memory
+;;; join operations with constant-space characteristics
+;;;
 ;;; - re-chunk based on key + target-size
 ;;; - consume chunks
 ;;; - sync cross-join matching keys in chunks
-;;; - output everything possible without take! in chunks with
-;;;   same key + target-size constraints
+;;; - output everything possible without further take! using
+;;;   specified chunk target-size constraints
 ;;; - rinse / repeat
 
 (def stream-finished-drained-marker ::cross/drained)
@@ -277,14 +283,18 @@
 
         min-key-id-partitions
         (->> id-partition-buffers
-             (filter (fn [[_stream_id [p1]]]
-                           (not= stream-finished-drained-marker p1)))
+             (filter (fn [[_stream_id pb]]
+                       (not (partition-buffer-content-drained? pb))))
              (filter (fn [[_stream-id [[partition-key _partition]]]]
                        (= mkv partition-key)))
              (map (fn [[stream-id [[_partition-key partition]]]]
                     [stream-id partition])))
 
+        ;; _ (prn "next-selections.min-key-id-partitions" min-key-id-partitions)
+
         selected-id-partitions (select-fn min-key-id-partitions)
+
+        ;; _ (prn "next-selections.selected-id-partitions" selected-id-partitions)
 
         selected-stream-ids (->> selected-id-partitions
                                  (map first)
@@ -454,7 +464,7 @@
    list of id-partitions"
   [id-partitions]
   ;; (info "select-first" skey-head-values)
-  (first id-partitions))
+  (take 1 id-partitions))
 
 (defn select-all
   "select-fn which takes all offered id-partitions"

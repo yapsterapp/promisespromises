@@ -20,3 +20,17 @@
   `(pr/catch
        (always ~body)
        ~handler))
+
+(defmacro chain-always
+  "always chain"
+  [body handler]
+  `(pr/chain
+    (always ~body)
+    ~handler))
+
+(defmacro handle-always
+  "handly any sync or promise error"
+  [body handler]
+  `(pr/handle
+    (always ~body)
+    ~handler))

@@ -1,10 +1,7 @@
 (ns prpr.stream.transport-test
   (:require
    [promesa.core :as pr]
-   #?(:clj [prpr.test
-            :refer [deftest testing is]]
-      :cljs [prpr.test
-             :refer-macros [deftest testing is]])
+   [prpr.test :refer [deftest testing is]]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [prpr.stream.transport :as sut]))

@@ -3,7 +3,8 @@
    [cljs.test]
    [prpr.util.macro]
    [promesa.core]
-   [prpr.test])
+   [prpr.test]
+   [prpr.test.reduce])
   (:require
    [cljs.test]
    [prpr.util.macro]

@@ -1,36 +1,35 @@
 (ns prpr.promise
-  #?(:cljs
-     (:require-macros [prpr.promise]))
+  #?(:cljs (:require-macros [prpr.promise]))
   (:require
-   [promesa.core :as pr]))
+   [promesa.core]
+   [prpr.util.macro]))
 
 (defmacro always
   "catch any sync exception from evaluating body, and wrap
    in an errored promise - allowing a single promise-based
    control-flow in promise chains"
   [body]
-  `(try
-     ~body
-     (catch #?(:clj Exception :cljs :default) e#
-       (pr/rejected e#))))
+  `(prpr.util.macro/try-catch
+    ~body
+    (catch e# (promesa.core/rejected e#))))
 
 (defmacro catch-always
   "catch any sync or promise error"
   [body handler]
-  `(pr/catch
+  `(promesa.core/catch
        (always ~body)
        ~handler))
 
 (defmacro chain-always
   "always chain"
   [body handler]
-  `(pr/chain
+  `(promesa.core/chain
     (always ~body)
     ~handler))
 
 (defmacro handle-always
   "handly any sync or promise error"
   [body handler]
-  `(pr/handle
+  `(promesa.core/handle
     (always ~body)
     ~handler))

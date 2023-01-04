@@ -714,13 +714,29 @@
    [::cross/target-chunk-size {:optional true} :int]])
 
 (def CrossSupportFns
-  "the fns which implement cross behaviour, derived from the CrossSpec"
+  "the fns which implement cross operation behaviours, all derived from the
+   config in CrossSpec and defaults"
   [:map
+   ;; the operation-determined select-fn chooses which partitions are taken from the
+   ;; leading partitions which match the minimum key value
    [::cross/select-fn fn?]
+
+   ;; given a {<stream-id> <partition>} map of selected partitions, the
+   ;; op-determined merge-fn decides what, if anything, moves to output
    [::cross/merge-fn fn?]
-   [::cross/product-sort-fn fn?]
+
+   ;; given merged output, the optional caller-specified finalizer-fn
+   ;; applies a transformation to the merged output
    [::cross/finalizer-fn fn?]
+
+   ;; given finalized output, the optional caller-specified product-sort-fn
+   ;; applies a sort to the crossed partition output
+   [::cross/product-sort-fn fn?]
+
+   ;; the key-comparator-fn is used to compare key values - default to `compare`
    [::cross/key-comparator-fn fn?]
+
+   ;; the key-extractor-fns extract keys from the values on each stream
    [::cross/key-extractor-fns
     [:map-of :keyword fn?]]])
 

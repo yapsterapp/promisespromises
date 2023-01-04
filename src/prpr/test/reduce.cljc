@@ -30,6 +30,7 @@
             ;; if a form returns a single fn (or a promise of a fn)
             ;; and we're not beyond the max-depth, then call it
             (fn? r)
+            #_{:clj-kondo/ignore [:redundant-do]}
             (do
               ;; (prn "single fn")
               (if (< depth max-depth)
@@ -45,6 +46,7 @@
             ;; if a form returns a seq of fns, then call them
             ;; in order
             (seq-of-fns? r)
+            #_{:clj-kondo/ignore [:redundant-do]}
             (do
               ;; (prn "seq-of-fns")
               (if (< depth max-depth)
@@ -57,8 +59,9 @@
                                 {:max-depth max-depth}))))
 
             :else
+            #_{:clj-kondo/ignore [:redundant-do]}
             (do
-              ;; (prn "normal result")
+              ;; (prn "normal result" r)
               (pr/recur
                (conj rs r)
                0

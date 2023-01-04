@@ -136,15 +136,19 @@
          (prpr.util.macro/if-cljs
           (do
             (println "      " ~s)
-            (cljs.test/testing
-                (prpr.test.reduce/reduce-pr-fns
-                 [~@fs])))
+            ;; cljs.test/testing seems to lose the result, which messes up
+            ;; our ()->Promise closure reducing method, so explicitly
+            ;; capture the result in an atom
+            (let [r# (atom nil)]
+              (cljs.test/testing
+                  (reset! r# (prpr.test.reduce/reduce-pr-fns [~@fs])))
+              @r#))
+
           (with-test-binding-frame
             (do
               (println "      " ~s)
-              (clojure.test/testing ~s
-                (prpr.test.reduce/reduce-pr-fns
-                 [~@fs])))))))))
+              (clojure.test/testing
+                  (prpr.test.reduce/reduce-pr-fns [~@fs])))))))))
 
 (defmacro with-log-level
   "temporarily set the log-level while executing the forms"

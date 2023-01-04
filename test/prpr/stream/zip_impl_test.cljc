@@ -1,4 +1,4 @@
-(ns prpr.stream.zip-test
+(ns prpr.stream.zip-impl-test
   (:require
    [promesa.core :as pr]
    [prpr.test :refer [deftest testing is]]

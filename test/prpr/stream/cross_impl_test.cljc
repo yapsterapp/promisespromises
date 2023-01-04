@@ -1,8 +1,9 @@
-(ns prpr.stream.cross-test
+(ns prpr.stream.cross-impl-test
   (:require
    [prpr.test :refer [deftest testing is with-log-level]]
    [clojure.math.combinatorics :as combo]
    [linked.core :as linked]
+   #?(:cljs [linked.map :refer [LinkedMap]])
    [taoensso.timbre :as log :refer [info warn error]]
 
    [promesa.core :as pr]
@@ -13,14 +14,13 @@
    [prpr.stream.types :as stream.types]
    [prpr.stream :as stream]
 
-   [prpr.stream.cross :as sut]
-   [prpr.stream.cross :as-alias stream.cross]
-   [prpr.stream.cross.op :as-alias stream.cross.op]
+   [prpr.stream.cross-impl :as sut :as-alias stream.cross]
+   [prpr.stream.cross-impl.op :as-alias stream.cross.op]
 
    [prpr.stream.chunk :as stream.chunk]
    [prpr.stream.protocols :as stream.pt])
-  (:import
-   [linked.map LinkedMap]))
+  #?(:clj (:import
+           [linked.map LinkedMap])))
 
 (defn stream-of
   "returns a stream of the individual values
@@ -387,6 +387,10 @@
 
 (deftest ->key-extractor-fns)
 
+(defn linked-map?
+  [v]
+  (instance? LinkedMap v))
+
 (deftest partition-streams-test
   (testing "partitions and chunks streams and correctly orders the id-streams map"
     (let [s (stream-of [0 1 2 3])
@@ -402,7 +406,7 @@
                       (linked/map :t t :s s))]
 
       ;; check output map is ordered correctly
-      (is (instance? LinkedMap psts ))
+      (is (linked-map? psts))
       (is (= [:s :t] (keys psts)))
 
       (pr/let [s-vs (consume r-s)

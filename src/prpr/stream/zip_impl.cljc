@@ -1,4 +1,4 @@
-(ns prpr.stream.zip
+(ns prpr.stream.zip-impl
   "consume from multiple streams in a chunk and
    error sensitive way"
   (:require

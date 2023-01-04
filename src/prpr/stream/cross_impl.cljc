@@ -1,4 +1,4 @@
-(ns prpr.stream.cross
+(ns prpr.stream.cross-impl
   (:require
    [clojure.math.combinatorics :as combo]
    [clojure.set :as set]
@@ -16,9 +16,9 @@
    [prpr.stream.types :as stream.types]
    [prpr.stream.chunk :as stream.chunk]
 
-   [prpr.stream.cross :as-alias cross]
-   [prpr.stream.cross.op :as-alias cross.op]
-   [prpr.stream.cross.op.n-left-join :as-alias cross.op.n-left-join]))
+   [prpr.stream.cross-impl :as-alias cross]
+   [prpr.stream.cross-impl.op :as-alias cross.op]
+   [prpr.stream.cross-impl.op.n-left-join :as-alias cross.op.n-left-join]))
 
 ;;; cross mkII
 ;;;
@@ -767,8 +767,8 @@
      stream of orgs, sorted by :id
 
    (cross
-      {:prpr.stream.cross/keys {:users :org-id :orgs :id}
-       :prpr.stream.cross/op :prpr.stream.cross/inner-join}
+      {::cross/keys {:users :org-id :orgs :id}
+       ::cross/op ::cross/inner-join}
       {:users <users-stream>
        :orgs <orgs-stream>})"
   [cross-spec :- CrossSpec

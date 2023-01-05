@@ -1,6 +1,7 @@
 (ns prpr.stream.transport-test
   (:require
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.test :refer [deftest testing is]]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -18,13 +19,12 @@
   "take! from a stream impl without any unwrapping
    Promise<[::ok <val>]> | Promise<[::error <err>]>"
   [s & args]
-  (pr/catch
-      (pr/chain
-       (apply pt/-take! s args)
-       (fn [v]
-         [::ok v]))
-      (fn [e]
-        [::error e])))
+  (prpr/handle-always
+   (apply pt/-take! s args)
+   (fn [v e]
+     (if (some? e)
+       [::error e]
+       [::ok v]))))
 
 (defn safe-low-consume
   "keep safe-low-take! ing until ::closed"

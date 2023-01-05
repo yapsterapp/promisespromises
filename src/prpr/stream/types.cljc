@@ -1,5 +1,6 @@
 (ns prpr.stream.types
   (:require
+   #?(:cljs [cljs.core :refer [IEquiv]])
    [promesa.core :as pr]
    [prpr.stream.protocols :as pt]))
 
@@ -16,7 +17,18 @@
 ;; using core.async
 (deftype StreamNil []
   pt/IStreamValue
-  (-unwrap-value [_] nil))
+  (-unwrap-value [_] nil)
+
+  #?@(:clj
+      [Object
+       (equals [_a b]
+               (instance? StreamNil b))]
+
+      :cljs
+      [IEquiv
+       (-equiv [this other] (and
+                             (= (type this) (type other))
+                             (= (.-x this) (.-x other))))]))
 
 (defn stream-nil
   []
@@ -80,9 +92,14 @@
     (pr/let [realized-values (pr/all values)]
       (->StreamChunk realized-values)))
 
-  Object
-  (equals [a b]
-    (= (.-values a) (.-values b))))
+  #?@(:clj [Object
+            (equals [a b]
+                    (and (instance? StreamChunk b)
+                         (= (.-values a) (.-values b))))]
+      :cljs [IEquiv
+             (-equiv [a b]
+                     (and (instance? StreamChunk b)
+                         (= (.-values a) (.-values b))))]))
 
 #?(:clj
    (defmethod print-method StreamChunk [x writer]

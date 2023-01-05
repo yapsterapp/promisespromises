@@ -27,7 +27,7 @@
 
 (defn async-put!
   ([sink val]
-   (prn "async-put!" val)
+   ;; (prn "async-put!" val)
    (let [r (pr/deferred)]
      ;; (prn "async-put!" val)
      (async/put! sink val #(pr/resolve! r %))
@@ -101,7 +101,7 @@
 
              (pr/handle
               (fn [v err]
-                (prn "async-connect-via: value" v err)
+                ;; (prn "async-connect-via: value" v err)
 
                 (cond
                   (some? err)

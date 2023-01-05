@@ -84,6 +84,7 @@
     (transport/connect-via
      s
      (fn [v]
+       ;; (prn "realize-each" v)
        (cond
          (types/stream-error? v)
          (transport/error! s' v)
@@ -184,7 +185,7 @@
    see this being a problem atm, so i'm sticking with the native transforms for
    now"
   ([xform s]
-   (transform xform 0 s))
+   (transform xform 1 s))
   ([xform buffer-size s]
    (let [out (transport/stream)
          s' (transport/stream buffer-size (safe-chunk-xform xform out))]

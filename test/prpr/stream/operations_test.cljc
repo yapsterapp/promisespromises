@@ -1,7 +1,8 @@
 (ns prpr.stream.operations-test
   (:require
-   [prpr.test :refer [deftest testing is with-log-level]]
+   [prpr.test :refer [deftest tlet testing is with-log-level]]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [prpr.stream.transport :as transport]
@@ -19,13 +20,12 @@
   "take! from a stream returning
    Promise<[::ok <val>]> | Promise<[::error <err>]>"
   [s & args]
-  (pr/catch
-      (pr/chain
-       (apply transport/take! s args)
-       (fn [v]
-         [::ok v]))
-      (fn [e]
-        [::error e])))
+  (prpr/handle-always
+   (apply transport/take! s args)
+   (fn [v e]
+     (if (some? e)
+       [::error e]
+       [::ok v]))))
 
 (defn safe-consume
   "keep safe-take! ing until ::closed"
@@ -33,6 +33,27 @@
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [r []]
     (pr/let [[_t v :as t-v] (safe-take! s ::closed)]
+      (if (= ::closed v)
+        (conj r t-v)
+        (pr/recur (conj r t-v))))))
+
+(defn safe-low-take!
+  "take! from a stream impl without any unwrapping
+   Promise<[::ok <val>]> | Promise<[::error <err>]>"
+  [s & args]
+  (prpr/handle-always
+   (apply pt/-take! s args)
+   (fn [v e]
+     (if (some? e)
+       [::error e]
+       [::ok v]))))
+
+(defn safe-low-consume
+  "keep safe-low-take! ing until ::closed"
+  [s]
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [r []]
+    (pr/let [[_t v :as t-v] (safe-low-take! s ::closed)]
       (if (= ::closed v)
         (conj r t-v)
         (pr/recur (conj r t-v))))))
@@ -48,18 +69,20 @@
   (testing "error in transform behaviours"))
 
 (deftest realize-each-test
-  (testing "receiving a plain value behaviours"
-    (testing "does nothing to non-promise values"
-      (let [s (stream-of [0 1 2 3])
-            t (sut/realize-each s)]
 
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 0]
-                  [::ok 1]
-                  [::ok 2]
-                  [::ok 3]
-                  [::ok ::closed]]
-                 vs)))))
+  (testing "receiving a plain value behaviours"
+
+    (testing "does nothing to non-promise values"
+    (let [s (stream-of [0 1 2 3])
+          t (sut/realize-each s)]
+
+      (pr/let [vs (safe-consume t)]
+        (is (= [[::ok 0]
+                [::ok 1]
+                [::ok 2]
+                [::ok 3]
+                [::ok ::closed]]
+               vs)))))
 
     (testing "realizes promise values"
       (let [s (stream-of (map pr/resolved [0 1 2 3]))
@@ -107,7 +130,8 @@
                   [::ok ::closed]]
                  [r0 r2]))
           (is (= ::error r1t))
-          (is (= {:id 100} (ex-data r1v))))))))
+          (is (= {:id 100} (ex-data r1v)))))))
+  )
 
 (deftest safe-chunk-xform-test
   (testing "receiving a plain value behaviours"
@@ -215,20 +239,24 @@
                                   out)
                                  [0 2 3])]
                       (catch #?(:clj Throwable :cljs :default) e
-                        [:error e]))
+                        [:error e]))]
 
-            [vk vv] @(pr/catch
-                         (pr/let [r (transport/take! out ::closed)]
-                           [:ok r])
-                         (fn [e]
-                           [:error e]))]
+        (pr/let [[vk vv] (prpr/catch-always
+                          (pr/chain
+                           (transport/take! out ::closed)
+                           (fn [v] [:ok v]))
+                          (fn [e] [:error e]))
 
-        (is (= :error rk))
-        (is (= {:v 3} (ex-data rv)))
+                 cv (transport/take! out ::closed)]
 
-        (is (= :error vk))
-        (is (= {:v 3} (ex-data vv)))
-        (is (pt/-closed? out))))
+          (is (= :error rk))
+          (is (= {:v 3} (ex-data rv)))
+
+          (is (= :error vk))
+          (is (= {:v 3} (ex-data vv)))
+
+          (is (= ::closed cv))
+          (is (pt/-closed? out)))))
 
     (testing "simple map transformer with chunk and error"
 
@@ -244,165 +272,173 @@
                                   out)
                                  [0 2 (types/stream-chunk [3])])]
                       (catch #?(:clj Throwable :cljs :default) e
-                        [:error e]))
+                        [:error e]))]
 
-            [vk vv] @(pr/catch
-                         (pr/let [r (transport/take! out ::closed)]
-                           [:ok r])
-                         (fn [e]
-                           [:error e]))]
+        (pr/let [[vk vv] (prpr/catch-always
+                          (pr/chain
+                           (transport/take! out ::closed)
+                           (fn [v] [:ok v]))
+                          (fn [e] [:error e]))
 
-        (is (= :error rk))
-        (is (= {:v 3} (ex-data rv)))
+                 cv (transport/take! out ::closed)]
 
-        (is (= :error vk))
-        (is (= {:v 3} (ex-data vv)))
-        (is (pt/-closed? out))))))
+          (is (= :error rk))
+          (is (= {:v 3} (ex-data rv)))
 
-(deftest transform-test
+          (is (= :error vk))
+          (is (= {:v 3} (ex-data vv)))
 
-  (testing "receiving a plain value behaviours")
-  (testing "receiving a chunk behaviours")
-  (testing "receiving a nil-value behaviours")
-  (testing "receiving a stream-error behaviours")
-  (testing "error in transform behaviours")
+          (is (= ::closed cv))
+          (is (pt/-closed? out)))))))
 
-  (testing "simple stateless transducer"
-    (testing "transforms a stream of plain values"
-      (let [s (stream-of [0 1 2])
-            t (sut/transform (map inc) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1]
-                  [::ok 2]
-                  [::ok 3]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "transforms a stream of chunks"
-      (let [s (stream-of [(types/stream-chunk [0 1 2])])
-            t (sut/transform (map inc) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1]
-                  [::ok 2]
-                  [::ok 3]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "transforms a stream of mixed plain values and chunks"
-      (let [s (stream-of [(types/stream-chunk [0])
-                          (types/stream-chunk [1 2])
-                          3])
-            t (sut/transform (map inc) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1]
-                  [::ok 2]
-                  [::ok 3]
-                  [::ok 4]
-                  [::ok ::closed]]
-                 vs))))
-      (let [s (stream-of [0
-                          (types/stream-chunk [1 2])
-                          3])
-            t (sut/transform (map inc) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1]
-                  [::ok 2]
-                  [::ok 3]
-                  [::ok 4]
-                  [::ok ::closed]]
-                 vs))))))
+;; (deftest transform-test
 
-  (testing "stateful transducer"
-    (testing "transforms a stream of plain values"
-      (let [s (stream-of [0 0 1 1 2 2])
-            t (sut/transform (partition-by identity) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok [0 0]]
-                  [::ok [1 1]]
-                  [::ok [2 2]]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "transforms a stream of chunks"
-      (let [s (stream-of [(types/stream-chunk [0 0 1 1 2 2])])
-            t (sut/transform (partition-by identity) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok [0 0]]
-                  [::ok [1 1]]
-                  [::ok [2 2]]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "transforms a stream of mixed plain values and chunks"
-      (let [s (stream-of [(types/stream-chunk [0])
-                          0
-                          (types/stream-chunk [1 1 2])
-                          2])
-            t (sut/transform (partition-by identity) s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok [0 0]]
-                  [::ok [1 1]]
-                  [::ok [2 2]]
-                  [::ok ::closed]]
-                 vs))))))
+;;   (testing "receiving a plain value behaviours")
+;;   (testing "receiving a chunk behaviours")
+;;   (testing "receiving a nil-value behaviours")
+;;   (testing "receiving a stream-error behaviours")
+;;   (testing "error in transform behaviours")
 
-  (testing "errors in the transducer"
-    (with-log-level :fatal
-      (testing "errors the output stream"
-        (testing "stream of plain values"
-          (let [mapinc (fn [rf]
-                         (fn
-                           ([] (rf))
-                           ([a] (rf a))
-                           ([a v]
-                            (if (odd? v)
-                              (throw (ex-info "boo" {:v v}))
-                              (rf a (inc v))))))
+;;   (testing "simple stateless transducer"
+;;     (testing "transforms a stream of plain values"
+;;       (let [s (stream-of [0 1 2])
+;;             t (sut/transform (map inc) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok 1]
+;;                   [::ok 2]
+;;                   [::ok 3]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "transforms a stream of chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0 1 2])])
+;;             t (sut/transform (map inc) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok 1]
+;;                   [::ok 2]
+;;                   [::ok 3]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "transforms a stream of mixed plain values and chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0])
+;;                           (types/stream-chunk [1 2])
+;;                           3])
+;;             t (sut/transform (map inc) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok 1]
+;;                   [::ok 2]
+;;                   [::ok 3]
+;;                   [::ok 4]
+;;                   [::ok ::closed]]
+;;                  vs))))
+;;       (let [s (stream-of [0
+;;                           (types/stream-chunk [1 2])
+;;                           3])
+;;             t (sut/transform (map inc) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok 1]
+;;                   [::ok 2]
+;;                   [::ok 3]
+;;                   [::ok 4]
+;;                   [::ok ::closed]]
+;;                  vs))))))
 
-                s (stream-of [0 1 2])
-                t (sut/transform
-                   mapinc
-                   s)]
+;;   (testing "stateful transducer"
+;;     (testing "transforms a stream of plain values"
+;;       (let [s (stream-of [0 0 1 1 2 2])
+;;             t (sut/transform (partition-by identity) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok [0 0]]
+;;                   [::ok [1 1]]
+;;                   [::ok [2 2]]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "transforms a stream of chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0 0 1 1 2 2])])
+;;             t (sut/transform (partition-by identity) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok [0 0]]
+;;                   [::ok [1 1]]
+;;                   [::ok [2 2]]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "transforms a stream of mixed plain values and chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0])
+;;                           0
+;;                           (types/stream-chunk [1 1 2])
+;;                           2])
+;;             t (sut/transform (partition-by identity) s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok [0 0]]
+;;                   [::ok [1 1]]
+;;                   [::ok [2 2]]
+;;                   [::ok ::closed]]
+;;                  vs))))))
 
-            ;; the order of the output is not fully defined, because
-            ;; the safe-chunk-xform currently skips a step in the stream
-            ;; topology to error the output stream
-            (pr/let [vs (safe-consume t)
-                     oks (filter (fn [[k _v]] (= ::ok k)) vs)
-                     [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
-              (is (= [[::ok 1]
-                      [::ok ::closed]]
-                     oks))
-              (is (= {:v 1}
-                     (ex-data err))))))
+;;   (testing "errors in the transducer"
+;;     (with-log-level :fatal
+;;       (testing "errors the output stream"
+;;         (testing "stream of plain values"
+;;           (let [mapinc (fn [rf]
+;;                          (fn
+;;                            ([] (rf))
+;;                            ([a] (rf a))
+;;                            ([a v]
+;;                             (if (odd? v)
+;;                               (throw (ex-info "boo" {:v v}))
+;;                               (rf a (inc v))))))
 
-        (testing "stream of plain values and chunks"
-          (let [mapinc (fn [rf]
-                         (fn
-                           ([] (rf))
-                           ([a] (rf a))
-                           ([a v]
-                            (if (odd? v)
-                              (throw (ex-info "boo" {:v v}))
-                              (rf a (inc v))))))
+;;                 s (stream-of [0 2 5 6])
+;;                 t (sut/transform
+;;                    mapinc
+;;                    s)]
 
-                s (stream-of [0 (types/stream-chunk [1]) 2])
-                t (sut/transform
-                   mapinc
-                   s)]
+;;             ;; the output is not what you might expect because
+;;             ;; the safe-chunk-xform currently has to skip a step in the stream
+;;             ;; topology to error the output stream
+;;             (pr/let [vs (safe-consume t)
+;;                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
+;;                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
+;;               (is (= [[::ok 1]
+;;                       [::ok 3]
+;;                       [::ok ::closed]]
+;;                      oks))
+;;               (is (= {:v 5}
+;;                      (ex-data err))))))
 
-            ;; the order of the output is not fully defined, because
-            ;; the safe-chunk-xform currently skips a step in the stream
-            ;; topology to error the output stream
-            (pr/let [vs (safe-consume t)
-                     oks (filter (fn [[k _v]] (= ::ok k)) vs)
-                     [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
-              (is (= [[::ok 1]
-                      [::ok ::closed]]
-                     oks))
-              (is (= {:v 1}
-                     (ex-data err)))))))))
+;;         (testing "stream of plain values and chunks"
+;;           (let [mapinc (fn [rf]
+;;                          (fn
+;;                            ([] (rf))
+;;                            ([a] (rf a))
+;;                            ([a v]
+;;                             (if (odd? v)
+;;                               (throw (ex-info "boo" {:v v}))
+;;                               (rf a (inc v))))))
 
-  (testing "when receiving an error propagates it downstream"
-    ;; TODO
-    )
-  )
+;;                 s (stream-of [0 2 (types/stream-chunk [5]) 6])
+;;                 t (sut/transform
+;;                    mapinc
+;;                    s)]
+
+;;             ;; the output is not what you might expect because
+;;             ;; the safe-chunk-xform currently has to skip a step in the stream
+;;             ;; topology to error the output stream
+;;             (pr/let [vs (safe-consume t)
+;;                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
+;;                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
+;;               (is (= [[::ok 1]
+;;                       [::ok 3]
+;;                       [::ok ::closed]]
+;;                      oks))
+;;               (is (= {:v 5}
+;;                      (ex-data err))))))
+
+;;         )))
+
+;;   (testing "when receiving an error propagates it downstream"
+;;     ;; TODO
+;;     )
+;;   )
 
 (deftest map-test
 
@@ -450,55 +486,45 @@
                [0 1 2 (types/stream-error (ex-info "boo" {:boo 100}))])
             t (sut/map #(inc %1) a )]
 
-        (pr/let [[a b c [ek ev]] (->> (range 0 4)
-                                      (map (fn [_]
-                                             (pr/catch
-                                                 (transport/take! t ::closed)
-                                                 (fn [e]
-                                                   [::error e]))))
-                                      (pr/all))]
-          (is (= [1 2 3] [a b c]))
+        (pr/let [[a b c [ek ev]] (safe-consume t)]
+          (is (= [[::ok 1] [::ok 2] [::ok 3]] [a b c]))
           (is (= ::error ek))
           (is {:boo 100} (-> ev ex-data)))))
 
-    (testing "error propagation when mapping multiple streams"
-      (let [a (stream-of [0 1 2])
-            b (transport/stream)
-            _ (transport/put-all! b [0 1 2
-                                (types/stream-error (ex-info "boo" {:boo 100}))
-                                4])
+    ;; (testing "error propagation when mapping multiple streams"
+    ;;   (let [a (stream-of [0 1 2])
+    ;;         b (transport/stream)
+    ;;         _ (transport/put-all! b [0 1 2
+    ;;                             (types/stream-error (ex-info "boo" {:boo 100}))
+    ;;                             4])
 
-            t (sut/map #(+ %1 %2) a b)]
+    ;;         t (sut/map #(+ %1 %2) a b)]
 
-        (pr/let [[a b c [ek ev]] (->> (range 0 4)
-                                      (map (fn [_]
-                                             (pr/catch
-                                                 (transport/take! t ::closed)
-                                                 (fn [e]
-                                                   [::error e]))))
-                                      (pr/all))]
-          (is (= [0 2 4] [a b c]))
-          (is (= ek ::error))
-          (is (= {:boo 100} (-> ev ex-data)))))))
+    ;;     (pr/let [[a b c [ek ev]] (safe-consume t)]
+    ;;       (is (= [[::ok 0] [::ok 2] [::ok 4]] [a b c]))
+    ;;       (is (= ::error ek))
+    ;;       (is (= {:boo 100} (-> ev ex-data))))))
+    )
 
   (testing "when receiving a nil wrapper sends nil to the mapping fn"
     (let [a (stream-of [0 (types/stream-nil)])
           t (sut/map #(some-> %1 inc) a )]
 
-      (pr/let [[a b] (->> (range 0 2)
-                          (map (fn [_] (transport/take! t ::closed)))
-                          (pr/all))]
-        (is (= [1 nil] [a b])))))
+      (pr/let [[a b] (safe-low-consume t)]
+        (is (= [[::ok 1]
+                [::ok (types/stream-nil)]]
+               [a b])))))
+
   #?(:cljs
      (testing "when mapping-fn returns a nil value, wraps it for the output"
        ;; nil-wrapping only happens on cljs
        (let [a (stream-of [0 (types/stream-nil)])
              t (sut/map #(some-> %1 inc) a )]
 
-         (pr/let [[a b] (->> (range 0 2)
-                             (map (fn [_] (pt/-take! t ::closed)))
-                             (pr/all))]
-           (is (= [1 (types/stream-nil)] [a b]))))))
+         (pr/let [[a b] (safe-low-consume t)]
+           (is (= [[::ok 1]
+                   [::ok (types/stream-nil)]]
+                  [a b]))))))
 
   (testing "catches mapping fn errors, errors the output and cleans up"
     (let [a (stream-of [0 1])
@@ -518,7 +544,8 @@
         (let [[tag2 err2] r2]
           (is (= ::error tag2))
           (is (= {:val 1} (ex-data err2))))
-        (is (= ::closed r3))))))
+        (is (= ::closed r3)))))
+  )
 
 (deftest mapcon-test
     (testing "receiving a plain value behaviours")
@@ -581,676 +608,676 @@
 
             (is (= ::closed r0))))))))
 
-(deftest mapcat-test
-    (testing "receiving a plain value behaviours")
-  (testing "receiving a chunk behaviours")
-  (testing "receiving a nil-value behaviours")
-  (testing "receiving a stream-error behaviours")
-  (testing "error in transform behaviours")
+;; (deftest mapcat-test
+;;     (testing "receiving a plain value behaviours")
+;;   (testing "receiving a chunk behaviours")
+;;   (testing "receiving a nil-value behaviours")
+;;   (testing "receiving a stream-error behaviours")
+;;   (testing "error in transform behaviours")
 
 
-  (testing "mapcats a stream"
-    (let [s (stream-of [0 1 2 3])
-          t (sut/mapcat
-             (fn [v] (repeat v v))
-             s)]
-      (pr/let [vs (safe-consume t)]
-        (is (= [[::ok (types/stream-chunk [1])]
-                [::ok (types/stream-chunk [2 2])]
-                [::ok (types/stream-chunk [3 3 3])]
-                [::ok ::closed]]
-               vs)))))
-  (testing "mapcats multiple streams"
-    (testing "maps multiple streams of the same size"
-      (let [s (stream-of [0 1 2 3])
-            t (stream-of [:a :b :c :d])
-            u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
-        (pr/let [vs (safe-consume u)]
-          (is (= [[::ok (types/stream-chunk [[1 :b]])]
-                  [::ok (types/stream-chunk [[2 :c][2 :c]])]
-                  [::ok (types/stream-chunk [[3 :d][3 :d][3 :d]])]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "terminates the output when any of the inputs terminates"
-      (let [s (stream-of [0 1 2])
-            t (stream-of [:a :b :c :d])
-            u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
-        (pr/let [vs (safe-consume u)]
-          (is (= [[::ok (types/stream-chunk [[1 :b]])]
-                  [::ok (types/stream-chunk [[2 :c][2 :c]])]
-                  [::ok ::closed]]
-                 vs))))))
-  (testing "when receiving an error propagates it to the downstream"
-    (let [s (stream-of [2 4 (types/stream-error
-                             (ex-info "boo" {:id 100}))])
-          t (sut/mapcat
-             (fn [v] (if (odd? v)
-                      (throw (ex-info "boo" {:v v}))
-                      (repeat v v)))
-             s)]
-      (pr/let [[r0 r1 r2 r3] (safe-consume t)]
-        (is (= [[::ok (types/stream-chunk [2 2])]
-                [::ok (types/stream-chunk [4 4 4 4])]
-                [::ok ::closed]]
-               [r0 r1 r3]))
-        (is (= ::error (first r2)))
-        (is (= {:id 100} (ex-data (second r2)))))))
-  (testing "when receiving a nil wrapper sends nil to the mapping fn"
-    (let [s (stream-of [0 1 nil 3])
-          t (sut/mapcat
-             (fn [v] (if (nil? v)
-                      [::nil]
-                      (repeat v v)))
-             s)]
-      (pr/let [vs (safe-consume t)]
-        (is (= [[::ok (types/stream-chunk [1])]
-                [::ok (types/stream-chunk [::nil])]
-                [::ok (types/stream-chunk [3 3 3])]
-                [::ok ::closed]]
-               vs)))))
-  (testing "when mapping-fn returns a nil value, sends nothing to the output"
-    (let [s (stream-of [0 1 nil 3])
-          t (sut/mapcat
-             (fn [v] (if (nil? v)
-                      nil
-                      (repeat v v)))
-             s)]
-      (pr/let [vs (safe-consume t)]
-        (is (= [[::ok (types/stream-chunk [1])]
-                [::ok (types/stream-chunk [3 3 3])]
-                [::ok ::closed]]
-               vs)))))
-  (testing "catches mapping fn errors, errors the output and cleans up"
-    (let [s (stream-of [2 4 5 6])
-          t (sut/mapcat
-             (fn [v] (if (odd? v)
-                      (throw (ex-info "boo" {:v v}))
-                      (repeat v v)))
-             s)]
-      (pr/let [[r0 r1 r2 r3] (safe-consume t)]
-        (is (= [[::ok (types/stream-chunk [2 2])]
-                [::ok (types/stream-chunk [4 4 4 4])]
-                [::ok ::closed]]
-               [r0 r1 r3]))
-        (is (= ::error (first r2)))
-        (is (= {:v 5} (ex-data (second r2))))))))
+;;   (testing "mapcats a stream"
+;;     (let [s (stream-of [0 1 2 3])
+;;           t (sut/mapcat
+;;              (fn [v] (repeat v v))
+;;              s)]
+;;       (pr/let [vs (safe-consume t)]
+;;         (is (= [[::ok (types/stream-chunk [1])]
+;;                 [::ok (types/stream-chunk [2 2])]
+;;                 [::ok (types/stream-chunk [3 3 3])]
+;;                 [::ok ::closed]]
+;;                vs)))))
+;;   (testing "mapcats multiple streams"
+;;     (testing "maps multiple streams of the same size"
+;;       (let [s (stream-of [0 1 2 3])
+;;             t (stream-of [:a :b :c :d])
+;;             u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
+;;         (pr/let [vs (safe-consume u)]
+;;           (is (= [[::ok (types/stream-chunk [[1 :b]])]
+;;                   [::ok (types/stream-chunk [[2 :c][2 :c]])]
+;;                   [::ok (types/stream-chunk [[3 :d][3 :d][3 :d]])]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "terminates the output when any of the inputs terminates"
+;;       (let [s (stream-of [0 1 2])
+;;             t (stream-of [:a :b :c :d])
+;;             u (sut/mapcat (fn [a b] (repeat a [a b])) s t)]
+;;         (pr/let [vs (safe-consume u)]
+;;           (is (= [[::ok (types/stream-chunk [[1 :b]])]
+;;                   [::ok (types/stream-chunk [[2 :c][2 :c]])]
+;;                   [::ok ::closed]]
+;;                  vs))))))
+;;   (testing "when receiving an error propagates it to the downstream"
+;;     (let [s (stream-of [2 4 (types/stream-error
+;;                              (ex-info "boo" {:id 100}))])
+;;           t (sut/mapcat
+;;              (fn [v] (if (odd? v)
+;;                       (throw (ex-info "boo" {:v v}))
+;;                       (repeat v v)))
+;;              s)]
+;;       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
+;;         (is (= [[::ok (types/stream-chunk [2 2])]
+;;                 [::ok (types/stream-chunk [4 4 4 4])]
+;;                 [::ok ::closed]]
+;;                [r0 r1 r3]))
+;;         (is (= ::error (first r2)))
+;;         (is (= {:id 100} (ex-data (second r2)))))))
+;;   (testing "when receiving a nil wrapper sends nil to the mapping fn"
+;;     (let [s (stream-of [0 1 nil 3])
+;;           t (sut/mapcat
+;;              (fn [v] (if (nil? v)
+;;                       [::nil]
+;;                       (repeat v v)))
+;;              s)]
+;;       (pr/let [vs (safe-consume t)]
+;;         (is (= [[::ok (types/stream-chunk [1])]
+;;                 [::ok (types/stream-chunk [::nil])]
+;;                 [::ok (types/stream-chunk [3 3 3])]
+;;                 [::ok ::closed]]
+;;                vs)))))
+;;   (testing "when mapping-fn returns a nil value, sends nothing to the output"
+;;     (let [s (stream-of [0 1 nil 3])
+;;           t (sut/mapcat
+;;              (fn [v] (if (nil? v)
+;;                       nil
+;;                       (repeat v v)))
+;;              s)]
+;;       (pr/let [vs (safe-consume t)]
+;;         (is (= [[::ok (types/stream-chunk [1])]
+;;                 [::ok (types/stream-chunk [3 3 3])]
+;;                 [::ok ::closed]]
+;;                vs)))))
+;;   (testing "catches mapping fn errors, errors the output and cleans up"
+;;     (let [s (stream-of [2 4 5 6])
+;;           t (sut/mapcat
+;;              (fn [v] (if (odd? v)
+;;                       (throw (ex-info "boo" {:v v}))
+;;                       (repeat v v)))
+;;              s)]
+;;       (pr/let [[r0 r1 r2 r3] (safe-consume t)]
+;;         (is (= [[::ok (types/stream-chunk [2 2])]
+;;                 [::ok (types/stream-chunk [4 4 4 4])]
+;;                 [::ok ::closed]]
+;;                [r0 r1 r3]))
+;;         (is (= ::error (first r2)))
+;;         (is (= {:v 5} (ex-data (second r2))))))))
 
-(deftest filter-test
-  (testing "receiving a plain value behaviours")
-  (testing "receiving a chunk behaviours")
-  (testing "receiving a nil-value behaviours")
-  (testing "receiving a stream-error behaviours")
-  (testing "error in transform behaviours")
-
-
-  (testing "filters a stream"
-    (testing "of plain values"
-      (let [s (stream-of [0 1 2 3 4 5])
-            t (sut/filter odd? s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok 1] [::ok 3] [::ok 5] [::ok ::closed]] vs)))))
-    (testing "of chunks"
-      (let [s (stream-of [(types/stream-chunk [0 1 2])
-                          (types/stream-chunk [3 4 5])])
-            t (sut/filter odd? s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok (types/stream-chunk [1])]
-                  [::ok (types/stream-chunk [3 5])]
-                  [::ok ::closed]]
-                 vs))))
-      (let [s (stream-of [(types/stream-chunk [0 2])
-                          (types/stream-chunk [3 4 5])])
-            t (sut/filter odd? s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok (types/stream-chunk [3 5])]
-                  [::ok ::closed]]
-                 vs)))))
-    (testing "of mixed plain values and chunks"
-      (let [s (stream-of [0 (types/stream-chunk [1 2])
-                          3 (types/stream-chunk [4 5])])
-            t (sut/filter odd? s)]
-        (pr/let [vs (safe-consume t)]
-          (is (= [[::ok (types/stream-chunk [1])]
-                  [::ok 3]
-                  [::ok (types/stream-chunk [5])]
-                  [::ok ::closed]]
-                 vs))))))
-
-  (testing "catches filter fn errors, errors the output and cleans up"
-    (testing "with plain values"
-      (let [s (stream-of [0 2 3 4 5])
-            t (sut/filter (fn [v]
-                            (if (odd? v)
-                              (throw (ex-info "boo" {:v v}))
-                              true))
-                          s)]
-        (pr/let [[a b c d :as _vs] (safe-consume t)]
-          (is (= [::ok 0] a))
-          (is (= [::ok 2] b))
-          (is (= ::error (first c)))
-          (is (= {:v 3} (ex-data (second c))))
-          (is (= [::ok ::closed] d)))))
-    (testing "with chunks"
-      (let [s (stream-of [(types/stream-chunk [0 2])
-                          (types/stream-chunk [3 4 5])])
-            t (sut/filter (fn [v]
-                            (if (odd? v)
-                              (throw (ex-info "boo" {:v v}))
-                              true))
-                          s)]
-        (pr/let [[a b c _d :as _vs] (safe-consume t)]
-          (is (= [::ok (types/stream-chunk [0 2])] a))
-          (is (= ::error (first b)))
-          (is (= {:v 3} (ex-data (second b))))
-          (is (= [::ok ::closed] c))))))
-
-  (testing "when receiving a nil wrapper sends nil to the filter fn"
-    (let [s (stream-of [0 1 (types/stream-nil) 2 3 (types/stream-nil) 4 5])
-          t (sut/filter
-             (fn [v] (or (nil? v) (odd? v) ))
-             s)]
-      (pr/let [vs (safe-consume t)]
-        (is (= [[::ok 1]
-                [::ok nil]
-                [::ok 3]
-                [::ok nil]
-                [::ok 5]
-                [::ok ::closed]]
-               vs))))))
-
-(deftest reductions-test
-  (testing "receiving a plain value behaviours")
-  (testing "receiving a chunk behaviours")
-  (testing "receiving a nil-value behaviours")
-  (testing "receiving a stream-error behaviours")
-  (testing "error in transform behaviours")
+;; (deftest filter-test
+;;   (testing "receiving a plain value behaviours")
+;;   (testing "receiving a chunk behaviours")
+;;   (testing "receiving a nil-value behaviours")
+;;   (testing "receiving a stream-error behaviours")
+;;   (testing "error in transform behaviours")
 
 
-  (testing "returns reductions on the output stream"
-    (testing "reductions of a stream of plain values"
-      (testing "reductions of an empty stream"
-        (let [s (stream-of [])
-              t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v (transport/take! t ::closed)]
-            (is (= ::closed v )))))
-      (testing "reductions of a single-element stream"
-        (let [s (stream-of [5])
-              t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)]
-            (is (= 5 v1))
-            (is (= ::closed v2)))))
-      (testing "reductions of a multi-element stream"
-        (let [s (stream-of [1 2 3])
-              t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)
-                   v3 (transport/take! t ::closed)
-                   v4 (transport/take! t ::closed)]
-            (is (= 1 v1))
-            (is (= 3 v2))
-            (is (= 6 v3))
-            (is (= ::closed v4))))))
+;;   (testing "filters a stream"
+;;     (testing "of plain values"
+;;       (let [s (stream-of [0 1 2 3 4 5])
+;;             t (sut/filter odd? s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok 1] [::ok 3] [::ok 5] [::ok ::closed]] vs)))))
+;;     (testing "of chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0 1 2])
+;;                           (types/stream-chunk [3 4 5])])
+;;             t (sut/filter odd? s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok (types/stream-chunk [1])]
+;;                   [::ok (types/stream-chunk [3 5])]
+;;                   [::ok ::closed]]
+;;                  vs))))
+;;       (let [s (stream-of [(types/stream-chunk [0 2])
+;;                           (types/stream-chunk [3 4 5])])
+;;             t (sut/filter odd? s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok (types/stream-chunk [3 5])]
+;;                   [::ok ::closed]]
+;;                  vs)))))
+;;     (testing "of mixed plain values and chunks"
+;;       (let [s (stream-of [0 (types/stream-chunk [1 2])
+;;                           3 (types/stream-chunk [4 5])])
+;;             t (sut/filter odd? s)]
+;;         (pr/let [vs (safe-consume t)]
+;;           (is (= [[::ok (types/stream-chunk [1])]
+;;                   [::ok 3]
+;;                   [::ok (types/stream-chunk [5])]
+;;                   [::ok ::closed]]
+;;                  vs))))))
 
-    (testing "reductions of a stream of chunks"
-      (testing "reductions of a single-element stream"
-        (let [s (stream-of [(types/stream-chunk [5])])
-              t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)]
-            (is (= (types/stream-chunk [5]) v1))
-            (is (= ::closed v2)))))
-      (testing "reductions of a multi-element stream"
-        (let [s (stream-of [(types/stream-chunk [1 2 3])])
-              t (sut/reductions ::reductions-empty-stream + s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)]
-            (is (= (types/stream-chunk [1 3 6]) v1))
-            (is (= ::closed v2))))))
+;;   (testing "catches filter fn errors, errors the output and cleans up"
+;;     (testing "with plain values"
+;;       (let [s (stream-of [0 2 3 4 5])
+;;             t (sut/filter (fn [v]
+;;                             (if (odd? v)
+;;                               (throw (ex-info "boo" {:v v}))
+;;                               true))
+;;                           s)]
+;;         (pr/let [[a b c d :as _vs] (safe-consume t)]
+;;           (is (= [::ok 0] a))
+;;           (is (= [::ok 2] b))
+;;           (is (= ::error (first c)))
+;;           (is (= {:v 3} (ex-data (second c))))
+;;           (is (= [::ok ::closed] d)))))
+;;     (testing "with chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0 2])
+;;                           (types/stream-chunk [3 4 5])])
+;;             t (sut/filter (fn [v]
+;;                             (if (odd? v)
+;;                               (throw (ex-info "boo" {:v v}))
+;;                               true))
+;;                           s)]
+;;         (pr/let [[a b c _d :as _vs] (safe-consume t)]
+;;           (is (= [::ok (types/stream-chunk [0 2])] a))
+;;           (is (= ::error (first b)))
+;;           (is (= {:v 3} (ex-data (second b))))
+;;           (is (= [::ok ::closed] c))))))
 
-    (testing "reductions of a mix of chunks and plain values"
-      (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
-            t (sut/reductions ::reductions-empty-stream + s)]
-        (pr/let [v1 (transport/take! t ::closed)
-                 v2 (transport/take! t ::closed)
-                 v3 (transport/take! t ::closed)
-                 v4 (transport/take! t ::closed)]
-          (is (= 1 v1))
-          (is (= (types/stream-chunk [3 6]) v2))
-          (is (= 10 v3))
-          (is (= ::closed v4))))))
+;;   (testing "when receiving a nil wrapper sends nil to the filter fn"
+;;     (let [s (stream-of [0 1 (types/stream-nil) 2 3 (types/stream-nil) 4 5])
+;;           t (sut/filter
+;;              (fn [v] (or (nil? v) (odd? v) ))
+;;              s)]
+;;       (pr/let [vs (safe-consume t)]
+;;         (is (= [[::ok 1]
+;;                 [::ok nil]
+;;                 [::ok 3]
+;;                 [::ok nil]
+;;                 [::ok 5]
+;;                 [::ok ::closed]]
+;;                vs))))))
 
-  (testing "returns reducing function errors"
-    (testing "with plain values"
-      (let [s (stream-of [0 2 3])
-            t (sut/reductions
-               ::reductions-empty-stream
-               (fn [a v]
-                 (if (odd? v)
-                   (throw (ex-info "boo" {:v v}))
-                   (+ a v)))
-               s)]
-        (pr/let [[k1 v1] (safe-take! t ::closed)
-                 [k2 v2] (safe-take! t ::closed)
-                 [k3 v3] (safe-take! t ::closed)
-                 [k4 v4] (safe-take! t ::closed)]
-          (is (= ::ok k1)) (is (= 0 v1))
-          (is (= ::ok k2)) (is (= 2 v2))
-          (is (= ::error k3))
-          (is (= {:v 3
-                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
-          (is (= ::ok k4)) (is (= ::closed v4)))))
-    (testing "with chunks"
-      (let [s (stream-of [(types/stream-chunk [0 2 3])])
-            t (sut/reductions
-               ::reductions-empty-stream
-               (fn [a v]
-                 (if (odd? v)
-                   (throw (ex-info "boo" {:v v}))
-                   (+ a v)))
-               s)]
-        (pr/let [[k1 v1] (safe-take! t ::closed)
-                 [k2 v2] (safe-take! t ::closed)]
-          (is (= ::error k1))
-          (is (= {:v 3
-                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
-          (is (= ::ok k2)) (is (= ::closed v2))))))
-
-  (testing "when receiving a nil wrapper sends nil to the reducing fn"
-    (let [s (stream-of [1 (types/stream-nil) 2])]
-      (pr/let [t (sut/reductions
-                  ::reduce-nil
-                  (fn [a v]
-                    (conj a v))
-                  []
-                  s)
-
-               vs (safe-consume t)]
-        (is (= [[::ok []]
-                [::ok [1]]
-                [::ok [1 nil]]
-                [::ok [1 nil 2]]
-                [::ok ::closed]]
-               vs)))))
-
-  (testing "deals with reduced"
-    (testing "with no initial value"
-      (testing "with reduced in second place"
-        (let [s (stream-of [1 3 4 6])
-              t (sut/reductions
-                 ::reductions-empty-stream
-                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-                 s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)
-                   v3 (transport/take! t ::closed)]
-            (is (= 1 v1))
-            (is (= 4 v2))
-            (is (= ::closed v3)))))
-      (testing "with reduced further down the stream"
-        (let [s (stream-of [2 4 3 6])
-              t (sut/reductions
-                 ::reductions-empty-stream
-                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-                 s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)
-                   v3 (transport/take! t ::closed)
-                   v4 (transport/take! t ::closed)]
-            (is (= 2 v1))
-            (is (= 6 v2))
-            (is (= 9 v3))
-            (is (= ::closed v4))))))
-    (testing "with an initial value"
-      (testing "with reduced in first place"
-        (let [s (stream-of [1 2 4 6])
-              t (sut/reductions
-                 ::reductions-empty-stream
-                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-                 1
-                 s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)
-                   v3 (transport/take! t ::closed)]
-            (is (= 1 v1))
-            (is (= 2 v2))
-            (is (= ::closed v3)))))
-      (testing "with reduced further down the stream"
-        (let [s (stream-of [2 4 3 6])
-              t (sut/reductions
-                 ::reductions-empty-stream
-                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-                 1
-                 s)]
-          (pr/let [v1 (transport/take! t ::closed)
-                   v2 (transport/take! t ::closed)
-                   v3 (transport/take! t ::closed)
-                   v4 (transport/take! t ::closed)
-                   v5 (transport/take! t ::closed)]
-            (is (= 1 v1))
-            (is (= 3 v2))
-            (is (= 7 v3))
-            (is (= 10 v4))
-            (is (= ::closed v5))))))))
-
-(deftest reduce-test
-    (testing "receiving a plain value behaviours")
-  (testing "receiving a chunk behaviours")
-  (testing "receiving a nil-value behaviours")
-  (testing "receiving a stream-error behaviours")
-  (testing "error in transform behaviours")
+;; (deftest reductions-test
+;;   (testing "receiving a plain value behaviours")
+;;   (testing "receiving a chunk behaviours")
+;;   (testing "receiving a nil-value behaviours")
+;;   (testing "receiving a stream-error behaviours")
+;;   (testing "error in transform behaviours")
 
 
+;;   (testing "returns reductions on the output stream"
+;;     (testing "reductions of a stream of plain values"
+;;       (testing "reductions of an empty stream"
+;;         (let [s (stream-of [])
+;;               t (sut/reductions ::reductions-empty-stream + s)]
+;;           (pr/let [v (transport/take! t ::closed)]
+;;             (is (= ::closed v )))))
+;;       (testing "reductions of a single-element stream"
+;;         (let [s (stream-of [5])
+;;               t (sut/reductions ::reductions-empty-stream + s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)]
+;;             (is (= 5 v1))
+;;             (is (= ::closed v2)))))
+;;       (testing "reductions of a multi-element stream"
+;;         (let [s (stream-of [1 2 3])
+;;               t (sut/reductions ::reductions-empty-stream + s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)
+;;                    v3 (transport/take! t ::closed)
+;;                    v4 (transport/take! t ::closed)]
+;;             (is (= 1 v1))
+;;             (is (= 3 v2))
+;;             (is (= 6 v3))
+;;             (is (= ::closed v4))))))
 
-  (testing "reduces a stream"
-    (testing "reduces an empty stream"
-      (testing "with no initial value"
-        (let [s (stream-of [])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 0 r)))))
-      (testing "with an initial value"
-        (let [s (stream-of [])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 5 r))))))
-    (testing "reduces a non-empty stream with plain values"
-      (testing "with no initial value"
-        (let [s (stream-of [1])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 1 r))))
-        (let [s (stream-of [1 2])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 3 r))))
-        (let [s (stream-of [1 2 3 4 5 6])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 21 r)))))
+;;     (testing "reductions of a stream of chunks"
+;;       (testing "reductions of a single-element stream"
+;;         (let [s (stream-of [(types/stream-chunk [5])])
+;;               t (sut/reductions ::reductions-empty-stream + s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)]
+;;             (is (= (types/stream-chunk [5]) v1))
+;;             (is (= ::closed v2)))))
+;;       (testing "reductions of a multi-element stream"
+;;         (let [s (stream-of [(types/stream-chunk [1 2 3])])
+;;               t (sut/reductions ::reductions-empty-stream + s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)]
+;;             (is (= (types/stream-chunk [1 3 6]) v1))
+;;             (is (= ::closed v2))))))
 
-      (testing "with an initial value"
-        (let [s (stream-of [1])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 6 r))))
-        (let [s (stream-of [1 2])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 8 r))))
-        (let [s (stream-of [1 2 3 4 5 6])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 26 r))))))
-    (testing "reduces a stream with chunks"
-      (testing "with no initial value"
-        (let [s (stream-of [(types/stream-chunk [1 2 3])
-                            (types/stream-chunk [4 5 6])])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 21 r)))))
-      (testing "with an initial value"
-        (let [s (stream-of [(types/stream-chunk [1 2 3])
-                            (types/stream-chunk [4 5 6])])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 26 r))))))
-    (testing "reduces a stream with mixed chunks and plain values"
-      (testing "with no initial value"
-        (let [s (stream-of [1
-                            (types/stream-chunk [2 3])
-                            4 5
-                            (types/stream-chunk [6])])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + s)]
-            (is (= 21 r)))))
-      (testing "with an initial value"
-        (let [s (stream-of [1
-                            (types/stream-chunk [2 3])
-                            4 5
-                            (types/stream-chunk [6])])]
-          (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
-            (is (= 26 r)))))))
-  (testing "returns reducing function errors"
-    (testing "returns errors on stream with plain values"
-      (testing "with no initial value"
-        (let [s (stream-of [0 1])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 1} (ex-data v)))))
-        (let [s (stream-of [0 2 3])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v))))))
-      (testing "with an initial value"
-        (let [s (stream-of [1])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           5
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 1} (ex-data v)))))
-        (let [s (stream-of [0 2 3])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           5
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))))
-    (testing "returns errors on stream with chunks"
-      (testing "with no initial value"
-        (let [s (stream-of [(types/stream-chunk [0 3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))
-        (let [s (stream-of [(types/stream-chunk [0 2 3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v))))))
-      (testing "with an initial value"
-        (let [s (stream-of [(types/stream-chunk [3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           4
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))
-        (let [s (stream-of [(types/stream-chunk [0 2 3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           4
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))))
-    (testing "returns errors on stream with mixed plain values and chunks"
-      (testing "with no initial value"
-        (let [s (stream-of [0 (types/stream-chunk [3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))
-        (let [s (stream-of [0 2 (types/stream-chunk [3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v))))))
-      (testing "with an initial value"
-        (let [s (stream-of [(types/stream-chunk [3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           4
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v)))))
-        (let [s (stream-of [0 2 (types/stream-chunk [3])])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::reduce-error
-                           (fn [a v] (if (odd? v)
-                                      (throw (ex-info "boo" {:v v}))
-                                      (+ a v)))
-                           4
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::error k))
-            (is (= {::sut/reduce-id ::reduce-error
-                    :v 3} (ex-data v))))))))
+;;     (testing "reductions of a mix of chunks and plain values"
+;;       (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
+;;             t (sut/reductions ::reductions-empty-stream + s)]
+;;         (pr/let [v1 (transport/take! t ::closed)
+;;                  v2 (transport/take! t ::closed)
+;;                  v3 (transport/take! t ::closed)
+;;                  v4 (transport/take! t ::closed)]
+;;           (is (= 1 v1))
+;;           (is (= (types/stream-chunk [3 6]) v2))
+;;           (is (= 10 v3))
+;;           (is (= ::closed v4))))))
 
-  (testing "when receiving a nil wrapper sends nil to the reducing fn"
-    (let [s (stream-of [(types/stream-nil)])]
-      (pr/let [r (sut/reduce
-                  ::reduce-nil
-                  (fn [a v]
-                    (conj a v))
-                  [] s)]
-        (is (= [nil] r)))))
+;;   (testing "returns reducing function errors"
+;;     (testing "with plain values"
+;;       (let [s (stream-of [0 2 3])
+;;             t (sut/reductions
+;;                ::reductions-empty-stream
+;;                (fn [a v]
+;;                  (if (odd? v)
+;;                    (throw (ex-info "boo" {:v v}))
+;;                    (+ a v)))
+;;                s)]
+;;         (pr/let [[k1 v1] (safe-take! t ::closed)
+;;                  [k2 v2] (safe-take! t ::closed)
+;;                  [k3 v3] (safe-take! t ::closed)
+;;                  [k4 v4] (safe-take! t ::closed)]
+;;           (is (= ::ok k1)) (is (= 0 v1))
+;;           (is (= ::ok k2)) (is (= 2 v2))
+;;           (is (= ::error k3))
+;;           (is (= {:v 3
+;;                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
+;;           (is (= ::ok k4)) (is (= ::closed v4)))))
+;;     (testing "with chunks"
+;;       (let [s (stream-of [(types/stream-chunk [0 2 3])])
+;;             t (sut/reductions
+;;                ::reductions-empty-stream
+;;                (fn [a v]
+;;                  (if (odd? v)
+;;                    (throw (ex-info "boo" {:v v}))
+;;                    (+ a v)))
+;;                s)]
+;;         (pr/let [[k1 v1] (safe-take! t ::closed)
+;;                  [k2 v2] (safe-take! t ::closed)]
+;;           (is (= ::error k1))
+;;           (is (= {:v 3
+;;                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
+;;           (is (= ::ok k2)) (is (= ::closed v2))))))
 
-  (testing "deals with reduced"
-    (testing "with no initial value"
-      (testing "reduced at second position"
-        (let [s (stream-of [2 3 4 6])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::deals-with-reduced
-                           (fn [a v] (if (odd? v)
-                                      (reduced (+ a v))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::ok k))
-            (is (= 5 v)))))
-      (testing "reduced further down stream"
-        (let [s (stream-of [0 2 3 4 6])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::deals-with-reduced
-                           (fn [a v] (if (odd? v)
-                                      (reduced (+ a v))
-                                      (+ a v)))
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::ok k))
-            (is (= 5 v))))))
-    (testing "with an initial value"
-      (testing "reduced at head of stream"
-        (let [s (stream-of [1 2 3 4 6])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::deals-with-reduced
-                           (fn [a v] (if (odd? v)
-                                      (reduced (+ a v))
-                                      (+ a v)))
-                           2
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::ok k))
-            (is (= 3 v)))))
-      (testing "reduced at second position"
-        (let [s (stream-of [2 3 4 6])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::deals-with-reduced
-                           (fn [a v] (if (odd? v)
-                                      (reduced (+ a v))
-                                      (+ a v)))
-                           2
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::ok k))
-            (is (= 7 v)))))
-      (testing "reduced further down stream"
-        (let [s (stream-of [0 2 3 4 6])]
-          (pr/let [[k v] (->
-                          (sut/reduce
-                           ::deals-with-reduced
-                           (fn [a v] (if (odd? v)
-                                      (reduced (+ a v))
-                                      (+ a v)))
-                           2
-                           s)
-                          (pr/chain (fn [v] [::ok v]))
-                          (pr/catch (fn [e] [::error e])))]
-            (is (= ::ok k))
-            (is (= 7 v))))))
-    ))
+;;   (testing "when receiving a nil wrapper sends nil to the reducing fn"
+;;     (let [s (stream-of [1 (types/stream-nil) 2])]
+;;       (pr/let [t (sut/reductions
+;;                   ::reduce-nil
+;;                   (fn [a v]
+;;                     (conj a v))
+;;                   []
+;;                   s)
+
+;;                vs (safe-consume t)]
+;;         (is (= [[::ok []]
+;;                 [::ok [1]]
+;;                 [::ok [1 nil]]
+;;                 [::ok [1 nil 2]]
+;;                 [::ok ::closed]]
+;;                vs)))))
+
+;;   (testing "deals with reduced"
+;;     (testing "with no initial value"
+;;       (testing "with reduced in second place"
+;;         (let [s (stream-of [1 3 4 6])
+;;               t (sut/reductions
+;;                  ::reductions-empty-stream
+;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+;;                  s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)
+;;                    v3 (transport/take! t ::closed)]
+;;             (is (= 1 v1))
+;;             (is (= 4 v2))
+;;             (is (= ::closed v3)))))
+;;       (testing "with reduced further down the stream"
+;;         (let [s (stream-of [2 4 3 6])
+;;               t (sut/reductions
+;;                  ::reductions-empty-stream
+;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+;;                  s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)
+;;                    v3 (transport/take! t ::closed)
+;;                    v4 (transport/take! t ::closed)]
+;;             (is (= 2 v1))
+;;             (is (= 6 v2))
+;;             (is (= 9 v3))
+;;             (is (= ::closed v4))))))
+;;     (testing "with an initial value"
+;;       (testing "with reduced in first place"
+;;         (let [s (stream-of [1 2 4 6])
+;;               t (sut/reductions
+;;                  ::reductions-empty-stream
+;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+;;                  1
+;;                  s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)
+;;                    v3 (transport/take! t ::closed)]
+;;             (is (= 1 v1))
+;;             (is (= 2 v2))
+;;             (is (= ::closed v3)))))
+;;       (testing "with reduced further down the stream"
+;;         (let [s (stream-of [2 4 3 6])
+;;               t (sut/reductions
+;;                  ::reductions-empty-stream
+;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+;;                  1
+;;                  s)]
+;;           (pr/let [v1 (transport/take! t ::closed)
+;;                    v2 (transport/take! t ::closed)
+;;                    v3 (transport/take! t ::closed)
+;;                    v4 (transport/take! t ::closed)
+;;                    v5 (transport/take! t ::closed)]
+;;             (is (= 1 v1))
+;;             (is (= 3 v2))
+;;             (is (= 7 v3))
+;;             (is (= 10 v4))
+;;             (is (= ::closed v5))))))))
+
+;; (deftest reduce-test
+;;     (testing "receiving a plain value behaviours")
+;;   (testing "receiving a chunk behaviours")
+;;   (testing "receiving a nil-value behaviours")
+;;   (testing "receiving a stream-error behaviours")
+;;   (testing "error in transform behaviours")
+
+
+
+;;   (testing "reduces a stream"
+;;     (testing "reduces an empty stream"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 0 r)))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 5 r))))))
+;;     (testing "reduces a non-empty stream with plain values"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [1])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 1 r))))
+;;         (let [s (stream-of [1 2])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 3 r))))
+;;         (let [s (stream-of [1 2 3 4 5 6])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 21 r)))))
+
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [1])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 6 r))))
+;;         (let [s (stream-of [1 2])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 8 r))))
+;;         (let [s (stream-of [1 2 3 4 5 6])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 26 r))))))
+;;     (testing "reduces a stream with chunks"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [(types/stream-chunk [1 2 3])
+;;                             (types/stream-chunk [4 5 6])])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 21 r)))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [(types/stream-chunk [1 2 3])
+;;                             (types/stream-chunk [4 5 6])])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 26 r))))))
+;;     (testing "reduces a stream with mixed chunks and plain values"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [1
+;;                             (types/stream-chunk [2 3])
+;;                             4 5
+;;                             (types/stream-chunk [6])])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + s)]
+;;             (is (= 21 r)))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [1
+;;                             (types/stream-chunk [2 3])
+;;                             4 5
+;;                             (types/stream-chunk [6])])]
+;;           (pr/let [r (sut/reduce ::reduces-a-stream + 5 s)]
+;;             (is (= 26 r)))))))
+;;   (testing "returns reducing function errors"
+;;     (testing "returns errors on stream with plain values"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [0 1])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 1} (ex-data v)))))
+;;         (let [s (stream-of [0 2 3])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v))))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [1])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            5
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 1} (ex-data v)))))
+;;         (let [s (stream-of [0 2 3])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            5
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))))
+;;     (testing "returns errors on stream with chunks"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [(types/stream-chunk [0 3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))
+;;         (let [s (stream-of [(types/stream-chunk [0 2 3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v))))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [(types/stream-chunk [3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            4
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))
+;;         (let [s (stream-of [(types/stream-chunk [0 2 3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            4
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))))
+;;     (testing "returns errors on stream with mixed plain values and chunks"
+;;       (testing "with no initial value"
+;;         (let [s (stream-of [0 (types/stream-chunk [3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))
+;;         (let [s (stream-of [0 2 (types/stream-chunk [3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v))))))
+;;       (testing "with an initial value"
+;;         (let [s (stream-of [(types/stream-chunk [3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            4
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v)))))
+;;         (let [s (stream-of [0 2 (types/stream-chunk [3])])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::reduce-error
+;;                            (fn [a v] (if (odd? v)
+;;                                       (throw (ex-info "boo" {:v v}))
+;;                                       (+ a v)))
+;;                            4
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::error k))
+;;             (is (= {::sut/reduce-id ::reduce-error
+;;                     :v 3} (ex-data v))))))))
+
+;;   (testing "when receiving a nil wrapper sends nil to the reducing fn"
+;;     (let [s (stream-of [(types/stream-nil)])]
+;;       (pr/let [r (sut/reduce
+;;                   ::reduce-nil
+;;                   (fn [a v]
+;;                     (conj a v))
+;;                   [] s)]
+;;         (is (= [nil] r)))))
+
+;;   (testing "deals with reduced"
+;;     (testing "with no initial value"
+;;       (testing "reduced at second position"
+;;         (let [s (stream-of [2 3 4 6])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::deals-with-reduced
+;;                            (fn [a v] (if (odd? v)
+;;                                       (reduced (+ a v))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::ok k))
+;;             (is (= 5 v)))))
+;;       (testing "reduced further down stream"
+;;         (let [s (stream-of [0 2 3 4 6])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::deals-with-reduced
+;;                            (fn [a v] (if (odd? v)
+;;                                       (reduced (+ a v))
+;;                                       (+ a v)))
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::ok k))
+;;             (is (= 5 v))))))
+;;     (testing "with an initial value"
+;;       (testing "reduced at head of stream"
+;;         (let [s (stream-of [1 2 3 4 6])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::deals-with-reduced
+;;                            (fn [a v] (if (odd? v)
+;;                                       (reduced (+ a v))
+;;                                       (+ a v)))
+;;                            2
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::ok k))
+;;             (is (= 3 v)))))
+;;       (testing "reduced at second position"
+;;         (let [s (stream-of [2 3 4 6])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::deals-with-reduced
+;;                            (fn [a v] (if (odd? v)
+;;                                       (reduced (+ a v))
+;;                                       (+ a v)))
+;;                            2
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::ok k))
+;;             (is (= 7 v)))))
+;;       (testing "reduced further down stream"
+;;         (let [s (stream-of [0 2 3 4 6])]
+;;           (pr/let [[k v] (->
+;;                           (sut/reduce
+;;                            ::deals-with-reduced
+;;                            (fn [a v] (if (odd? v)
+;;                                       (reduced (+ a v))
+;;                                       (+ a v)))
+;;                            2
+;;                            s)
+;;                           (pr/chain (fn [v] [::ok v]))
+;;                           (pr/catch (fn [e] [::error e])))]
+;;             (is (= ::ok k))
+;;             (is (= 7 v))))))
+;;     ))

@@ -52,7 +52,7 @@
 
    <plain-value> | Promise<plain-value> | fn | Sequence<fn>
 
-   test-async serially evaluates the forms, and any which yield
+   test-async *serially* evaluates the forms, and any which yield
    fn or Sequence<fn> will be immediately called, also serially"
   [& forms]
   (let [;; wrap each form into a 0-args fn

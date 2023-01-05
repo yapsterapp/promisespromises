@@ -6,6 +6,36 @@
    [prpr.stream.types :as types]
    [prpr.stream.transport :as sut]))
 
+(defn stream-of
+  "returns a stream of the individual values
+   (*not* chunked)"
+  [vs]
+  (let [s (sut/stream)]
+    (sut/put-all-and-close! s vs)
+    s))
+
+(defn safe-low-take!
+  "take! from a stream impl without any unwrapping
+   Promise<[::ok <val>]> | Promise<[::error <err>]>"
+  [s & args]
+  (pr/catch
+      (pr/chain
+       (apply pt/-take! s args)
+       (fn [v]
+         [::ok v]))
+      (fn [e]
+        [::error e])))
+
+(defn safe-low-consume
+  "keep safe-low-take! ing until ::closed"
+  [s]
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [r []]
+    (pr/let [[_t v :as t-v] (safe-low-take! s ::closed)]
+      (if (= ::closed v)
+        (conj r t-v)
+        (pr/recur (conj r t-v))))))
+
 (deftest stream-test
   (testing "returns an object which tests stream?"
     (let [s (sut/stream)]
@@ -43,7 +73,17 @@
       (is (= ::timeout r)))
     (pr/let [s (sut/stream)
              r (sut/put! s ::foo 1 nil)]
-      (is (nil? r)))))
+      (is (nil? r))))
+  #?(:cljs
+     (testing "wraps nils on core.async"
+       (let [s (sut/stream)
+             _ (sut/put-all-and-close! s [::foo nil])]
+         (pr/let [r1 (sut/take! s ::closed)
+                  r2 (sut/take! s ::closed)
+                  r3 (sut/take! s ::closed)]
+           (is (= r1 ::foo))
+           (is (= r2 nil))
+           (is (= r3 ::closed)))))))
 
 (deftest error!-test
   (testing "put!s a StreamError and close!s the stream"
@@ -343,4 +383,24 @@
         (is (= ::closed t1))
         (is (true? psr)))))
 
-  )
+  (testing "does not silently unwrap promises on stream"
+    (let [s (stream-of [0 (pr/resolved 1) 2])
+          t (sut/stream)
+          _ (sut/connect-via s #(sut/put! t %) t)]
+
+      (pr/let [[[k0 r0]
+                [k1 r1]
+                [k2 r2]
+                [k3 r3]] (safe-low-consume t)
+
+               r1' (pt/-unwrap-value r1)]
+        (is (= ::ok k0 k1 k2 k3))
+
+        (is (= 0 r0))
+
+        ;; r1 should remain a promise
+        (is (types/stream-promise? r1))
+        (is (= 1 r1'))
+
+        (is (= 2 r2))
+        (is (= ::closed r3))))))

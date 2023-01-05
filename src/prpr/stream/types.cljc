@@ -26,6 +26,18 @@
   [v]
   (instance? StreamNil v))
 
+(deftype StreamPromise [p]
+  pt/IStreamValue
+  (-unwrap-value [_] p))
+
+(defn stream-promise
+  [p]
+  (->StreamPromise p))
+
+(defn stream-promise?
+  [v]
+  (instance? StreamPromise v))
+
 ;; neither core.async nor manifold have error-states on
 ;; streams/chans - so we'll model errors by putting a
 ;; wrapped value onto a stream and closing it immediately

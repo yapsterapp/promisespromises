@@ -27,6 +27,7 @@
 
 (defn async-put!
   ([sink val]
+   (prn "async-put!" val)
    (let [r (pr/deferred)]
      ;; (prn "async-put!" val)
      (async/put! sink val #(pr/resolve! r %))
@@ -55,21 +56,21 @@
 
 (defn async-take!
   ([source]
-     (let [r (pr/deferred)]
-       (async/take! source #(pr/resolve! r %))
-       r))
-    ([source default-val]
-     (let [r (pr/deferred)
-           dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
-       (async/take! source #(pr/resolve! r %))
-       dr))
-    ([source default-val timeout timeout-val]
-     ;; TODO use alts! here instead of promise timeout
-     (let [r (pr/deferred)
-           dr (pr/chain r (fn [v] (if (some? v) v default-val)))
-           tdr (pr/timeout dr timeout timeout-val)]
-       (async/take! source #(pr/resolve! r %))
-       tdr)))
+   (let [r (pr/deferred)]
+     (async/take! source #(pr/resolve! r %))
+     r))
+  ([source default-val]
+   (let [r (pr/deferred)
+         dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
+     (async/take! source #(pr/resolve! r %))
+     dr))
+  ([source default-val timeout timeout-val]
+   ;; TODO use alts! here instead of promise timeout
+   (let [r (pr/deferred)
+         dr (pr/chain r (fn [v] (if (some? v) v default-val)))
+         tdr (pr/timeout dr timeout timeout-val)]
+     (async/take! source #(pr/resolve! r %))
+     tdr)))
 
 (defn async-close!
   [ch]
@@ -94,19 +95,19 @@
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
    (pr/loop []
-         ;; (prn "async-connect-via: pre-take!")
+     ;; (prn "async-connect-via: pre-take!")
 
-         (-> (pt/-take! src)
+         (-> (pt/-take! src ::closed)
 
              (pr/handle
               (fn [v err]
-                ;; (prn "async-connect-via: value" v err)
+                (prn "async-connect-via: value" v err)
 
                 (cond
                   (some? err)
                   (async-error! dst err)
 
-                  (nil? v)
+                  (= ::closed v)
                   ;; src has closed
                   (do
                     (when close-sink?
@@ -132,7 +133,8 @@
                   (true? result)
                   #_{:clj-kondo/ignore [:redundant-do]}
                   (do
-                     ;; (prn "async-connect-via: recur")
+                    ;; (prn "async-connect-via: recur")
+                    #_{:clj-kondo/ignore [:recur-argument-count]}
                     (pr/recur))
 
                   :else
@@ -157,11 +159,18 @@
 (defn async-wrap-value
   "nils can't be put directly on core.async chans,
    so to present a very similar API on both clj+cljs we
-   wrap nils for core.async"
+   wrap nils for core.async
+
+   promises can be put on a core.async chan, but cause
+   problems with async-take! because auto-unwrapping
+   causes Promise<nil> from the stream to be
+   indistinguishable from a closed channel - so wrapping
+   promises sidesteps this"
   [v]
-  (if (nil? v)
-    (types/stream-nil)
-    v))
+  (cond
+    (nil? v) (types/stream-nil)
+    (pr/promise? v) (types/stream-promise v)
+    :else v))
 
 (defn async-buffer
   ([ch n]

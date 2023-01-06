@@ -3,6 +3,7 @@
   (:require
    [clojure.core :as clj]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]
@@ -329,8 +330,7 @@
 
       (ex-info
        (or xm "reduce error")
-       (assoc xd
-              ::reduce-id id)
+       (assoc xd ::reduce-id id)
        cause))))
 
 (defn reductions
@@ -378,7 +378,7 @@
          acc (atom initial-val)]
 
      (pr/chain
-      (if (identical? ::none initial-val)
+      (if (= ::none initial-val)
         true
         (transport/put! s' initial-val))
 
@@ -393,7 +393,7 @@
 
             (pr/chain
              (fn [v]
-                (let [[t ivs v] (if (identical? ::none @acc)
+                (let [[t ivs v] (if (= ::none @acc)
                                   (if (types/stream-chunk? v)
                                     (into [::chunk] (chunk-reductions f v))
                                     [::plain nil v])
@@ -436,6 +436,62 @@
 
      s')))
 
+(defn reduce-loop*
+  "the inner reduce loop
+
+   there were problems using a catch at the top level of the reduce -
+   there were crashes on cljs, perhaps an uncaught promise left lying around
+   somewhere, so instead errors are caught and returned from reduce-loop*
+   as StreamError values"
+  [_id f initial-val s]
+
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [acc initial-val]
+
+    ;; (prn "reduce-loop*" acc)
+
+    (if (reduced? acc)
+      (deref acc)
+
+      (pr/handle
+
+       ;; do a low-level take, so StreamErrors do not get unwrapped/thrown
+       (pt/-take! s ::none)
+
+       (fn [v e]
+
+         ;; (prn "take!" acc v)
+         (cond
+           (some? e) (types/stream-error e)
+
+           (= ::none v) acc
+
+           (types/stream-error? v) v
+
+           (types/stream-chunk? v)
+           (let [r (try
+                     (clj/reduce
+                      (@#'clj/preserving-reduced f)
+                      acc
+                      (pt/-chunk-values v))
+                     (catch #?(:clj Exception :cljs :default) e
+                       (reduced (types/stream-error e))))]
+             (if (reduced? r)
+               (deref r)
+               (pr/recur r)))
+
+           :else
+           (let [;; we didn't want the errors to be unwrapped, but
+                 ;; we do want other types of value to be unwrapped
+                 v (pt/-unwrap-value v)
+                 r (try
+                     (f acc v)
+                     (catch #?(:clj Exception :cljs :default) e
+                       (reduced (types/stream-error e))))]
+             (if (reduced? r)
+               (deref r)
+               (pr/recur r)))))))))
+
 (defn reduce
   "reduce, but for streams. returns a Promise of the reduced value
 
@@ -452,18 +508,20 @@
    TODO add StreamError value handling"
   ([id f s]
    (reduce id f ::none s))
+
   ([id f initial-val s]
-   (-> (if (identical? ::none initial-val)
+
+   (-> (if (= ::none initial-val)
          (transport/take! s ::none)
          (pr/resolved initial-val))
 
-       (pr/chain
+       (pr/then
         (fn [initial-val]
-          ;; (prn "initial-val" initial-val)
+          ;; (prn "reduce: initial-val" initial-val)
 
           (cond
 
-            (identical? ::none initial-val)
+            (= ::none initial-val)
             (f)
 
             (types/stream-error? initial-val)
@@ -480,44 +538,25 @@
                                    (pt/-chunk-values initial-val))
 
                                 initial-val)]
+              initial-val))))
 
-              #_{:clj-kondo/ignore [:loop-without-recur]}
-              (pr/loop [val initial-val]
+       (pr/then #(reduce-loop* id f % s))
 
-                ;; (prn "loop" val)
+       (pr/then
+        (fn [v]
 
-                (if (reduced? val)
-                  (deref val)
+          (if (types/stream-error? v)
 
-                  (-> (transport/take! s ::none)
-                      (pr/chain (fn [x]
-                                  ;; (prn "take!" val x)
-                                  (cond
+            (throw
+             (reduce-ex-info id (pt/-unwrap-error v)))
 
-                                    (identical? ::none x) val
+            v)))
 
-                                    (types/stream-error? x)
-                                    (throw
-                                     (pt/-unwrap-error x))
-
-                                    (types/stream-chunk? x)
-                                    (let [r (clj/reduce
-                                             (@#'clj/preserving-reduced f)
-                                             val
-                                             (pt/-chunk-values x))]
-                                      (if (reduced? r)
-                                        (deref r)
-                                        (pr/recur r)))
-
-                                    :else
-                                    (let [r (f val x)]
-                                      (if (reduced? r)
-                                        (deref r)
-                                        (pr/recur r)))))))))))))
-       (pr/catch
-           (fn [e]
-             (throw
-              (reduce-ex-info id e)))))))
+       (prpr/catch-always
+        (fn [e]
+          ;; (prn "reduce: caught" (ex-message e) (ex-data e))
+          (throw
+           (reduce-ex-info id e)))))))
 
 (defn count
   "count the items on a stream

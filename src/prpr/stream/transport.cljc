@@ -5,6 +5,8 @@
    stream connection"
   (:require
    [promesa.core :as pr]
+   [taoensso.timbre :refer [warn]]
+   [prpr.promise :as prpr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    #?(:clj [prpr.stream.manifold :as stream.manifold]
@@ -157,17 +159,12 @@
 
   (fn [val]
     ;; (prn "safe-connect-via-fn: value" val)
-    (pr/handle
+    (prpr/handle-always
 
-     (try
-
-       ;; always apply f to unwrapped values
-       (-> val
-           (pt/-unwrap-value)
-           (f))
-
-       (catch #?(:clj Exception :cljs :default) x
-         (error! sink x)))
+     ;; always apply f to unwrapped values
+     (-> val
+         (pt/-unwrap-value)
+         (f))
 
      (fn [success err]
        ;; (warn "safe-connect-via-fn: handle" success err)

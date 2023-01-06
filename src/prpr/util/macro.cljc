@@ -1,7 +1,5 @@
 (ns prpr.util.macro
-  #?(:cljs (:require-macros [prpr.util.macro]))
-  (:require
-   [taoensso.timbre]))
+  #?(:cljs (:require-macros [prpr.util.macro])))
 
 ;; from https://github.com/plumatic/schema/blob/master/src/clj/schema/macros.clj
 

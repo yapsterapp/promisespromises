@@ -33,3 +33,13 @@
   `(promesa.core/handle
     (always ~body)
     ~handler))
+
+(defmacro merge-always
+  "merge both branches of a promise into a variant"
+  [p]
+  `(handle-always
+    ~p
+    (fn [v# err#]
+      (if (some? err#)
+        [::error err#]
+        [::ok v#]))))

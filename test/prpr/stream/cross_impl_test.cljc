@@ -12,13 +12,16 @@
    [prpr.stream.operations :as stream.ops]
    [prpr.stream.transport :as stream.transport]
    [prpr.stream.types :as stream.types]
+   [prpr.stream.chunk :as stream.chunk]
+   [prpr.stream.protocols :as stream.pt]
    [prpr.stream :as stream]
 
-   [prpr.stream.cross-impl :as sut :as-alias stream.cross]
-   [prpr.stream.cross-impl.op :as-alias stream.cross.op]
+   [prpr.stream.cross-impl :as sut]
 
-   [prpr.stream.chunk :as stream.chunk]
-   [prpr.stream.protocols :as stream.pt])
+   [prpr.stream.cross :as-alias stream.cross]
+   [prpr.stream.cross.op :as-alias stream.cross.op]
+
+   )
   #?(:clj (:import
            [linked.map LinkedMap])))
 
@@ -40,29 +43,19 @@
          rs
          (pr/recur (conj rs v)))))))
 
-(defmacro merge-pr
-  "merge the branches of a promise"
-  [p]
-  `(prpr/handle-always
-    ~p
-    (fn [v# err#]
-      (if (some? err#)
-        [::error err#]
-        [::ok v#]))))
-
 (deftest stream-finished?-test
   (testing "not finished when partition-buffer is empty"
     (is (not (sut/stream-finished? []))))
   (testing "not finished when partition-buffer has some content"
     (is (not (sut/stream-finished? [["blah" '({:id "blah"})]]))))
   (testing "finished when partition-buffer is drained"
-    (is (sut/stream-finished? [[::stream.cross/drained]]))
+    (is (sut/stream-finished? [[::sut/drained]]))
     (is (sut/stream-finished? [["blah" '({:id "blah"})]
-                               [::stream.cross/drained]])))
+                               [::sut/drained]])))
   (testing "finished when partition-buffer is errored"
-    (is (sut/stream-finished? [[::stream.cross/errored]]))
+    (is (sut/stream-finished? [[::sut/errored]]))
     (is (sut/stream-finished? [["blah" '({:id "blah"})]
-                               [::stream.cross/errored]]))))
+                               [::sut/errored]]))))
 
 (deftest buffer-chunk!-test
 
@@ -85,7 +78,7 @@
         (is (= [[0 '(0 0 0)] [1 '(1 1 1)] [2 '(2 2 2)]] pb2))
 
         (is (= [[0 '(0 0 0)] [1 '(1 1 1)] [2 '(2 2 2)]
-                [::stream.cross/drained]] pb3)))))
+                [::sut/drained]] pb3)))))
 
   (testing "deals with stream error"
     (let [cfg (sut/configure-cross-op
@@ -104,7 +97,7 @@
 
         (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] pb1))
         (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] (take 2 pb2)))
-        (is (= ::stream.cross/errored k))
+        (is (= ::sut/errored k))
         (is (= {:v 5} (ex-data v))))))
 
   (testing "deals with empty stream"
@@ -116,7 +109,7 @@
                  (sut/partition-stream cfg :a))]
 
       (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)]
-        (is (= [[::stream.cross/drained]] pb1)))))
+        (is (= [[::sut/drained]] pb1)))))
 
   (testing "throws an error if stream not sorted"
     (testing "throws if chunk is not sorted"
@@ -127,9 +120,9 @@
             a (->> (stream-of [1 1 1 0 0 0])
                    (sut/partition-stream cfg :a))]
 
-        (-> (merge-pr (sut/buffer-chunk! [] cfg :a a))
+        (-> (prpr/merge-always (sut/buffer-chunk! [] cfg :a a))
             (pr/chain
-             (fn [[k v]] (is (= ::error k)))))))
+             (fn [[k v]] (is (= ::prpr/error k)))))))
 
     (testing "throws if between chunks is not sorted"
       (let [cfg (sut/configure-cross-op
@@ -139,10 +132,10 @@
             a (->> (stream-of [0 0 0])
                    (sut/partition-stream cfg :a))]
 
-        (-> (merge-pr (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
+        (-> (prpr/merge-always (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
             (pr/chain
              (fn [[k v]]
-               (is (= ::error k))
+               (is (= ::prpr/error k))
                (let [{error-type :error/type
 
                       chunk-starts-after-previous-end?
@@ -159,17 +152,19 @@
           a (->> (stream-of [0 0 0])
                  (sut/partition-stream cfg :a))]
 
-      (-> (merge-pr (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
+      (-> (prpr/merge-always (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
           (pr/chain
            (fn [[k v]]
-             (is (= ::error k))
+             (is (= ::prpr/error k))
              (let [{error-type :error/type
 
                     chunk-starts-after-previous-end?
                     ::stream.cross/chunk-starts-after-previous-end?
                     :as exd} (ex-data v)]
                (is (= ::sut/stream-not-sorted error-type))
-               (is (false? chunk-starts-after-previous-end?)))))))))
+               (is (false? chunk-starts-after-previous-end?))))))))
+
+  )
 
 (deftest init-partition-buffers!-test
   (testing "initially fills partition-buffers and correctly orders the map"
@@ -197,10 +192,10 @@
   (testing "false if there is more than 1 partition remaining"
     (is (false? (sut/partition-buffer-needs-filling? :foo [[0 '(0)] [1 '(1)]]))))
   (testing "errors if there is fewer than 1 partition remaining"
-    (pr/let [[k v] (merge-pr (sut/partition-buffer-needs-filling? :foo []))
+    (pr/let [[k v] (prpr/merge-always (sut/partition-buffer-needs-filling? :foo []))
              {error-type :error/type
               stream-id ::sut/stream-id} (ex-data v)]
-      (is (= ::error k))
+      (is (= ::prpr/error k))
       (is (= ::sut/partition-buffer-emptied error-type))
       (is (= :foo stream-id)))))
 

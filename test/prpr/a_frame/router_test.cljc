@@ -1,12 +1,13 @@
 (ns prpr.a-frame.router-test
   (:require
    [prpr.test
-    :refer [deftest testing is use-fixtures compose-fixtures
+    :refer [deftest tlet testing is use-fixtures compose-fixtures
             with-log-level-fixture with-log-level]]
+   [promesa.core :as pr]
    [prpr.test.malli :as test.malli]
    [prpr.error :as err]
    [prpr.stream :as stream]
-   [prpr.stream.impl :as stream.impl]
+   [prpr.stream.transport :as stream.impl]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]
@@ -26,12 +27,12 @@
 (def test-app-ctx {::FOO "foo"})
 
 (deftest create-router-test
-  (let [{event-s schema/a-frame-router-event-stream
-         :as _router} (sut/create-router test-app-ctx {})]
+  (pr/let [{event-s schema/a-frame-router-event-stream
+            :as _router} (sut/create-router test-app-ctx {})]
     (is (stream/stream? event-s))))
 
 (deftest reg-global-interceptor-test
-  (let [{global-interceptors-a schema/a-frame-router-global-interceptors-a
+  (tlet [{global-interceptors-a schema/a-frame-router-global-interceptors-a
          :as router} (sut/create-router
                       test-app-ctx
                       {schema/a-frame-router-global-interceptors [{:id ::foo}]})]
@@ -69,21 +70,23 @@
 
 
 (deftest dispatch-test
-  (let [{event-s schema/a-frame-router-event-stream
+  (tlet [{event-s schema/a-frame-router-event-stream
          :as router} (sut/create-router test-app-ctx {})]
 
     (testing "dispatch with a plain event"
       (sut/dispatch router [::foo])
+      (pr/let [r (stream/take! event-s)]
 
-      (is (= (events/coerce-extended-event [::foo])
-             @(stream/take! event-s))))
+        (is (= (events/coerce-extended-event [::foo]) r))))
 
     (testing "dispatch with an extended-event"
       (let [cofxev {schema/a-frame-coeffects {::bar 100}
                     schema/a-frame-event [::foo]}]
         (sut/dispatch router cofxev)
 
-        (is (= cofxev @(stream/take! event-s)))))))
+        (pr/let [r (stream/take! event-s)]
+
+          (is (= cofxev r)))))))
 
 (deftest dispatch-n-test
   (let [{event-s schema/a-frame-router-event-stream
@@ -280,7 +283,7 @@
                                 router
                                 false
                                 (events/coerce-extended-event [::foo]))]
-                        (catch Exception x
+                        (catch #?(:clj  Exception :cljs :default) x
                           [::error x]))
 
             ;; unwrap to get the original error
@@ -507,7 +510,7 @@
                         [::ok @(sut/dispatch-sync
                                 router
                                 [::dispatch-sync-test-propagates-error 0])]
-                        (catch Exception x
+                        (catch #?(:clj Exception :cljs :default) x
                           [::error x]))
 
             ;; must unwrap the original error
@@ -559,7 +562,7 @@
                            router
                            [::dispatch-sync-propagates-error-from-nested-dispatch
                             0])]
-                        (catch Exception x
+                        (catch #?(:clj Exception :cljs :default) x
                           [::error x]))
 
             ;; have to unwrap the original error from the nested errors

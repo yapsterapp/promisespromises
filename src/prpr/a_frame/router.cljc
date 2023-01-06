@@ -1,11 +1,11 @@
 (ns prpr.a-frame.router
   (:require
+   [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.promise :as prpr]
    [prpr.stream :as stream]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.events :as events]
-   [schema.core :as s]
    [taoensso.timbre :refer [debug info warn error]]))
 
 ;; use a record so we can
@@ -21,7 +21,7 @@
        (assoc x schema/a-frame-app-ctx "<app-ctx-hidden>"))
       writer)))
 
-(s/defn create-router :- schema/Router
+(mx/defn create-router :- schema/Router
   [app
    {global-interceptors schema/a-frame-router-global-interceptors
     executor schema/a-frame-router-executor
@@ -86,7 +86,7 @@
     (fn [global-interceptors]
       (into [] (remove #(= id (:id %)) global-interceptors))))))
 
-(s/defn dispatch
+(mx/defn dispatch
   "dispatch an Event or ExtendedEvent"
   [{event-s schema/a-frame-router-event-stream
     :as _router} :- schema/Router
@@ -96,25 +96,26 @@
 
   (stream/put! event-s (events/coerce-extended-event event-or-extended-event)))
 
-(s/defn dispatch-n
+(mx/defn dispatch-n
   "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
   [router :- schema/Router
    events-or-extended-events :- schema/EventsOrExtendedEvents]
 
   #_{:clj-kondo/ignore [:loop-without-recur]}
-  (pr/loop [[evoce & rest-evoces] events-or-extended-events]
-    (pr/chain
-     (dispatch router evoce)
-     (fn [_]
-       (if (not-empty rest-evoces)
-         (pr/recur rest-evoces)
-         true)))))
+  (pr/loop [evoces events-or-extended-events]
+    (let [[evoce & rest-evoces] evoces]
+      (pr/chain
+       (dispatch router evoce)
+       (fn [_]
+         (if (not-empty rest-evoces)
+           (pr/recur rest-evoces)
+           true))))))
 
-(s/defn handle-event
+(mx/defn handle-event
   [{app schema/a-frame-app-ctx
     global-interceptors-a schema/a-frame-router-global-interceptors-a
     :as router} :- schema/Router
-   catch? :- s/Bool
+   catch? :- :boolean
    extended-ev :- schema/ExtendedEvent]
 
   (let [handle-opts {schema/a-frame-app-ctx app
@@ -131,7 +132,7 @@
 
       (events/handle handle-opts extended-ev))))
 
-(s/defn handle-event-stream
+(mx/defn handle-event-stream
   "handle a regular, infinite, event-stream"
   [{event-s schema/a-frame-router-event-stream
     :as router} :- schema/Router]
@@ -143,7 +144,7 @@
        (stream/count
         ::handle-event-stream)))
 
-(s/defn handle-sync-event-stream
+(mx/defn handle-sync-event-stream
   "handle events off of the stream until the stream is empty,
    at which point return the interceptor context of the
    very first event off of the stream"
@@ -183,7 +184,7 @@
              (let [[rv] @rv-a]
                rv))))))))
 
-(s/defn dispatch-sync
+(mx/defn dispatch-sync
   "puts the event-v on to a temporary stream,
    handles events from the stream and return
    when the stream is empty.
@@ -215,7 +216,7 @@
 
     (handle-sync-event-stream tmp-router)))
 
-(s/defn dispatch-n-sync
+(mx/defn dispatch-n-sync
   "puts events onto a temporary stream, handles events from
    the stream, and returns when the stream is empty"
   [{app schema/a-frame-app-ctx
@@ -237,12 +238,12 @@
 
       (handle-sync-event-stream tmp-router))))
 
-(s/defn run-a-frame-router
+(mx/defn run-a-frame-router
   [router :- schema/Router]
   (handle-event-stream
    router))
 
-(s/defn stop-a-frame-router
+(mx/defn stop-a-frame-router
   [{event-s schema/a-frame-router-event-stream
     :as _router} :- schema/Router]
   (info "closing a-frame")

@@ -1,5 +1,6 @@
 (ns prpr.a-frame.fx
   (:require
+   [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
@@ -7,7 +8,6 @@
    [prpr.a-frame.events :as events]
    [prpr.a-frame.router :as router]
    [prpr.a-frame.interceptor-chain :as interceptor-chain]
-   [schema.core :as s]
    [taoensso.timbre :refer [warn]]))
 
 (defn reg-fx
@@ -61,13 +61,14 @@
   (pr/chain
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
-   (pr/loop [[results [first-map-fx & rest-map-fx]] [[] effects]]
-     (pr/chain
-      (do-map-of-effects context first-map-fx)
-      (fn [r]
-        (if (empty? rest-map-fx)
-          [(conj results r) []]
-          (pr/recur [(conj results r) rest-map-fx])))))
+   (pr/loop [results-effects [[] effects]]
+     (let [[results [first-map-fx & rest-map-fx]] results-effects]
+       (pr/chain
+        (do-map-of-effects context first-map-fx)
+        (fn [r]
+          (if (empty? rest-map-fx)
+            [(conj results r) []]
+            (pr/recur [(conj results r) rest-map-fx]))))))
    (fn [[results _remaining]]
      results)))
 
@@ -127,50 +128,66 @@
 
 ;; dispatch an event - coeffects are *not* transitive
 ;; by default
-(reg-fx-ctx
- :a-frame/dispatch
- (s/fn [{router schema/a-frame-router
-         :as context}
-        event :- schema/EventOrExtendedEvent]
+
+(mx/defn dispatch
+   [{router schema/a-frame-router
+          :as context}
+         event :- schema/EventOrExtendedEvent]
    (router/dispatch
     router
-    (xev-with-all-coeffects context false event))))
+    (xev-with-all-coeffects context false event)))
+
+(reg-fx-ctx
+ :a-frame/dispatch
+ dispatch)
 
 ;; dispatch a vector of events - coeffects are *not*
 ;; transitive by default
-(reg-fx-ctx
- :a-frame/dispatch-n
- (s/fn [{router schema/a-frame-router
-         :as context}
-        events :- schema/EventsOrExtendedEvents]
+
+(mx/defn dispatch-n
+   [{router schema/a-frame-router
+          :as context}
+         events :- schema/EventsOrExtendedEvents]
    (router/dispatch-n
     router
-    (map (partial xev-with-all-coeffects context false) events))))
+    (map (partial xev-with-all-coeffects context false) events)))
+
+(reg-fx-ctx
+ :a-frame/dispatch-n
+ dispatch-n)
 
 ;; dispatch an event and wait for it to be fully processed
 ;; before proceeding (pausing fx processing for the current
 ;; event, and any further processing on the main event stream)
 ;;
 ;; coeffects *are* transitive by default
+
+(mx/defn dispatch-sync
+  [{router schema/a-frame-router
+    :as context}
+   event :- schema/EventOrExtendedEvent]
+  (router/dispatch-sync
+   router
+   (xev-with-all-coeffects context true event)))
+
 (reg-fx-ctx
  :a-frame/dispatch-sync
- (s/fn [{router schema/a-frame-router
-        :as context}
-       event :- schema/EventOrExtendedEvent]
-   (router/dispatch-sync
-    router
-    (xev-with-all-coeffects context true event))))
+ dispatch-sync)
 
 ;; dispatch n events, and wait for them all to be fully processed
 ;; before proceeding (pausing fx processing for the current
 ;; event, and any further processing on the main event stream)
 ;;
 ;; coeffects *are* transitive by default
+
+(mx/defn dispatch-n-sync
+  [{router schema/a-frame-router
+    :as context}
+   events :- schema/EventsOrExtendedEvents]
+  (router/dispatch-n-sync
+   router
+   (map (partial xev-with-all-coeffects context true) events)))
+
 (reg-fx-ctx
  :a-frame/dispatch-n-sync
- (s/fn [{router schema/a-frame-router
-        :as context}
-       events :- schema/EventsOrExtendedEvents]
-   (router/dispatch-n-sync
-    router
-    (map (partial xev-with-all-coeffects context true) events))))
+ dispatch-n-sync)

@@ -348,7 +348,8 @@
           (doseq [[k i] [[::execute-error-handline-not-cleared-clear
                           {::sut/error (fn [c _] (sut/clear-errors c))}]
                          [::execute-error-handling-not-cleared-boom
-                          {::sut/enter (fn [_] (pr/rejected "boom" {:fail :test}))}]]]
+                          {::sut/enter (fn [_] (pr/rejected
+                                               (ex-info "boom" {:fail :test})))}]]]
             (sut/register-interceptor k i))
 
           (pr/let

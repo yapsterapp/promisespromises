@@ -1,6 +1,6 @@
 (ns prpr.a-frame.events
   (:require
-   [schema.core :as s]
+   [malli.experimental :as mx]
    [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
@@ -77,7 +77,7 @@
     schema/a-frame-kind-event
     id)))
 
-(s/defn coerce-extended-event
+(mx/defn coerce-extended-event
   "Event|ExtendedEvent -> ExtendedEvent"
   [event-or-extended-event :- schema/EventOrExtendedEvent]
   (if (map? event-or-extended-event)

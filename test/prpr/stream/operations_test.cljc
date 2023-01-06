@@ -778,180 +778,180 @@
                 [::ok ::closed]]
                vs))))))
 
-;; (deftest reductions-test
-;;   (testing "receiving a plain value behaviours")
-;;   (testing "receiving a chunk behaviours")
-;;   (testing "receiving a nil-value behaviours")
-;;   (testing "receiving a stream-error behaviours")
-;;   (testing "error in transform behaviours")
+(deftest reductions-test
+  (testing "receiving a plain value behaviours")
+  (testing "receiving a chunk behaviours")
+  (testing "receiving a nil-value behaviours")
+  (testing "receiving a stream-error behaviours")
+  (testing "error in transform behaviours")
 
 
-;;   (testing "returns reductions on the output stream"
-;;     (testing "reductions of a stream of plain values"
-;;       (testing "reductions of an empty stream"
-;;         (let [s (stream-of [])
-;;               t (sut/reductions ::reductions-empty-stream + s)]
-;;           (pr/let [v (transport/take! t ::closed)]
-;;             (is (= ::closed v )))))
-;;       (testing "reductions of a single-element stream"
-;;         (let [s (stream-of [5])
-;;               t (sut/reductions ::reductions-empty-stream + s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)]
-;;             (is (= 5 v1))
-;;             (is (= ::closed v2)))))
-;;       (testing "reductions of a multi-element stream"
-;;         (let [s (stream-of [1 2 3])
-;;               t (sut/reductions ::reductions-empty-stream + s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)
-;;                    v3 (transport/take! t ::closed)
-;;                    v4 (transport/take! t ::closed)]
-;;             (is (= 1 v1))
-;;             (is (= 3 v2))
-;;             (is (= 6 v3))
-;;             (is (= ::closed v4))))))
+  (testing "returns reductions on the output stream"
+    (testing "reductions of a stream of plain values"
+      (testing "reductions of an empty stream"
+        (let [s (stream-of [])
+              t (sut/reductions ::reductions-empty-stream + s)]
+          (pr/let [v (transport/take! t ::closed)]
+            (is (= ::closed v )))))
+      (testing "reductions of a single-element stream"
+        (let [s (stream-of [5])
+              t (sut/reductions ::reductions-empty-stream + s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
+            (is (= 5 v1))
+            (is (= ::closed v2)))))
+      (testing "reductions of a multi-element stream"
+        (let [s (stream-of [1 2 3])
+              t (sut/reductions ::reductions-empty-stream + s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 3 v2))
+            (is (= 6 v3))
+            (is (= ::closed v4))))))
 
-;;     (testing "reductions of a stream of chunks"
-;;       (testing "reductions of a single-element stream"
-;;         (let [s (stream-of [(types/stream-chunk [5])])
-;;               t (sut/reductions ::reductions-empty-stream + s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)]
-;;             (is (= (types/stream-chunk [5]) v1))
-;;             (is (= ::closed v2)))))
-;;       (testing "reductions of a multi-element stream"
-;;         (let [s (stream-of [(types/stream-chunk [1 2 3])])
-;;               t (sut/reductions ::reductions-empty-stream + s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)]
-;;             (is (= (types/stream-chunk [1 3 6]) v1))
-;;             (is (= ::closed v2))))))
+    (testing "reductions of a stream of chunks"
+      (testing "reductions of a single-element stream"
+        (let [s (stream-of [(types/stream-chunk [5])])
+              t (sut/reductions ::reductions-empty-stream + s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
+            (is (= (types/stream-chunk [5]) v1))
+            (is (= ::closed v2)))))
+      (testing "reductions of a multi-element stream"
+        (let [s (stream-of [(types/stream-chunk [1 2 3])])
+              t (sut/reductions ::reductions-empty-stream + s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)]
+            (is (= (types/stream-chunk [1 3 6]) v1))
+            (is (= ::closed v2))))))
 
-;;     (testing "reductions of a mix of chunks and plain values"
-;;       (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
-;;             t (sut/reductions ::reductions-empty-stream + s)]
-;;         (pr/let [v1 (transport/take! t ::closed)
-;;                  v2 (transport/take! t ::closed)
-;;                  v3 (transport/take! t ::closed)
-;;                  v4 (transport/take! t ::closed)]
-;;           (is (= 1 v1))
-;;           (is (= (types/stream-chunk [3 6]) v2))
-;;           (is (= 10 v3))
-;;           (is (= ::closed v4))))))
+    (testing "reductions of a mix of chunks and plain values"
+      (let [s (stream-of [1 (types/stream-chunk [2 3]) 4])
+            t (sut/reductions ::reductions-empty-stream + s)]
+        (pr/let [v1 (transport/take! t ::closed)
+                 v2 (transport/take! t ::closed)
+                 v3 (transport/take! t ::closed)
+                 v4 (transport/take! t ::closed)]
+          (is (= 1 v1))
+          (is (= (types/stream-chunk [3 6]) v2))
+          (is (= 10 v3))
+          (is (= ::closed v4))))))
 
-;;   (testing "returns reducing function errors"
-;;     (testing "with plain values"
-;;       (let [s (stream-of [0 2 3])
-;;             t (sut/reductions
-;;                ::reductions-empty-stream
-;;                (fn [a v]
-;;                  (if (odd? v)
-;;                    (throw (ex-info "boo" {:v v}))
-;;                    (+ a v)))
-;;                s)]
-;;         (pr/let [[k1 v1] (safe-take! t ::closed)
-;;                  [k2 v2] (safe-take! t ::closed)
-;;                  [k3 v3] (safe-take! t ::closed)
-;;                  [k4 v4] (safe-take! t ::closed)]
-;;           (is (= ::ok k1)) (is (= 0 v1))
-;;           (is (= ::ok k2)) (is (= 2 v2))
-;;           (is (= ::error k3))
-;;           (is (= {:v 3
-;;                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
-;;           (is (= ::ok k4)) (is (= ::closed v4)))))
-;;     (testing "with chunks"
-;;       (let [s (stream-of [(types/stream-chunk [0 2 3])])
-;;             t (sut/reductions
-;;                ::reductions-empty-stream
-;;                (fn [a v]
-;;                  (if (odd? v)
-;;                    (throw (ex-info "boo" {:v v}))
-;;                    (+ a v)))
-;;                s)]
-;;         (pr/let [[k1 v1] (safe-take! t ::closed)
-;;                  [k2 v2] (safe-take! t ::closed)]
-;;           (is (= ::error k1))
-;;           (is (= {:v 3
-;;                   ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
-;;           (is (= ::ok k2)) (is (= ::closed v2))))))
+  (testing "returns reducing function errors"
+    (testing "with plain values"
+      (let [s (stream-of [0 2 3])
+            t (sut/reductions
+               ::reductions-empty-stream
+               (fn [a v]
+                 (if (odd? v)
+                   (throw (ex-info "boo" {:v v}))
+                   (+ a v)))
+               s)]
+        (pr/let [[k1 v1] (safe-take! t ::closed)
+                 [k2 v2] (safe-take! t ::closed)
+                 [k3 v3] (safe-take! t ::closed)
+                 [k4 v4] (safe-take! t ::closed)]
+          (is (= ::ok k1)) (is (= 0 v1))
+          (is (= ::ok k2)) (is (= 2 v2))
+          (is (= ::error k3))
+          (is (= {:v 3
+                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v3)))
+          (is (= ::ok k4)) (is (= ::closed v4)))))
+    (testing "with chunks"
+      (let [s (stream-of [(types/stream-chunk [0 2 3])])
+            t (sut/reductions
+               ::reductions-empty-stream
+               (fn [a v]
+                 (if (odd? v)
+                   (throw (ex-info "boo" {:v v}))
+                   (+ a v)))
+               s)]
+        (pr/let [[k1 v1] (safe-take! t ::closed)
+                 [k2 v2] (safe-take! t ::closed)]
+          (is (= ::error k1))
+          (is (= {:v 3
+                  ::sut/reduce-id ::reductions-empty-stream} (ex-data v1)))
+          (is (= ::ok k2)) (is (= ::closed v2))))))
 
-;;   (testing "when receiving a nil wrapper sends nil to the reducing fn"
-;;     (let [s (stream-of [1 (types/stream-nil) 2])]
-;;       (pr/let [t (sut/reductions
-;;                   ::reduce-nil
-;;                   (fn [a v]
-;;                     (conj a v))
-;;                   []
-;;                   s)
+  (testing "when receiving a nil wrapper sends nil to the reducing fn"
+    (let [s (stream-of [1 (types/stream-nil) 2])]
+      (pr/let [t (sut/reductions
+                  ::reduce-nil
+                  (fn [a v]
+                    (conj a v))
+                  []
+                  s)
 
-;;                vs (safe-consume t)]
-;;         (is (= [[::ok []]
-;;                 [::ok [1]]
-;;                 [::ok [1 nil]]
-;;                 [::ok [1 nil 2]]
-;;                 [::ok ::closed]]
-;;                vs)))))
+               vs (safe-consume t)]
+        (is (= [[::ok []]
+                [::ok [1]]
+                [::ok [1 nil]]
+                [::ok [1 nil 2]]
+                [::ok ::closed]]
+               vs)))))
 
-;;   (testing "deals with reduced"
-;;     (testing "with no initial value"
-;;       (testing "with reduced in second place"
-;;         (let [s (stream-of [1 3 4 6])
-;;               t (sut/reductions
-;;                  ::reductions-empty-stream
-;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-;;                  s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)
-;;                    v3 (transport/take! t ::closed)]
-;;             (is (= 1 v1))
-;;             (is (= 4 v2))
-;;             (is (= ::closed v3)))))
-;;       (testing "with reduced further down the stream"
-;;         (let [s (stream-of [2 4 3 6])
-;;               t (sut/reductions
-;;                  ::reductions-empty-stream
-;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-;;                  s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)
-;;                    v3 (transport/take! t ::closed)
-;;                    v4 (transport/take! t ::closed)]
-;;             (is (= 2 v1))
-;;             (is (= 6 v2))
-;;             (is (= 9 v3))
-;;             (is (= ::closed v4))))))
-;;     (testing "with an initial value"
-;;       (testing "with reduced in first place"
-;;         (let [s (stream-of [1 2 4 6])
-;;               t (sut/reductions
-;;                  ::reductions-empty-stream
-;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-;;                  1
-;;                  s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)
-;;                    v3 (transport/take! t ::closed)]
-;;             (is (= 1 v1))
-;;             (is (= 2 v2))
-;;             (is (= ::closed v3)))))
-;;       (testing "with reduced further down the stream"
-;;         (let [s (stream-of [2 4 3 6])
-;;               t (sut/reductions
-;;                  ::reductions-empty-stream
-;;                  (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
-;;                  1
-;;                  s)]
-;;           (pr/let [v1 (transport/take! t ::closed)
-;;                    v2 (transport/take! t ::closed)
-;;                    v3 (transport/take! t ::closed)
-;;                    v4 (transport/take! t ::closed)
-;;                    v5 (transport/take! t ::closed)]
-;;             (is (= 1 v1))
-;;             (is (= 3 v2))
-;;             (is (= 7 v3))
-;;             (is (= 10 v4))
-;;             (is (= ::closed v5))))))))
+  (testing "deals with reduced"
+    (testing "with no initial value"
+      (testing "with reduced in second place"
+        (let [s (stream-of [1 3 4 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 4 v2))
+            (is (= ::closed v3)))))
+      (testing "with reduced further down the stream"
+        (let [s (stream-of [2 4 3 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)]
+            (is (= 2 v1))
+            (is (= 6 v2))
+            (is (= 9 v3))
+            (is (= ::closed v4))))))
+    (testing "with an initial value"
+      (testing "with reduced in first place"
+        (let [s (stream-of [1 2 4 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 1
+                 s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 2 v2))
+            (is (= ::closed v3)))))
+      (testing "with reduced further down the stream"
+        (let [s (stream-of [2 4 3 6])
+              t (sut/reductions
+                 ::reductions-empty-stream
+                 (fn [a v] (if (odd? v) (reduced (+ a v)) (+ a v)))
+                 1
+                 s)]
+          (pr/let [v1 (transport/take! t ::closed)
+                   v2 (transport/take! t ::closed)
+                   v3 (transport/take! t ::closed)
+                   v4 (transport/take! t ::closed)
+                   v5 (transport/take! t ::closed)]
+            (is (= 1 v1))
+            (is (= 3 v2))
+            (is (= 7 v3))
+            (is (= 10 v4))
+            (is (= ::closed v5))))))))
 
 (deftest reduce-test
     (testing "receiving a plain value behaviours")

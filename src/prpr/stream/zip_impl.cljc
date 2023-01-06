@@ -3,9 +3,11 @@
    error sensitive way"
   (:require
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.stream.protocols :as pt]
    [prpr.stream.transport :as transport]
-   [prpr.stream.types :as types]))
+   [prpr.stream.types :as types]
+   [prpr.stream :as-alias stream]))
 
 ;; maintains some state
 ;; uses a buffer list of unconsumed values allowing
@@ -23,11 +25,11 @@
 
         (first buf)
 
-        (pr/let [v (transport/take! s :prpr.stream/end)]
+        (pr/let [v (pt/-take! s ::stream/end)]
           (cond
 
             ;; terminal conditions
-            (or (= :prpr.stream/end v)
+            (or (= ::stream/end v)
                 (types/stream-error? v))
             (do
               (swap! buf-a conj v)
@@ -52,7 +54,7 @@
         (cond
 
           ;; terminal conditions
-          (or (= :prpr.stream/end fv)
+          (or (= ::stream/end fv)
               (types/stream-error? fv))
           fv
 
@@ -62,11 +64,11 @@
             (swap! buf-a rest)
             fv))
 
-        (pr/let [v (transport/take! s :prpr.stream/end)]
+        (pr/let [v (pt/-take! s ::stream/end)]
           (cond
 
             ;; terminal conditions
-            (or (= :prpr.stream/end v)
+            (or (= ::stream/end v)
                 (types/stream-error? v))
             (do
               (swap! buf-a conj v)
@@ -92,8 +94,8 @@
     (let [buf @buf-a]
       (if (not-empty buf)
         (first buf)
-        (pr/let [v (transport/take! s :prpr.stream/end)]
-          (swap! buf-a conj v)
+        (pr/let [v (pt/-take! s ::stream/end)]
+          (reset! buf-a '(v))
           v))))
 
   (-take-chunk! [_]
@@ -102,7 +104,7 @@
         (cond
 
           ;; terminal conditions
-          (or (= :prpr.stream/end fv)
+          (or (= ::stream/end fv)
               (types/stream-error? fv))
           fv
 
@@ -113,15 +115,15 @@
             fv))
 
         (pr/let [;; _ (info "about to -take!")
-                 v (transport/take! s :prpr.stream/end)]
+                 v (pt/-take! s ::stream/end)]
           (cond
 
             ;; buffer and return terminal conditions
-            (or (= :prpr.stream/end v)
+            (or (= ::stream/end v)
                 (types/stream-error? v))
             (do
               ;; (info "terminal" v)
-              (swap! buf-a conj v)
+              (reset! buf-a '(v))
               v)
 
             ;; return chunk or plain value
@@ -129,13 +131,13 @@
             v)))))
 
   (-pushback-chunk! [_ chunk-or-val]
-    (when (or (= :prpr.stream/end chunk-or-val)
+    (when (or (= ::stream/end chunk-or-val)
               (types/stream-error? chunk-or-val))
       (throw
        (ex-info "can't pushback EOS or error"
                 {:chunk-or-val chunk-or-val})))
 
-    (swap! buf-a conj chunk-or-val)))
+    (swap! buf-a #(cons chunk-or-val %))))
 
 (defn chunk-consumer
   [s]
@@ -183,7 +185,7 @@
          (pt/-put! interm v))
        interm))
 
-    (pr/catch
+    (prpr/catch-always
         #_{:clj-kondo/ignore [:loop-without-recur]}
         (pr/loop []
 
@@ -199,7 +201,7 @@
              ;; (info "chunk-or-vals" chunk-or-vals)
 
              (let [;; has any source ended ?
-                   end? (some #(= :prpr.stream/end %) chunk-or-vals)
+                   end? (some #(= ::stream/end %) chunk-or-vals)
 
                    ;; were there any errors ?
                    errors? (some types/stream-error? chunk-or-vals)
@@ -217,13 +219,12 @@
                                             (apply min))
                                        1)]
 
-               (cond
+               ;; (prn "zip" {:end? end?
+               ;;             :errors? errors?
+               ;;             :all-chunks? all-chunks?
+               ;;             :output-chunk-size output-chunk-size})
 
-                 ;; one or more inputs has ended - close the output normally
-                 end?
-                 (pr/chain
-                  (close-all)
-                  (fn [_] false))
+               (cond
 
                  ;; one or more inputs has errored - error and close the output
                  errors?
@@ -232,6 +233,12 @@
                     (transport/error! out first-err)
                     (fn [_] (close-all))
                     (fn [_] false)))
+
+                 ;; one or more inputs has ended - close the output normally
+                 end?
+                 (pr/chain
+                  (close-all)
+                  (fn [_] false))
 
                  ;; all the inputs are chunks - so output a new chunk of
                  ;; zipped values with size of the smallest input chunks,

@@ -579,11 +579,11 @@
    - partition-by-fn - also partition-by the stream - ensuring that partitions
        never span chunk boundaries"
   ([target-chunk-size s]
-   (chunkify 0 target-chunk-size nil s))
+   (chunkify 1 target-chunk-size nil s))
 
   ([target-chunk-size partition-by-fn s]
-   (chunkify 0 target-chunk-size partition-by-fn s))
+   (chunkify 1 target-chunk-size partition-by-fn s))
 
   ([buffer-size target-chunk-size partition-by-fn s]
    (let [xform (chunk/make-chunker-xform target-chunk-size partition-by-fn)]
-     (transform xform (or buffer-size 0) s))))
+     (transform xform (or buffer-size 1) s))))

@@ -370,16 +370,6 @@
                           [::execute-error-handline-not-cleared-clear ::sut/error]]})
                        r)))))))
 
-(defmacro wrap-catch
-  [form]
-  `(prpr/catch-always
-
-    (pr/let [ctx# ~form]
-      [::ok ctx#])
-
-    (fn [e#]
-      [::error e#])))
-
 (deftest resume-test
 
   (tlet [throw?-a (atom true)]
@@ -390,25 +380,26 @@
                                  (if @throw?-a
                                    (do
                                      (reset! throw?-a false)
+                                     (prn "THROW")
                                      (throw (ex-info "boo" {})))
                                    x))
                    ::sut/leave (fn [x] (assoc x :left? true))}]]]
           (sut/register-interceptor key inter))
 
         (testing "can resume after failure"
-          (pr/let [[tag err] (wrap-catch
+          (pr/let [[tag err] (prpr/merge-always
                               (sut/execute
                                ::app
                                ::a-frame
                                [::resume-test-throw-once]
                                {}))
 
-                   _ (is (= tag ::error))
+                   _ (is (= tag ::prpr/error))
 
                    [resume-tag
                     {resume-left? :left?
-                     :as _resume-val}] (wrap-catch
+                     :as _resume-val}] (prpr/merge-always
                                         (sut/resume ::app ::a-frame err))]
 
-            (is (= ::ok resume-tag))
+            (is (= ::prpr/ok resume-tag))
             (is (= true resume-left?))))))

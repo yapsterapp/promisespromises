@@ -2,6 +2,7 @@
   (:require
    [prpr.test :refer [deftest is testing use-fixtures]]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.registry.test :as registry.test]
@@ -73,14 +74,22 @@
                (is (= [::event-blah 100] event))
                {::fx-foo {::coeffects coeffects
                           ::event event}}))]
-      (pr/let [{h-r-app-ctx schema/a-frame-app-ctx
+      (pr/let [[k v] (prpr/merge-always
+                      (sut/handle
+                           {schema/a-frame-app-ctx ::app}
+                           [::event-blah 100]))
+
+               {h-r-app-ctx schema/a-frame-app-ctx
                 h-r-queue ::interceptor-chain/queue
                 h-r-stack ::interceptor-chain/stack
                 h-r-coeffects schema/a-frame-coeffects
                 h-r-effects schema/a-frame-effects
-                :as _h-r} (sut/handle
-                           {schema/a-frame-app-ctx ::app}
-                           [::event-blah 100])]
+                :as _h-r} (when (= ::prpr/ok k)
+                            v)]
+
+        (is (= ::prpr/ok k))
+        (is (= nil (ex-data v)))
+        (is (= nil (ex-message v)))
 
         (is (= {::fx-foo {::coeffects
                           {schema/a-frame-coeffect-event [::event-blah 100]
@@ -145,4 +154,5 @@
 
                                        ::cofx-init 550}}}
                @fx-a
-               h-r-effects))))))
+               h-r-effects)))))
+  )

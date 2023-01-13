@@ -172,6 +172,7 @@
     :as tmp-router} :- schema/Router]
 
   (let [rv-a (atom nil)]
+
     #_{:clj-kondo/ignore [:loop-without-recur]}
     (pr/loop []
       (pr/chain
@@ -185,17 +186,26 @@
 
          (if-not (#{::default ::timeout} router-ev)
 
-           (pr/chain
+           (pr/handle
+
             (handle-event tmp-router false router-ev)
 
-            (fn [r]
-              (swap!
-               rv-a
-               (fn [[_rv :as rv-wrapper] nv]
-                 (if (nil? rv-wrapper)
-                   [nv]
-                   rv-wrapper))
-               r)
+            (fn [r e]
+
+              (if (some? e)
+
+                (do
+                  (stream/close! tmp-event-s)
+                  (throw e))
+
+                (swap!
+                 rv-a
+                 (fn [[_rv :as rv-wrapper] nv]
+                   (if (nil? rv-wrapper)
+                     [nv]
+                     rv-wrapper))
+                 r))
+
               (pr/recur)))
 
            ;; tmp-event-s is empty - close and return

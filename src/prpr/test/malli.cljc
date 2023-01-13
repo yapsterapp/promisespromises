@@ -3,6 +3,10 @@
    #?(:clj [malli.instrument :as mi])
    ))
 
+;; defns get arity checking
+#?(:cljs (defn before-fn [] true))
+#?(:cljs (defn after-fn [] true))
+
 (def instrument-fns-fixture
   #?(:clj
      (fn [f]
@@ -10,5 +14,5 @@
        (f))
 
      :cljs
-     {:before (fn [])
-      :afrter (fn [])}))
+     {:before before-fn
+      :after after-fn}))

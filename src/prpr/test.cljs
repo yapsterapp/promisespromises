@@ -23,12 +23,22 @@
          f2-after :after} (if (map? f2)
                             f2
                             {:before f2})]
-    {:before (cljs.test/compose-fixtures f1-before f2-before)
-     :after (cljs.test/compose-fixtures f1-after f2-after)}))
+    {:before (fn []
+               (when (some? f1-before) (f1-before))
+               (when (some? f2-before) (f2-before))
+               true)
+     :after (fn []
+              (when (some? f1-after) (f1-after))
+              (when (some? f2-after) (f2-after))
+              true)}))
 
 (defn with-log-level-fixture
   [level]
   (let [cl (or (:level taoensso.timbre/*config*)
                :info)]
-    {:before (fn [] (taoensso.timbre/set-level! level))
-     :after (fn [] (taoensso.timbre/set-level! cl))}))
+    {:before (fn []
+               (taoensso.timbre/set-level! level)
+               true)
+     :after (fn []
+              (taoensso.timbre/set-level! cl)
+              true)}))

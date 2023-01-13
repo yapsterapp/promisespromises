@@ -1,5 +1,6 @@
 (ns prpr.a-frame.router
   (:require
+   #?(:cljs [cljs.core :refer [IDeref]])
    [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.promise :as prpr]
@@ -13,6 +14,20 @@
 ;; override the print-method to hide the app-context
 ;; for more readable error messages
 (defrecord AFrameRouter [])
+
+(deftype AFrameErrorWrapper [err]
+  #?@(:clj [clojure.lang.IDeref
+            (deref [_] err)]
+      :cljs [IDeref
+             (-deref [_] err)]))
+
+(defn error-wrapper
+  [err]
+  (AFrameErrorWrapper. err))
+
+(defn error-wrapper?
+  [v]
+  (instance? AFrameErrorWrapper v))
 
 #?(:clj
    (defmethod print-method AFrameRouter [x writer]
@@ -130,7 +145,10 @@
        (events/handle handle-opts extended-ev)
        (fn [err]
          (warn err "handle-event")
-         err))
+
+         ;; if we return an unwrapped error, that will cause
+         ;; an errored promise on js - so we wrap the error
+         (error-wrapper err)))
 
       (events/handle handle-opts extended-ev))))
 

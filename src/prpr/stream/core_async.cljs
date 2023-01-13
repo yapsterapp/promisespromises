@@ -32,15 +32,21 @@
      ;; (prn "async-put!" val)
      (async/put! sink val #(pr/resolve! r %))
      r))
+
   ([sink val timeout timeout-val]
-   ;; TODO use alts! here instead of promise timeout
-   (let [r (pr/deferred)
-         timeout-r (pr/timeout
-                    r
-                    timeout
-                    timeout-val)]
-     (async/put! sink val #(pr/resolve! r %))
-     timeout-r)))
+   (let [timeout-ch (async/timeout timeout)
+
+         alt-ch (async/go
+                  (async/alt!
+                    [sink val] true
+                    timeout-ch timeout-val
+                    :priority true))
+
+         r (pr/deferred)]
+
+     (async/take! alt-ch #(pr/resolve! r %))
+
+     r)))
 
 (defn async-error!
   "this is also implemented in impl.. but circular deps..."
@@ -64,13 +70,22 @@
          dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
      (async/take! source #(pr/resolve! r %))
      dr))
+
   ([source default-val timeout timeout-val]
-   ;; TODO use alts! here instead of promise timeout
-   (let [r (pr/deferred)
-         dr (pr/chain r (fn [v] (if (some? v) v default-val)))
-         tdr (pr/timeout dr timeout timeout-val)]
-     (async/take! source #(pr/resolve! r %))
-     tdr)))
+   (let [timeout-ch (async/timeout timeout)
+
+         alt-ch (async/go
+                  (async/alt!
+                    source ([v] v)
+                    timeout-ch timeout-val
+                    :priority true))
+
+         r (pr/deferred)
+         dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
+
+     (async/take! alt-ch #(pr/resolve! r %))
+
+     dr)))
 
 (defn async-close!
   [ch]

@@ -4,6 +4,7 @@
    [promesa.core :as pr]
    [prpr.promise :as prpr]
    [prpr.stream :as stream]
+   [prpr.stream.transport :as stream.transport]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.events :as events]
    [taoensso.timbre :refer [debug info warn error]]))
@@ -24,7 +25,7 @@
 (mx/defn create-router :- schema/Router
   [app
    {global-interceptors schema/a-frame-router-global-interceptors
-    executor schema/a-frame-router-executor
+    #?@(:clj [executor schema/a-frame-router-executor])
     buffer-size schema/a-frame-router-buffer-size
     :or {buffer-size 100}
     :as opts}]
@@ -39,7 +40,8 @@
          schema/a-frame-app-ctx app
 
          schema/a-frame-router-event-stream
-         (stream/stream buffer-size nil executor)})))
+         #?(:clj (stream/stream buffer-size nil executor)
+            :cljs (stream/stream buffer-size nil))})))
 
 (defn -replace-global-interceptor
   [global-interceptors
@@ -232,7 +234,10 @@
               :as tmp-router} (create-router
                                app (dissoc router schema/a-frame-router))
 
-             _ (stream/put-all! tmp-event-s extended-events)]
+             ;; using transport/put-all! rather than stream/put-all! so
+             ;; we don't put a StreamChunk - since we can't incrementally
+             ;; take! from StreamChunks during processing
+             _ (stream.transport/put-all! tmp-event-s extended-events)]
 
       (info "dispatch-n-sync" events-or-extended-events)
 

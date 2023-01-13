@@ -91,6 +91,8 @@
 
    event-or-extended-ev]
 
+  ;; (prn "HANDLE" event-or-extended-ev)
+
   (let [{[event-id & _event-args :as event-v] schema/a-frame-event
          init-coeffects schema/a-frame-coeffects
          modify-interceptor-chain schema/a-frame-event-modify-interceptor-chain

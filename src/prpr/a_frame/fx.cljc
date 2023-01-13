@@ -49,10 +49,10 @@
   ;; do individual effects from the map concurrently
   (pr/let [result-ps (for [[id data] effects]
                        (do-single-effect context id data))
-           all-results (-> (pr/all result-ps)
-                           (pr/chain
-                            #(apply merge %)))]
-    all-results))
+
+           all-results (pr/all result-ps)]
+
+    (apply merge all-results)))
 
 (defn do-seq-of-effects
   [context effects]

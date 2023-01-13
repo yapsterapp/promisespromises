@@ -42,13 +42,14 @@
           r-a (atom nil)
           _ (sut/reg-fx fx-key (fn [app data]
                                  (is (= ::app app))
-                                 (swap! r-a (constantly data))))
-          _ (sut/do-single-effect
-             {schema/a-frame-app-ctx ::app}
-             fx-key
-             ::foo-data)]
+                                 (swap! r-a (constantly data))))]
 
-      (is (= ::foo-data @r-a))))
+      (pr/let [_ (sut/do-single-effect
+                  {schema/a-frame-app-ctx ::app}
+                  fx-key
+                  ::foo-data)]
+
+        (is (= ::foo-data @r-a)))))
 
   (testing "calls an async fx handler"
     (let [fx-key ::do-single-effect-test-async
@@ -74,7 +75,8 @@
                _ fx-r-pr]
 
 
-        (is (= ::foo-data @r-a))))))
+        (is (= ::foo-data @r-a)))))
+  )
 
 (deftest do-map-of-effects-test
   (testing "calls multiple fx handlers and returns a map of results"
@@ -202,9 +204,6 @@
 
 (def test-app-ctx {::FOO "foo"})
 
-;; these fx tests are currently clj only because they use router/dispatch-sync
-;; which has no cljs implementation yet
-
 (deftest dispatch-fx-test
   (testing "dispatches without transitive coeffects"
     (let [{event-s schema/a-frame-router-event-stream
@@ -274,7 +273,8 @@
         (is (= [0 2 4] @out-a))
 
         ;; main stream should not be closed
-        (is (not (stream.impl/closed? event-s)))))))
+        (is (not (stream.impl/closed? event-s))))))
+  )
 
 (deftest dispatch-sync-fx-test
   (testing "dispatches without transitive coeffects"
@@ -483,4 +483,5 @@
         (is (= [0 2 4] @out-a))
 
         ;; main stream should not be closed
-        (is (not (stream.impl/closed? event-s)))))))
+        (is (not (stream.impl/closed? event-s))))))
+  )

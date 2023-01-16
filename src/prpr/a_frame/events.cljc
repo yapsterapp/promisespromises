@@ -128,5 +128,5 @@
 
       (throw
        (err/ex-info
-        ::no-event-handler
+        (prn-str ::no-event-handler event-v)
         {:event-v event-v})))))

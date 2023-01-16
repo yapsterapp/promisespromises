@@ -10,7 +10,8 @@
    [prpr.a-frame.events :as events]
    [prpr.a-frame.interceptor-chain :as interceptor-chain]
    [prpr.a-frame.fx :as sut]
-   [prpr.a-frame.router :as router]))
+   [prpr.a-frame.router :as router]
+   [prpr.promise :as prpr]))
 
 (use-fixtures :once (with-log-level-fixture :warn))
 (use-fixtures :each registry.test/reset-registry)
@@ -99,7 +100,31 @@
         (is (= 4 @foo-a))
         (is (= 11 @bar-a))
         (is (= {foo-fx-key 4
-                bar-fx-key 11} fx-r))))))
+                bar-fx-key 11} fx-r)))))
+
+  (testing "propagates errors"
+    (let [foo-a (atom 1)
+          bar-a (atom 9)
+          foo-fx-key ::do-map-of-effects-test-error-foo
+          _ (sut/reg-fx foo-fx-key (fn [app data]
+                                     (is (= ::app app))
+                                     (pr/resolved
+                                      (swap! foo-a + data))))
+          bar-fx-key ::do-map-of-effects-test-error-bar
+          e (ex-info "bar" {::id ::bar})
+          _ (sut/reg-fx bar-fx-key (fn [app data]
+                                     (is (= ::app app))
+                                     (throw e)))]
+      (pr/let [[k r] (prpr/merge-always
+                      (sut/do-map-of-effects
+                       {schema/a-frame-app-ctx ::app}
+                       {foo-fx-key 3
+                        bar-fx-key 2}))]
+
+        (is (= 4 @foo-a))
+        (is (= 9 @bar-a))
+        (is (= ::prpr/error k))
+        (is (= e r))))))
 
 (deftest do-seq-of-effects-test
   (testing "calls multiple fx handlers serially and returns a seq of results"
@@ -161,7 +186,32 @@
         (is (= [{foo-fx-key ::foo-val
                  bar-fx-key ::bar-val}
                 {blah-fx-key ::blah-val}]
-               fx-r))))))
+               fx-r)))))
+
+  (testing "propagates an error in an fx handler"
+    (let [r-a (atom [])
+
+          foo-fx-key ::do-seq-of-effects-test-error-foo
+          _ (sut/reg-fx foo-fx-key (fn [app data]
+                                     (is (= ::app app))
+                                     (pr/resolved
+                                      (swap! r-a conj data))))
+          bar-fx-key ::do-seq-of-effects-test-error-bar
+
+          e (ex-info "boo" {::id ::bar})
+          _ (sut/reg-fx bar-fx-key (fn [app data]
+                                     (is (= ::app app))
+                                     (throw e)))]
+      (pr/let [[k val] (prpr/merge-always
+                        (sut/do-seq-of-effects
+                         {schema/a-frame-app-ctx ::app}
+                         [{foo-fx-key ::foo-val}
+                          {bar-fx-key ::bar-val}]))]
+
+        (is (= [::foo-val] @r-a))
+
+        (is (= ::prpr/error k))
+        (is (= e val))))))
 
 (deftest do-fx-test
   (testing "calls a seq of maps of multiple fx handlers"

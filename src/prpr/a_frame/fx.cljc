@@ -54,23 +54,35 @@
 
     (apply merge all-results)))
 
-(defn do-seq-of-effects
+(defn do-seq-of-effects*
   [context effects]
 
   ;; do the seq-of-maps-of-effects in strict sequential order
-  (pr/chain
+  ;;
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [results-effects [[] effects]]
+    (let [[results [first-map-fx & rest-map-fx]] results-effects]
+      (pr/handle
+       (do-map-of-effects context first-map-fx)
+       (fn [r err]
+         (cond
+           (some? err)
+           (err/wrap-uncaught err)
 
-   #_{:clj-kondo/ignore [:loop-without-recur]}
-   (pr/loop [results-effects [[] effects]]
-     (let [[results [first-map-fx & rest-map-fx]] results-effects]
-       (pr/chain
-        (do-map-of-effects context first-map-fx)
-        (fn [r]
-          (if (empty? rest-map-fx)
-            [(conj results r) []]
-            (pr/recur [(conj results r) rest-map-fx]))))))
-   (fn [[results _remaining]]
-     results)))
+           (empty? rest-map-fx)
+           [(conj results r) []]
+
+           :else
+           (pr/recur [(conj results r) rest-map-fx])))))))
+
+(defn do-seq-of-effects
+  [context effects]
+  (pr/let [r (do-seq-of-effects* context effects)]
+
+    ;; unpick just the results (or throw an error)
+    (-> r
+        (err/unwrap)
+        first)))
 
 (def do-fx-interceptor
   "an interceptor which will execute all effects from the

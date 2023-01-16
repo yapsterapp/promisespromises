@@ -248,8 +248,6 @@
 
     ;;(info "dispatch-sync" event-or-extended-event)
 
-    (prn "DISPACTCH-SYNC:end" r)
-
     ;; unwrap any wrapped exception (throwing if it was an UncaughtErrorWrapper)
     (err/unwrap r)))
 
@@ -272,11 +270,13 @@
              ;; using transport/put-all! rather than stream/put-all! so
              ;; we don't put a StreamChunk - since we can't incrementally
              ;; take! from StreamChunks during processing
-             _ (stream.transport/put-all! tmp-event-s extended-events)]
+             _ (stream.transport/put-all! tmp-event-s extended-events)
 
-      (info "dispatch-n-sync" events-or-extended-events)
+             r (handle-sync-event-stream tmp-router)]
 
-      (handle-sync-event-stream tmp-router))))
+      ;; (info "dispatch-n-sync" events-or-extended-events)
+
+      (err/unwrap r))))
 
 (mx/defn run-a-frame-router
   [router :- schema/Router]

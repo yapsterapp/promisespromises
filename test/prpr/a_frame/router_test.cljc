@@ -636,110 +636,118 @@
   )
 
 
-;; (deftest dispatch-n-sync-test
-;;   (testing "with no dispatch fx"
-;;     (let [{event-s schema/a-frame-router-event-stream
-;;            :as router} (sut/create-router test-app-ctx {})
-;;           out-a (atom [])
+(deftest dispatch-n-sync-test
+  (testing "with no dispatch fx"
+    (let [{event-s schema/a-frame-router-event-stream
+           :as router} (sut/create-router test-app-ctx {})
+          out-a (atom [])
 
-;;           _ (events/reg-event-fx
-;;              ::handle-n-sync-event-stream-test-no-dispatch
-;;              (fn [cofx [_ n :as event-v]]
-;;                (is (= {schema/a-frame-coeffect-event event-v} cofx))
+          _ (events/reg-event-fx
+             ::handle-n-sync-event-stream-test-no-dispatch
+             (fn [cofx [_ n :as event-v]]
+               (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
-;;                (swap! out-a conj n)
+               (swap! out-a conj n)
 
-;;                {}))]
+               {}))]
 
-;;       @(sut/dispatch-n-sync
-;;         router
-;;         [[::handle-n-sync-event-stream-test-no-dispatch 0]
-;;          [::handle-n-sync-event-stream-test-no-dispatch 1]])
+      (pr/let [_ (sut/dispatch-n-sync
+                  router
+                  [[::handle-n-sync-event-stream-test-no-dispatch 0]
+                   [::handle-n-sync-event-stream-test-no-dispatch 1]])]
 
-;;       (is (= [0 1] @out-a))
-;;       (is (not (stream.impl/closed? event-s)))))
+        (is (= [0 1] @out-a))
+        (is (not (stream.impl/closed? event-s))))))
 
-;;   (testing "with dispatch fx"
-;;     (let [{event-s schema/a-frame-router-event-stream
-;;            :as router} (sut/create-router test-app-ctx {})
-;;           out-a (atom [])
+  (testing "with dispatch fx"
+    (let [{event-s schema/a-frame-router-event-stream
+           :as router} (sut/create-router test-app-ctx {})
+          out-a (atom [])
 
-;;           _ (events/reg-event-fx
-;;              ::handle-n-sync-event-stream-test-with-dispatch
-;;              (fn [cofx [_ n :as event-v]]
-;;                (is (= {schema/a-frame-coeffect-event event-v} cofx))
+          _ (events/reg-event-fx
+             ::handle-n-sync-event-stream-test-with-dispatch
+             (fn [cofx [_ n :as event-v]]
+               (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
-;;                (swap! out-a conj n)
+               (swap! out-a conj n)
 
-;;                (when (<= n 3)
+               (when (<= n 3)
 
-;;                  {:a-frame/dispatch
-;;                   [::handle-n-sync-event-stream-test-with-dispatch (+ n 2)]})))]
+                 {:a-frame/dispatch
+                  [::handle-n-sync-event-stream-test-with-dispatch (+ n 2)]})))]
 
-;;       @(sut/dispatch-n-sync
-;;         router
-;;         [[::handle-n-sync-event-stream-test-with-dispatch 0]
-;;          [::handle-n-sync-event-stream-test-with-dispatch 1]])
+      (pr/let [_ (sut/dispatch-n-sync
+                  router
+                  [[::handle-n-sync-event-stream-test-with-dispatch 0]
+                   [::handle-n-sync-event-stream-test-with-dispatch 1]])]
 
-;;       (is (= [0 1 2 3 4 5]
-;;              @out-a))
+        (is (= [0 1 2 3 4 5]
+               @out-a))
 
-;;       ;; main stream should not be closed
-;;       (is (not (stream.impl/closed? event-s)))))
+        ;; main stream should not be closed
+        (is (not (stream.impl/closed? event-s))))))
 
-;;   (testing "with dispatch fx"
-;;     (let [{event-s schema/a-frame-router-event-stream
-;;            :as router} (sut/create-router test-app-ctx {})
-;;           out-a (atom [])
+  (testing "with dispatch fx"
+    (let [{event-s schema/a-frame-router-event-stream
+           :as router} (sut/create-router test-app-ctx {})
+          out-a (atom [])
 
-;;           _ (events/reg-event-fx
-;;              ::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects
-;;              (fn [cofx [_ n :as event-v]]
-;;                (is (= {schema/a-frame-coeffect-event event-v} cofx))
+          _ (events/reg-event-fx
+             ::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects
+             (fn [cofx [_ n :as event-v]]
+               (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
-;;                (swap! out-a conj n)
+               (swap! out-a conj n)
 
-;;                (when (<= n 3)
+               (when (<= n 3)
 
-;;                  {:a-frame/dispatch-sync
-;;                   [::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects
-;;                    (+ n 2)]})))]
+                 {:a-frame/dispatch-sync
+                  [::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects
+                   (+ n 2)]})))]
 
-;;       @(sut/dispatch-n-sync
-;;         router
-;;         [[::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects 0]
-;;          [::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects 1]])
+      (pr/let [_ (sut/dispatch-n-sync
+                  router
+                  [[::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects 0]
+                   [::handle-n-sync-event-stream-test-with-dispatch-sync-and-coeffects 1]])]
 
-;;       ;; note the order because :dispatch-sync fx are used
-;;       (is (= [0 2 4 1 3 5]
-;;              @out-a))
+        ;; note the order because :dispatch-sync fx are used
+        (is (= [0 2 4 1 3 5]
+               @out-a))
 
-;;       ;; main stream should not be closed
-;;       (is (not (stream.impl/closed? event-s)))))
+        ;; main stream should not be closed
+        (is (not (stream.impl/closed? event-s))))))
+  )
 
-;;   )
+(deftest run-a-frame-router-test
+  (testing "handles event loopback correctly"
+    (let [router (sut/create-router test-app-ctx {})
+          _ (sut/run-a-frame-router router)
 
-;; (deftest run-a-frame-router-test
-;;   (testing "handles event loopback correctly"
-;;     (let [router (sut/create-router test-app-ctx {})
-;;           _ (sut/run-a-frame-router router)
+          out-s (stream/stream 100)
 
-;;           out-s (stream/stream 100)
+          _ (events/reg-event-fx
+             ::foo
+             (fn [cofx [_ n :as event-v]]
+               ;; (prn "entering" event-v)
+               (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
-;;           _ (events/reg-event-fx
-;;              ::foo
-;;              (fn [cofx [_ n :as event-v]]
-;;                ;; (prn "entering" event-v)
-;;                (is (= {schema/a-frame-coeffect-event event-v} cofx))
+               (if (<= n 100)
+                 (pr/let [p (stream/put! out-s n)
+                          _ (when p
+                              (sut/dispatch router [::foo (inc n)]))]
+                   true)
+                 (stream/close! out-s))
 
-;;                (if (<= n 100)
-;;                  (do
-;;                    (stream/put! out-s n)
-;;                    (sut/dispatch router [::foo (inc n)]))
-;;                  (stream/close! out-s))
+               {}))]
 
-;;                {}))]
+      (sut/dispatch router [::foo 0])
 
-;;       (sut/dispatch router [::foo 0])
+      (pr/let [[k r] (prpr/merge-always
+                      (stream/reduce
+                       ::run-a-frame-router-test
+                       +
+                       0
+                       out-s))]
 
-;;       (is (= 5050 @(stream/reduce + 0 out-s))))))
+        (is (= ::prpr/ok k))
+        (is (= 5050 r))))))

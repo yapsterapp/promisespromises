@@ -7,17 +7,12 @@
    [prpr.stream.transport :as transport]
    [prpr.stream.zip-impl :as sut]))
 
-(defn put-all-and-close!
-  [s vals]
-  (pr/let [_ (transport/put-all! s vals)]
-    (transport/close! s)))
-
 (deftest chunk-zip-test
   (testing "zips plain value streams"
     (let [a (transport/stream)
-          _ (put-all-and-close! a [0 1 2])
+          _ (transport/put-all-and-close! a [0 1 2])
           b (transport/stream)
-          _ (put-all-and-close! b [::foo ::bar])
+          _ (transport/put-all-and-close! b [::foo ::bar])
 
           out (sut/chunk-zip a b)]
 
@@ -33,9 +28,9 @@
 
     (testing "streams of different lengths"
       (let [a (transport/stream)
-            _ (put-all-and-close! a [(types/stream-chunk [0 1 2])])
+            _ (transport/put-all-and-close! a [(types/stream-chunk [0 1 2])])
             b (transport/stream)
-            _ (put-all-and-close! b [(types/stream-chunk [::foo ::bar])])
+            _ (transport/put-all-and-close! b [(types/stream-chunk [::foo ::bar])])
 
             out (sut/chunk-zip a b)]
 
@@ -49,10 +44,10 @@
 
     (testing "chunks of different sizes"
       (let [a (transport/stream)
-            _ (put-all-and-close! a [(types/stream-chunk [0 1 2])
+            _ (transport/put-all-and-close! a [(types/stream-chunk [0 1 2])
                                      (types/stream-chunk [3])])
             b (transport/stream)
-            _ (put-all-and-close! b [(types/stream-chunk [::foo ::bar])
+            _ (transport/put-all-and-close! b [(types/stream-chunk [::foo ::bar])
                                      (types/stream-chunk [::baz ::blah])])
 
             out (sut/chunk-zip a b)]
@@ -72,9 +67,9 @@
 
   (testing "zips mixed streams"
     (let [a (transport/stream)
-          _ (put-all-and-close! a [0 (types/stream-chunk [1 2])])
+          _ (transport/put-all-and-close! a [0 (types/stream-chunk [1 2])])
           b (transport/stream)
-          _ (put-all-and-close! b [(types/stream-chunk [::foo ::bar])])
+          _ (transport/put-all-and-close! b [(types/stream-chunk [::foo ::bar])])
 
           out (sut/chunk-zip a b)]
 
@@ -88,12 +83,12 @@
 
   (testing "propagates errors"
     (let [a (transport/stream)
-          _ (put-all-and-close! a [(types/stream-chunk [0 1])
+          _ (transport/put-all-and-close! a [(types/stream-chunk [0 1])
                                    (types/stream-error
                                     (ex-info "boo!"
                                              {:boo "boo!"}))])
           b (transport/stream)
-          _ (put-all-and-close! b [::foo (types/stream-chunk [::bar])])
+          _ (transport/put-all-and-close! b [::foo (types/stream-chunk [::bar])])
 
           out (sut/chunk-zip a b)]
 
@@ -112,4 +107,5 @@
         (is (= {:boo "boo!"}
                (-> r3
                    (transport/unwrap-platform-error)
-                   (ex-data))))))))
+                   (ex-data)))))))
+  )

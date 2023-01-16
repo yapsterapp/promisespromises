@@ -2,6 +2,7 @@
   (:require
    [promesa.core :as pr]
    [prpr.promise :as prpr]
+   [prpr.error :as err]
    [prpr.test :refer [deftest testing is]]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -134,8 +135,17 @@
       (is (= ::timeout r))))
   (testing "throws an exception on a timeout with no timeout-val"
     (pr/let [s (sut/stream)
-             r (sut/take! s ::closed 1 nil)]
-      (is (nil? r)))))
+             [k r] (prpr/merge-always
+                    (sut/take! s ::closed 1 nil))]
+
+      (let [{dv :prpr.stream.take!/default-val
+             timeout :prpr.stream.take!/timeout
+             tv :prpr.stream.take!/timeout-val} (ex-data r)]
+
+        (is (= ::prpr/error k))
+        (is (= ::closed dv))
+        (is (= 1 timeout))
+        (is (nil? tv))))))
 
 (deftest safe-connect-via-fn-test
   (testing "applies f, puts the result on the sink, returs true"

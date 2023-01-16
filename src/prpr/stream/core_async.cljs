@@ -5,7 +5,8 @@
    [cljs.core.async.impl.protocols :as impl.proto]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
-   [promesa.core :as pr]))
+   [promesa.core :as pr]
+   [prpr.error :as err]))
 
 (deftype StreamFactory []
   pt/IStreamFactory
@@ -34,11 +35,12 @@
      r))
 
   ([sink val timeout timeout-val]
+   ;; (prn "async-put!" sink val timeout timeout-val)
    (let [timeout-ch (async/timeout timeout)
 
          alt-ch (async/go
                   (async/alt!
-                    [sink val] true
+                    [[sink val]] true
                     timeout-ch timeout-val
                     :priority true))
 
@@ -77,11 +79,27 @@
          alt-ch (async/go
                   (async/alt!
                     source ([v] v)
-                    timeout-ch timeout-val
+                    timeout-ch ::timeout
                     :priority true))
 
          r (pr/deferred)
-         dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
+
+         dr (pr/chain r (fn [v]
+                          (cond
+                            (= ::timeout v)
+                            (if (some? timeout-val)
+                              timeout-val
+                              (throw
+                               (err/ex-info
+                                ::timeout
+                                {:prpr.stream.take!/default-val default-val
+                                 :prpr.stream.take!/timeout timeout
+                                 :prpr.stream.take!/timeout-val timeout-val})))
+
+                            (some? v) v
+
+                            :else
+                            default-val)))]
 
      (async/take! alt-ch #(pr/resolve! r %))
 

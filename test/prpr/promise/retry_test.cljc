@@ -2,16 +2,8 @@
   (:require
    [prpr.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.promise.retry :as sut]))
-
-(defn merge-pr
-  [v]
-  (pr/handle
-   v
-   (fn [v e]
-     (if (some? e)
-       [::error e]
-       [::ok v]))))
 
 (deftest retry-n-test
   (with-log-level :error
@@ -46,17 +38,18 @@
 
     (testing "fails when out of retries"
       (let [x (ex-info "boo" {:boo "boo"})
-            ns (atom #{0 1})
+            ns (atom #{4 5 6})
             cnt (atom 0)
             f (fn [n]
-                (swap! ns disj n)
+                (swap! ns disj (+ n 4))
                 (if (> (swap! cnt inc) 2)
                   (pr/resolved ::ok)
                   (pr/rejected x)))]
 
-        (pr/let [[r-k r-v] (merge-pr (sut/retry-n f ::retry-test 1 0))]
-          (is (empty? @ns))
-          (is (= ::error r-k))
+        (pr/let [[r-k r-v] (prpr/merge-always
+                            (sut/retry-n f ::retry-test 1 0))]
+          (is (= #{5 6} @ns))
+          (is (= ::prpr/error r-k))
           (is (= x r-v)))))))
 
 (deftest retry-test
@@ -75,8 +68,8 @@
     (testing "retries as specified"
       (let [cnt (atom 0)
             f (fn [] (if (> (swap! cnt inc) 2)
-                      (pr/resolved ::ok)
-                      (pr/rejected (ex-info "boo" {:boo "boo"}))))]
+                       (pr/resolved ::ok)
+                       (pr/rejected (ex-info "boo" {:boo "boo"}))))]
         (pr/let [r (sut/retry f ::retry-test 2 0)]
           (is (= ::ok r)))))
 
@@ -84,9 +77,9 @@
       (let [x (ex-info "boo" {:boo "boo"})
             cnt (atom 0)
             f (fn [] (if (> (swap! cnt inc) 2)
-                      (pr/resolved ::ok)
-                      (pr/rejected x)))
-            ]
-        (pr/let [[r-k r-v] (merge-pr (sut/retry f ::retry-test 1 0))]
-          (is (= ::error r-k))
+                       (pr/resolved ::ok)
+                       (pr/rejected x)))]
+        (pr/let [[r-k r-v] (prpr/merge-always
+                            (sut/retry f ::retry-test 1 0))]
+          (is (= ::prpr/error r-k))
           (is (= x r-v)))))))

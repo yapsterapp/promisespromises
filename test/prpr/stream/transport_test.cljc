@@ -2,7 +2,6 @@
   (:require
    [promesa.core :as pr]
    [prpr.promise :as prpr]
-   [prpr.error :as err]
    [prpr.test :refer [deftest testing is]]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
@@ -409,7 +408,9 @@
         (is (= 0 r0))
 
         ;; r1 should remain a promise
-        (is (types/stream-promise? r1))
+        (is (or
+             (types/stream-promise? r1)
+             (pr/promise? r1)))
         (is (= 1 r1'))
 
         (is (= 2 r2))

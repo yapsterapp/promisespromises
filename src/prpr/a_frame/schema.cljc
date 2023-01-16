@@ -205,11 +205,11 @@
 
 (def Router
   [:map
-   [a-frame-app-ctx AppCtx
-    a-frame-router-event-stream [:fn stream/stream?]
-    a-frame-router-global-interceptors-a :any
-    a-frame-router-executor {:optional true} :any
-    a-frame-router-buffer-size {:optional true} :int]])
+   [a-frame-app-ctx AppCtx]
+   [a-frame-router-event-stream [:fn stream/stream?]]
+   [a-frame-router-global-interceptors-a :any]
+   [a-frame-router-executor {:optional true} :any]
+   [a-frame-router-buffer-size {:optional true} :int]])
 
 ;; (s/defschema HandleEventInterceptorCtx
 ;;   {a-frame-router Router

@@ -45,4 +45,7 @@
                       :autorun   true
                       :compiler-options {}
                       :closure-defines {}}
-  }}
+
+  :node-lib {:target :node-library
+             :output-to "target/node-lib/node-lib.js"
+             :exports {:stream prpr.stream/stream}}}}

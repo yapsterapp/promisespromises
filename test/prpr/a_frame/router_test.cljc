@@ -19,6 +19,9 @@
    [prpr.a-frame.router :as sut]
    [taoensso.timbre :refer [error]]))
 
+(def error-val (atom nil))
+
+
 (use-fixtures :once (compose-fixtures
                      test.malli/instrument-fns-fixture
                      (with-log-level-fixture :warn)))
@@ -34,21 +37,21 @@
 
 (deftest reg-global-interceptor-test
   (tlet [{global-interceptors-a schema/a-frame-router-global-interceptors-a
-         :as router} (sut/create-router
-                      test-app-ctx
-                      {schema/a-frame-router-global-interceptors [{:id ::foo}]})]
-    (is (= [{:id ::foo}]
-           @global-interceptors-a))
-    (testing "registering a new global interceptor"
-      (sut/reg-global-interceptor router {:id ::bar})
-      (is (= [{:id ::foo}
-              {:id ::bar}]
-             @global-interceptors-a)))
-    (testing "registering a replacement global interceptor"
-      (sut/reg-global-interceptor router {:id ::bar :stuff ::things})
-      (is (= [{:id ::foo}
-              {:id ::bar :stuff ::things}]
-             @global-interceptors-a)))))
+          :as router} (sut/create-router
+                       test-app-ctx
+                       {schema/a-frame-router-global-interceptors [{:id ::foo}]})]
+        (is (= [{:id ::foo}]
+               @global-interceptors-a))
+        (testing "registering a new global interceptor"
+          (sut/reg-global-interceptor router {:id ::bar})
+          (is (= [{:id ::foo}
+                  {:id ::bar}]
+                 @global-interceptors-a)))
+        (testing "registering a replacement global interceptor"
+          (sut/reg-global-interceptor router {:id ::bar :stuff ::things})
+          (is (= [{:id ::foo}
+                  {:id ::bar :stuff ::things}]
+                 @global-interceptors-a)))))
 
 (deftest clear-global-interceptor-test
   (testing "clearing all global interceptors"
@@ -72,22 +75,22 @@
 
 (deftest dispatch-test
   (tlet [{event-s schema/a-frame-router-event-stream
-         :as router} (sut/create-router test-app-ctx {})]
+          :as router} (sut/create-router test-app-ctx {})]
 
-    (testing "dispatch with a plain event"
-      (sut/dispatch router [::foo])
-      (pr/let [r (stream/take! event-s)]
+        (testing "dispatch with a plain event"
+          (sut/dispatch router [::foo])
+          (pr/let [r (stream/take! event-s)]
 
-        (is (= (events/coerce-extended-event [::foo]) r))))
+            (is (= (events/coerce-extended-event [::foo]) r))))
 
-    (testing "dispatch with an extended-event"
-      (let [cofxev {schema/a-frame-coeffects {::bar 100}
-                    schema/a-frame-event [::foo]}]
-        (sut/dispatch router cofxev)
+        (testing "dispatch with an extended-event"
+          (let [cofxev {schema/a-frame-coeffects {::bar 100}
+                        schema/a-frame-event [::foo]}]
+            (sut/dispatch router cofxev)
 
-        (pr/let [r (stream/take! event-s)]
+            (pr/let [r (stream/take! event-s)]
 
-          (is (= cofxev r)))))))
+              (is (= cofxev r)))))))
 
 (deftest dispatch-n-test
   (let [{event-s schema/a-frame-router-event-stream
@@ -278,11 +281,11 @@
         (pr/let [[k r] h-pr]
 
           (is (= ::prpr/ok k))
-          (is (true? (sut/error-wrapper? r)))
+          (is (true? (err/wrapper? r)))
           (let [;; unwrap to get the original error
-                org-err (when (sut/error-wrapper? r)
+                org-err (when (err/wrapper? r)
                           (-> r
-                              deref
+                              (err/unwrap-value)
                               (interceptor-chain/unwrap-original-error)))]
             (is (= (str ::boo) (ex-message org-err)))
             (is (= {:error/type ::boo
@@ -425,7 +428,8 @@
       (pr/let [_ (sut/handle-sync-event-stream router)]
 
         (is (= [0 2 4] @out-a))
-        (is (stream.impl/closed? event-s))))))
+        (is (stream.impl/closed? event-s)))))
+  )
 
 (deftest dispatch-sync-test
   (testing "with no dispatch fx"
@@ -524,7 +528,9 @@
                 [::dispatch-sync-test-with-dispatch-sync-cofx 0]}
                r-coeffects)))))
 
-  (with-log-level :warn
+  ;; TODO this test is passing, but is crashing the js vm - probably
+  ;; because it generates an uncontrolled errored promise somewhere
+  (with-log-level :fatal
     (testing "propagates error from dispatched event"
       (let [{event-s schema/a-frame-router-event-stream
              :as router} (sut/create-router test-app-ctx {})
@@ -544,7 +550,8 @@
             ds-pr (prpr/merge-always
                    (sut/dispatch-sync
                     router
-                    [::dispatch-sync-test-propagates-error 0]))]
+                    [::dispatch-sync-test-propagates-error 0]))
+            ]
 
         (pr/let [[tag val] ds-pr]
 
@@ -559,68 +566,75 @@
             ;; the main event-s should not be closed
             (is (not (stream.impl/closed? event-s)))
 
+            ;; (is (nil? val))
+            ;; (is (nil? cause))
             (is (= tag ::prpr/error))
             (is (= ::boo err-type))
-            (is (= [::dispatch-sync-test-propagates-error 0] event-v)))))))
+            (is (= [::dispatch-sync-test-propagates-error 0] event-v)))
 
-  ;; (with-log-level :fatal
-  ;;   (testing "propagates error from nested dispatches"
-  ;;     (let [{event-s schema/a-frame-router-event-stream
-  ;;            :as router} (sut/create-router test-app-ctx {})
-  ;;           out-a (atom [])
-  ;;           after-fx-calls-a (atom [])
+          )
+        )))
 
-  ;;           _ (registry/register-handler
-  ;;              schema/a-frame-kind-fx
-  ;;              ::dispatch-sync-propagates-error-from-nested-dispatch-after-dispatch-fx
-  ;;              (fn [_app val]
-  ;;                (swap! after-fx-calls-a conj val)))
+  (with-log-level :fatal
+    (testing "propagates error from nested dispatches"
+      (let [{event-s schema/a-frame-router-event-stream
+             :as router} (sut/create-router test-app-ctx {})
+            out-a (atom [])
+            after-fx-calls-a (atom [])
 
-  ;;           _ (events/reg-event-fx
-  ;;              ::dispatch-sync-propagates-error-from-nested-dispatch
-  ;;              (fn [cofx [_ n :as event-v]]
-  ;;                (is (= {schema/a-frame-coeffect-event event-v} cofx))
+            _ (registry/register-handler
+               schema/a-frame-kind-fx
+               ::dispatch-sync-propagates-error-from-nested-dispatch-after-dispatch-fx
+               (fn [_app val]
+                 (swap! after-fx-calls-a conj val)))
 
-  ;;                (swap! out-a conj n)
+            _ (events/reg-event-fx
+               ::dispatch-sync-propagates-error-from-nested-dispatch
+               (fn [cofx [_ n :as event-v]]
+                 (is (= {schema/a-frame-coeffect-event event-v} cofx))
 
-  ;;                (if (<= n 3)
-  ;;                  [{:a-frame/dispatch-sync
-  ;;                    [::dispatch-sync-propagates-error-from-nested-dispatch
-  ;;                     (+ n 2)]}
+                 (swap! out-a conj n)
 
-  ;;                   {::dispatch-sync-propagates-error-from-nested-dispatch-after-dispatch-fx
-  ;;                    n}]
+                 (if (<= n 3)
+                   [{:a-frame/dispatch-sync
+                     [::dispatch-sync-propagates-error-from-nested-dispatch
+                      (+ n 2)]}
 
-  ;;                  (throw (err/ex-info ::boo {::event-v event-v})))))
+                    {::dispatch-sync-propagates-error-from-nested-dispatch-after-dispatch-fx
+                     n}]
 
-  ;;           [tag val] (try
-  ;;                       [::ok
-  ;;                        @(sut/dispatch-sync
-  ;;                          router
-  ;;                          [::dispatch-sync-propagates-error-from-nested-dispatch
-  ;;                           0])]
-  ;;                       (catch #?(:clj Exception :cljs :default) x
-  ;;                         [::error x]))
+                   (throw (err/ex-info ::boo {::event-v event-v})))))
 
-  ;;           ;; have to unwrap the original error from the nested errors
-  ;;           {err-tag :tag
-  ;;            err-val :value
-  ;;            :as _err-data} (some-> val ex-cause ex-cause ex-cause ex-data)]
+            ds-pr (prpr/merge-always
+                   (sut/dispatch-sync
+                    router
+                    [::dispatch-sync-propagates-error-from-nested-dispatch
+                     0]))]
 
-  ;;       (is (= [0 2 4] @out-a))
-  ;;       (is (not (stream.impl/closed? event-s)))
+        (pr/let [[tag val] ds-pr]
 
-  ;;       (is (= tag ::error))
-  ;;       (is (= ::boo err-tag))
-  ;;       (is (= {::event-v
-  ;;               [::dispatch-sync-propagates-error-from-nested-dispatch 4]}
-  ;;              err-val))
+          (let [;; have to unwrap the original error from the nested errors
+                cause (when (= ::prpr/error tag)
+                        (interceptor-chain/unwrap-original-error val))
 
-  ;;       ;; none of the fx called after the dispatch-sync should be called, since
-  ;;       ;; dispatch-sync propagates the error back to caller and prevents progress
-  ;;       ;; through the fx list
-  ;;       (is (= [] @after-fx-calls-a)))))
+                {err-type :error/type
+                  event-v ::event-v
+                  :as _err-data} (ex-data cause)]
+
+            (is (= [0 2 4] @out-a))
+            (is (not (stream.impl/closed? event-s)))
+
+            (is (= tag ::prpr/error))
+            (is (= ::boo err-type))
+            (is (= [::dispatch-sync-propagates-error-from-nested-dispatch 4]
+                   event-v))
+
+            ;; none of the fx called after the dispatch-sync should be called, since
+            ;; dispatch-sync propagates the error back to caller and prevents progress
+            ;; through the fx list
+            (is (= [] @after-fx-calls-a)))))))
   )
+
 
 ;; (deftest dispatch-n-sync-test
 ;;   (testing "with no dispatch fx"

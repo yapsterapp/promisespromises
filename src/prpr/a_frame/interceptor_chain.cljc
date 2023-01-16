@@ -227,7 +227,7 @@
    e))
 
 (defn unwrap-original-error
-  "unwrap layers of wrapping (in case of nested :dispatch)
+  "unwrap layers of error wrapping (in case of nested :dispatch)
    to get at the causal exception"
   [e]
   (let [{ctx ::context} (ex-data e)

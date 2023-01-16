@@ -1,8 +1,8 @@
 (ns prpr.a-frame.router
   (:require
-   #?(:cljs [cljs.core :refer [IDeref]])
    [malli.experimental :as mx]
    [promesa.core :as pr]
+   [prpr.error :as err]
    [prpr.promise :as prpr]
    [prpr.stream :as stream]
    [prpr.stream.transport :as stream.transport]
@@ -14,20 +14,6 @@
 ;; override the print-method to hide the app-context
 ;; for more readable error messages
 (defrecord AFrameRouter [])
-
-(deftype AFrameErrorWrapper [err]
-  #?@(:clj [clojure.lang.IDeref
-            (deref [_] err)]
-      :cljs [IDeref
-             (-deref [_] err)]))
-
-(defn error-wrapper
-  [err]
-  (AFrameErrorWrapper. err))
-
-(defn error-wrapper?
-  [v]
-  (instance? AFrameErrorWrapper v))
 
 #?(:clj
    (defmethod print-method AFrameRouter [x writer]
@@ -146,9 +132,10 @@
        (fn [err]
          (warn err "handle-event")
 
-         ;; if we return an unwrapped error, that will cause
-         ;; an errored promise on js - so we wrap the error
-         (error-wrapper err)))
+         ;; returning an error as a value causes a
+         ;; rejected promise on js - so we wrap the error
+         ;; in a type which marks it as having been caught
+         (err/wrap-caught err)))
 
       (events/handle handle-opts extended-ev))))
 
@@ -167,7 +154,12 @@
 (mx/defn handle-sync-event-stream
   "handle events off of the stream until the stream is empty,
    at which point return the interceptor context of the
-   very first event off of the stream"
+   very first event off of the stream
+
+   letting errors propagate out of the loop currently causes crashes on
+   cljs (cf: stream.operations/reduce) so we catch errors
+   inside the loop and wrap them in UncaughtErrorWrapper for
+   rethrowing outside the loop"
   [{tmp-event-s schema/a-frame-router-event-stream
     :as tmp-router} :- schema/Router]
 
@@ -175,40 +167,48 @@
 
     #_{:clj-kondo/ignore [:loop-without-recur]}
     (pr/loop []
-      (pr/chain
+
+      (prpr/handle-always
 
        ;; since handle-event parks for events to be fully handled,
        ;; we know that, if the stream is empty, then
        ;; there were no further dispatches and we are done
        (stream/take! tmp-event-s ::default 0 ::timeout)
 
-       (fn [router-ev]
+       (fn [router-ev err]
 
-         (if-not (#{::default ::timeout} router-ev)
+         (cond
 
-           (pr/handle
+           (some? err)
+           (do
+             (stream/close! tmp-event-s)
+             (err/wrap-uncaught err))
+
+           (nil? (#{::default ::timeout} router-ev))
+           (prpr/handle-always
 
             (handle-event tmp-router false router-ev)
 
-            (fn [r e]
+            (fn [r ierr]
 
-              (if (some? e)
-
+              (if (some? ierr)
                 (do
                   (stream/close! tmp-event-s)
-                  (throw e))
+                  (err/wrap-uncaught ierr))
 
-                (swap!
-                 rv-a
-                 (fn [[_rv :as rv-wrapper] nv]
-                   (if (nil? rv-wrapper)
-                     [nv]
-                     rv-wrapper))
-                 r))
+                (do
+                  (swap!
+                   rv-a
+                   (fn [[_rv :as rv-wrapper] nv]
+                     (if (nil? rv-wrapper)
+                       [nv]
+                       rv-wrapper))
+                   r)
 
-              (pr/recur)))
+                  (pr/recur)))))
 
            ;; tmp-event-s is empty - close and return
+           :else
            (do
              (stream/close! tmp-event-s)
              (let [[rv] @rv-a]
@@ -232,6 +232,8 @@
     :as router} :- schema/Router
    event-or-extended-event :- schema/EventOrExtendedEvent]
 
+  (prn "DISPACTCH-SYNC:start" event-or-extended-event)
+
   ;; create a temp event-stream, with same buffer-size
   ;; and executor as the original
   (pr/let [{tmp-event-s schema/a-frame-router-event-stream
@@ -240,11 +242,16 @@
 
            _ (stream/put!
               tmp-event-s
-              (events/coerce-extended-event event-or-extended-event))]
+              (events/coerce-extended-event event-or-extended-event))
+
+           r (handle-sync-event-stream tmp-router)]
 
     ;;(info "dispatch-sync" event-or-extended-event)
 
-    (handle-sync-event-stream tmp-router)))
+    (prn "DISPACTCH-SYNC:end" r)
+
+    ;; unwrap any wrapped exception (throwing if it was an UncaughtErrorWrapper)
+    (err/unwrap r)))
 
 (mx/defn dispatch-n-sync
   "puts events onto a temporary stream, handles events from

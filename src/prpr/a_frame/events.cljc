@@ -1,7 +1,7 @@
 (ns prpr.a-frame.events
   (:require
-   [schema.core :as s]
-   [prpr.promise :as prpr]
+   [malli.experimental :as mx]
+   [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
    [prpr.a-frame.std-interceptors :as std-interceptors]
@@ -77,7 +77,7 @@
     schema/a-frame-kind-event
     id)))
 
-(s/defn coerce-extended-event
+(mx/defn coerce-extended-event
   "Event|ExtendedEvent -> ExtendedEvent"
   [event-or-extended-event :- schema/EventOrExtendedEvent]
   (if (map? event-or-extended-event)
@@ -90,6 +90,8 @@
     global-interceptors schema/a-frame-router-global-interceptors}
 
    event-or-extended-ev]
+
+  ;; (prn "HANDLE" event-or-extended-ev)
 
   (let [{[event-id & _event-args :as event-v] schema/a-frame-event
          init-coeffects schema/a-frame-coeffects
@@ -125,6 +127,6 @@
          init-ctx))
 
       (throw
-       (prpr/error-ex
-        ::no-event-handler
+       (err/ex-info
+        (prn-str ::no-event-handler event-v)
         {:event-v event-v})))))

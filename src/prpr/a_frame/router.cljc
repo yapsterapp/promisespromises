@@ -1,11 +1,14 @@
 (ns prpr.a-frame.router
   (:require
-   #?(:clj [manifold.deferred :as d])
-   #?(:clj [prpr.stream :as stream])
-   [prpr.promise :as prpr #?@(:clj [:refer [ddo]])]
+   [malli.core :as m]
+   [malli.experimental :as mx]
+   [promesa.core :as pr]
+   [prpr.error :as err]
+   [prpr.promise :as prpr]
+   [prpr.stream :as stream]
+   [prpr.stream.transport :as stream.transport]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.events :as events]
-   [schema.core :as s]
    [taoensso.timbre :refer [debug info warn error]]))
 
 ;; use a record so we can
@@ -21,16 +24,16 @@
        (assoc x schema/a-frame-app-ctx "<app-ctx-hidden>"))
       writer)))
 
-(s/defn create-router :- schema/Router
+(mx/defn create-router :- schema/Router
   [app
    {global-interceptors schema/a-frame-router-global-interceptors
-    executor schema/a-frame-router-executor
+    #?@(:clj [executor schema/a-frame-router-executor])
     buffer-size schema/a-frame-router-buffer-size
     :or {buffer-size 100}
     :as opts}]
   (let [opts (dissoc opts schema/a-frame-router-global-interceptors)]
-    #?(:clj
-       (merge
+
+    (merge
         (->AFrameRouter)
         opts
         {schema/a-frame-router-global-interceptors-a
@@ -39,15 +42,8 @@
          schema/a-frame-app-ctx app
 
          schema/a-frame-router-event-stream
-         (stream/stream buffer-size nil executor)})
-
-       :cljs
-       (throw (ex-info "not implemented"
-                       {:app app
-                        :global-interceptors global-interceptors
-                        :executor executor
-                        :buffer-size buffer-size
-                        :opts opts})))))
+         #?(:clj (stream/stream buffer-size nil executor)
+            :cljs (stream/stream buffer-size nil))})))
 
 (defn -replace-global-interceptor
   [global-interceptors
@@ -94,7 +90,7 @@
     (fn [global-interceptors]
       (into [] (remove #(= id (:id %)) global-interceptors))))))
 
-(s/defn dispatch
+(mx/defn dispatch
   "dispatch an Event or ExtendedEvent"
   [{event-s schema/a-frame-router-event-stream
     :as _router} :- schema/Router
@@ -102,36 +98,39 @@
 
   (info "dispatch" event-or-extended-event)
 
-  #?(:clj
-     (stream/put! event-s (events/coerce-extended-event event-or-extended-event))
-     :cljs
-     (throw (ex-info "not implemented"
-                     {:event-s event-s
-                      :event-or-stream-event event-or-extended-event}))))
+  (stream/put! event-s (events/coerce-extended-event event-or-extended-event)))
 
-(s/defn dispatch-n
-  "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
+(mx/defn dispatch-n*
   [router :- schema/Router
-   events-or-extended-events :- schema/EventsOrExtendedEvents]
-  #?(:clj
-     (d/loop [[evoce & rest-evoces] events-or-extended-events]
-       (d/chain
-        (dispatch router evoce)
-        (fn [_]
-          (if (not-empty rest-evoces)
-            (d/recur rest-evoces)
-            true))))
+   events-or-extended-events ;; :- schema/EventsOrExtendedEvents
+   ]
 
-     :cljs
-     (throw (ex-info "not implemented"
-                     {:router router
-                      :events-or-extended-events events-or-extended-events}))))
+  ;; this schema breaks the fn annotation for some reason, so do a manual check
+  (m/coerce schema/EventsOrExtendedEvents events-or-extended-events)
 
-(s/defn handle-event
+  #_{:clj-kondo/ignore [:loop-without-recur]}
+  (pr/loop [evoces events-or-extended-events]
+    (let [[evoce & rest-evoces] evoces]
+      (prpr/handle-always
+       (dispatch router evoce)
+       (fn [_ e]
+         (cond
+           (some? e) (err/wrap-uncaught e)
+           (not-empty rest-evoces) (pr/recur rest-evoces)
+           :else true))))))
+
+(defn dispatch-n
+  "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
+  [router
+   events-or-extended-events]
+  (pr/let [r (dispatch-n* router events-or-extended-events)]
+    (err/unwrap r)))
+
+(mx/defn handle-event
   [{app schema/a-frame-app-ctx
     global-interceptors-a schema/a-frame-router-global-interceptors-a
     :as router} :- schema/Router
-   catch? :- s/Bool
+   catch? :- :boolean
    extended-ev :- schema/ExtendedEvent]
 
   (let [handle-opts {schema/a-frame-app-ctx app
@@ -140,71 +139,94 @@
                      schema/a-frame-router-global-interceptors
                      @global-interceptors-a}]
     (if catch?
-      (prpr/catchall
+      (prpr/catch-always
        (events/handle handle-opts extended-ev)
        (fn [err]
          (warn err "handle-event")
-         err))
+
+         ;; returning an error as a value causes a
+         ;; rejected promise on js - so we wrap the error
+         ;; in a type which marks it as having been caught
+         (err/wrap-caught err)))
 
       (events/handle handle-opts extended-ev))))
 
-(s/defn handle-event-stream
+(mx/defn handle-event-stream
   "handle a regular, infinite, event-stream"
   [{event-s schema/a-frame-router-event-stream
     :as router} :- schema/Router]
-  #?(:clj
-     (->> event-s
-          (stream/map
-           (partial handle-event router true))
-          (stream/realize-each)
-          (stream/count-all-throw
-           ::handle-event-stream))
-     :cljs
-     (throw (ex-info "not implemented" {:event-s event-s
-                                        :router router}))))
 
-(s/defn handle-sync-event-stream
+  (->> event-s
+       (stream/map
+        (partial handle-event router true))
+       (stream/realize-each)
+       (stream/count
+        ::handle-event-stream)))
+
+(mx/defn handle-sync-event-stream
   "handle events off of the stream until the stream is empty,
    at which point return the interceptor context of the
-   very first event off of the stream"
+   very first event off of the stream
+
+   letting errors propagate out of the loop currently causes crashes on
+   cljs (cf: stream.operations/reduce) so we catch errors
+   inside the loop and wrap them in UncaughtErrorWrapper for
+   rethrowing outside the loop"
   [{tmp-event-s schema/a-frame-router-event-stream
     :as tmp-router} :- schema/Router]
-  #?(:clj
-     (let [rv-a (atom nil)]
-       (d/loop []
-         (d/chain
-          ;; since handle-event parks for events to be fully handled,
-          ;; we know that, if the stream is empty, then
-          ;; there were no further dispatches and we are done
-          (stream/try-take! tmp-event-s ::default 0 ::timeout)
 
-          (fn [router-ev]
+  (let [rv-a (atom nil)]
 
-            (if-not (#{::default ::timeout} router-ev)
+    #_{:clj-kondo/ignore [:loop-without-recur]}
+    (pr/loop []
 
-              (d/chain
-               (handle-event tmp-router false router-ev)
-               (fn [r]
-                 (swap!
-                  rv-a
-                  (fn [[_rv :as rv-wrapper] nv]
-                    (if (nil? rv-wrapper)
-                      [nv]
-                      rv-wrapper))
-                  r)
-                 (d/recur)))
+      (prpr/handle-always
 
-              ;; tmp-event-s is empty - close and return
-              (do
-                (stream/close! tmp-event-s)
-                (let [[rv] @rv-a]
-                  rv)))))))
+       ;; since handle-event parks for events to be fully handled,
+       ;; we know that, if the stream is empty, then
+       ;; there were no further dispatches and we are done
+       (stream/take! tmp-event-s ::default 0 ::timeout)
 
-     :cljs
-     (throw (ex-info "not implemented" {:tmp-event-s tmp-event-s
-                                        :tmp-router tmp-router}))))
+       (fn [router-ev err]
 
-(s/defn dispatch-sync
+         (cond
+
+           (some? err)
+           (do
+             (stream/close! tmp-event-s)
+             (err/wrap-uncaught err))
+
+           (nil? (#{::default ::timeout} router-ev))
+           (prpr/handle-always
+
+            (handle-event tmp-router false router-ev)
+
+            (fn [r ierr]
+
+              (if (some? ierr)
+                (do
+                  (stream/close! tmp-event-s)
+                  (err/wrap-uncaught ierr))
+
+                (do
+                  (swap!
+                   rv-a
+                   (fn [[_rv :as rv-wrapper] nv]
+                     (if (nil? rv-wrapper)
+                       [nv]
+                       rv-wrapper))
+                   r)
+
+                  (pr/recur)))))
+
+           ;; tmp-event-s is empty - close and return
+           :else
+           (do
+             (stream/close! tmp-event-s)
+             (let [[rv] @rv-a]
+               rv))))))))
+
+(mx/defn dispatch-sync
   "puts the event-v on to a temporary stream,
    handles events from the stream and return
    when the stream is empty.
@@ -222,68 +244,64 @@
     :as router} :- schema/Router
    event-or-extended-event :- schema/EventOrExtendedEvent]
 
-  #?(:clj
-     ;; create a temp event-stream, with same buffer-size
-     ;; and executor as the original
-     (ddo [:let [{tmp-event-s schema/a-frame-router-event-stream
-                  :as tmp-router} (create-router
-                                   app (dissoc router schema/a-frame-router))]
+  (prn "DISPACTCH-SYNC:start" event-or-extended-event)
+
+  ;; create a temp event-stream, with same buffer-size
+  ;; and executor as the original
+  (pr/let [{tmp-event-s schema/a-frame-router-event-stream
+            :as tmp-router} (create-router
+                             app (dissoc router schema/a-frame-router))
 
            _ (stream/put!
               tmp-event-s
-              (events/coerce-extended-event event-or-extended-event))]
+              (events/coerce-extended-event event-or-extended-event))
 
-          ;;(info "dispatch-sync" event-or-extended-event)
+           r (handle-sync-event-stream tmp-router)]
 
-          (handle-sync-event-stream tmp-router))
+    ;;(info "dispatch-sync" event-or-extended-event)
 
-     :cljs
-     (throw (ex-info "not implemented"
-                     {:app app
-                      :router router
-                      :event-or-extended-event event-or-extended-event}))))
+    ;; unwrap any wrapped exception (throwing if it was an UncaughtErrorWrapper)
+    (err/unwrap r)))
 
-(s/defn dispatch-n-sync
+(mx/defn dispatch-n-sync
   "puts events onto a temporary stream, handles events from
    the stream, and returns when the stream is empty"
   [{app schema/a-frame-app-ctx
     :as router} :- schema/Router
 
-   events-or-extended-events :- schema/EventsOrExtendedEvents]
+   events-or-extended-events ;; :- schema/EventsOrExtendedEvents
+   ]
 
-  #?(:clj
+  (let [;; the schema breaks the fn annotation for some reason, so
+        ;; do a manual check
+        _ (m/coerce schema/EventsOrExtendedEvents events-or-extended-events)
 
-     (let [extended-events (map events/coerce-extended-event
+        extended-events (map events/coerce-extended-event
                                 events-or-extended-events)]
-       ;; create a temp event-stream, with same buffer-size
-       ;; and executor as the original
-       (ddo [:let [{tmp-event-s schema/a-frame-router-event-stream
-                    :as tmp-router} (create-router
-                                     app (dissoc router schema/a-frame-router))]
+    ;; create a temp event-stream, with same buffer-size
+    ;; and executor as the original
+    (pr/let [{tmp-event-s schema/a-frame-router-event-stream
+              :as tmp-router} (create-router
+                               app (dissoc router schema/a-frame-router))
 
-             _ (stream/put-all! tmp-event-s extended-events)]
+             ;; using transport/put-all! rather than stream/put-all! so
+             ;; we don't put a StreamChunk - since we can't incrementally
+             ;; take! from StreamChunks during processing
+             _ (stream.transport/put-all! tmp-event-s extended-events)
 
-            (info "dispatch-n-sync" events-or-extended-events)
+             r (handle-sync-event-stream tmp-router)]
 
-            (handle-sync-event-stream tmp-router)))
+      ;; (info "dispatch-n-sync" events-or-extended-events)
 
-     :cljs
-     (throw (ex-info "not implemented"
-                     {:app app
-                      :router router
-                      :events-or-extended-events events-or-extended-events}))))
+      (err/unwrap r))))
 
-(s/defn run-a-frame-router
+(mx/defn run-a-frame-router
   [router :- schema/Router]
   (handle-event-stream
    router))
 
-(s/defn stop-a-frame-router
+(mx/defn stop-a-frame-router
   [{event-s schema/a-frame-router-event-stream
     :as _router} :- schema/Router]
   (info "closing a-frame")
-  #?(:clj
-     (stream/close! event-s)
-
-     :cljs
-     (throw (ex-info "not implemented" {:event-s event-s}))))
+  (stream/close! event-s))

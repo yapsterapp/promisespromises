@@ -1,6 +1,5 @@
 (ns prpr.util.macro
-  (:require
-   [taoensso.timbre]))
+  #?(:cljs (:require-macros [prpr.util.macro])))
 
 ;; from https://github.com/plumatic/schema/blob/master/src/clj/schema/macros.clj
 
@@ -20,12 +19,12 @@
 #?(:clj
    (defmacro try-catch
      "A cross-platform variant of try-catch that catches all normal exceptions.
-      Does not (yet) support finally, and does not need or want an exception class."
+      Does not support finally, and does not take an exception class."
      [& body]
      (let [try-body (butlast body)
-           [catch sym & catch-body :as catch-form] (last body)]
+           [catch sym & catch-body :as _catch-form] (last body)]
        (assert (= catch 'catch))
        (assert (symbol? sym))
        `(if-cljs
-         (try ~@try-body (~'catch js/Error ~sym ~@catch-body))
+         (try ~@try-body (~'catch :default ~sym ~@catch-body))
          (try ~@try-body (~'catch Exception ~sym ~@catch-body))))))

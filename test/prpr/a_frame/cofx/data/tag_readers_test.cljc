@@ -1,11 +1,10 @@
 (ns prpr.a-frame.cofx.data.tag-readers-test
   (:require
-   [clojure.test :as t :refer [deftest testing is]]
+   [prpr.test :as t :refer [deftest testing is]]
    [prpr.a-frame.schema :as af.schema]
    [prpr.a-frame.interceptor-chain.data :as data]
    [prpr.a-frame.interceptor-chain.data.data-path :refer [->DataPath]]
-   [prpr.a-frame.cofx.data.tag-readers
-    #?@(:cljs [:include-macros true])]))
+   [prpr.a-frame.cofx.data.tag-readers]))
 
 (deftest coeffect-path-reader-test
   (is (= (->DataPath [af.schema/a-frame-coeffects :foo])

@@ -1,4 +1,5 @@
 (ns prpr.a-frame.cofx.data.tag-readers
+  #?(:cljs (:require-macros [prpr.a-frame.cofx.data.tag-readers]))
   (:require
    #?(:clj [prpr.util.macro :refer [if-cljs]])
    [prpr.a-frame.interceptor-chain.data.data-path
@@ -10,22 +11,35 @@
 ;; 3! different versions of the tag-readers are required for:
 ;; 1. clj compiling cljs
 ;; 2. clj
-;; 3. cljs self-hosted or runtime
+;; 3. cljs self-hosted or runtime (in .cljs file)
 
 #?(:clj
-   (if-cljs
-       (defn read-cofx-path
-         [path]
+   (defn read-cofx-path
+     [path]
+     (if-cljs
          `(->DataPath (into
                        [af.schema/a-frame-coeffects]
-                       ~path)))
+                       ~path))
 
-     (defn read-cofx-path
-       [path]
        ;; if we eval the path then we can use var symbols
        ;; in the path. this will only work on clj
        (->DataPath (into
                     [af.schema/a-frame-coeffects]
+                    (eval path))))))
+
+#?(:clj
+   (defn read-event-path
+     "the event is always in the cofx at a known key"
+     [path]
+     (if-cljs
+         `(->DataPath (into
+                       [af.schema/a-frame-coeffects
+                        af.schema/a-frame-coeffect-event]
+                       ~path))
+
+       (->DataPath (into
+                    [af.schema/a-frame-coeffects
+                     af.schema/a-frame-coeffect-event]
                     (eval path))))))
 
 #?(:cljs
@@ -34,24 +48,6 @@
      `(->DataPath (into
                    [af.schema/a-frame-coeffects]
                    ~path))))
-
-#?(:clj
-   (if-cljs
-       (defn read-event-path
-         "the event is always in the cofx at a known key"
-         [path]
-         `(->DataPath (into
-                       [af.schema/a-frame-coeffects
-                        af.schema/a-frame-coeffect-event]
-                       ~path)))
-
-     (defn read-event-path
-       "the event is always in the cofx at a known key"
-       [path]
-       (->DataPath (into
-                    [af.schema/a-frame-coeffects
-                     af.schema/a-frame-coeffect-event]
-                    (eval path))))))
 
 #?(:cljs
    (defn ^:export read-event-path

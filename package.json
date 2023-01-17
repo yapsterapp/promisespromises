@@ -4,14 +4,14 @@
   "description": "promisespromises",
   "dependencies": {
     "bluebird": "^3.7.2",
-    "core-js": "^3.6.4",
+    "core-js": "^3.27.1",
     "fs-sync": "^1.0.6"
   },
   "devDependencies": {
-    "concurrently": "5.0.2",
+    "concurrently": "7.6.0",
     "gulp": "^4.0.2",
     "node-repl": "^2.0.2",
-    "shadow-cljs": "^2.8.94"
+    "shadow-cljs": "^2.20.20"
   },
   "scripts": {
     "test": "gulp shadow-node-test && node target/node-test/node-tests.js",

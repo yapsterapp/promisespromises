@@ -6,7 +6,7 @@
    [prpr.promise.retry :as sut]))
 
 (deftest retry-n-test
-  (with-log-level :error
+  (with-log-level :info
     (testing "returns an immediately successful result"
       (let [f (fn [n]
                 (is (= n 0))
@@ -21,7 +21,16 @@
                 (pr/resolved ::ok))]
 
         (pr/let [r (sut/retry-n f ::retry-test 0 0)]
-          (is (= ::ok r)))))
+          (is (= ::ok r))))
+      (let [x (ex-info "boo" {:boo "boo"})
+            f (fn [n]
+                (is (= n 0))
+                (pr/rejected x))]
+
+        (pr/let [[k r] (prpr/merge-always
+                        (sut/retry-n f ::retry-test 0 0))]
+          (is (= ::prpr/error k))
+          (is (= {:boo "boo"} (ex-data r))))))
 
     (testing "retries as specified"
       (let [ns (atom #{0 1 2})
@@ -32,7 +41,7 @@
                   (pr/resolved ::ok)
                   (pr/rejected (ex-info "boo" {:boo "boo"}))))]
 
-        (pr/let [r (sut/retry-n f ::retry-test 2 0)]
+        (pr/let [r (sut/retry-n f ::retry-test 3 0)]
           (is (empty? @ns))
           (is (= ::ok r)))))
 
@@ -48,7 +57,7 @@
 
         (pr/let [[r-k r-v] (prpr/merge-always
                             (sut/retry-n f ::retry-test 1 0))]
-          (is (= #{5 6} @ns))
+          (is (= #{6} @ns))
           (is (= ::prpr/error r-k))
           (is (= x r-v)))))))
 
@@ -63,7 +72,13 @@
     (testing "works with 0 retries"
       (let [f (fn [] (pr/resolved ::ok))]
         (pr/let [r (sut/retry f ::retry-test 0 0)]
-          (is (= ::ok r)))))
+          (is (= ::ok r))))
+      (let [x (ex-info "boo" {:boo "boo"})
+            f (fn [] (pr/rejected x))]
+        (pr/let [[k r] (prpr/merge-always
+                        (sut/retry f ::retry-test 0 0))]
+          (is (= ::prpr/error k))
+          (is (= {:boo "boo"} (ex-data r))))))
 
     (testing "retries as specified"
       (let [cnt (atom 0)

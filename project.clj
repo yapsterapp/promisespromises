@@ -37,7 +37,7 @@
                  ;; TODO - maybe drop?
                  [funcool/cats "2.4.2"]
 
-                 [metosin/malli "0.9.2"]
+                 [metosin/malli "0.10.0"]
                  [funcool/promesa "10.0.571"]
                  [manifold "0.3.0"]
                  [org.clojure/math.combinatorics "0.1.6"]

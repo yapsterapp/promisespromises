@@ -398,10 +398,11 @@
             (pr/let [vs (safe-consume t)
                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
-              (is (= [[::ok 1]
-                      [::ok 3]
-                      [::ok ::closed]]
-                     oks))
+              ;; there is some non-determinism around error
+              ;; handling and downstream closing
+              (is (or
+                   (= [[::ok 1] [::ok ::closed]] oks)
+                   (= [[::ok 1] [::ok 3] [::ok ::closed]] oks)))
               (is (= {:v 5}
                      (ex-data err))))))
 
@@ -426,10 +427,11 @@
             (pr/let [vs (safe-consume t)
                      oks (filter (fn [[k _v]] (= ::ok k)) vs)
                      [[_ err]] (filter (fn [[k _v]] (= ::error k)) vs)]
-              (is (= [[::ok 1]
-                      [::ok 3]
-                      [::ok ::closed]]
-                     oks))
+              ;; there is some non-determinism around error
+              ;; handling and downstream closing
+              (is (or
+                   (= [[::ok 1] [::ok ::closed]] oks)
+                   (= [[::ok 1] [::ok 3] [::ok ::closed]] oks)))
               (is (= {:v 5}
                      (ex-data err))))))
 

@@ -4,6 +4,7 @@
   (:require
    [promesa.core :as pr]
    [prpr.promise :as prpr]
+   [prpr.error :as err]
    [prpr.stream.protocols :as pt]
    [prpr.stream.transport :as transport]
    [prpr.stream.types :as types]
@@ -185,114 +186,135 @@
          (pt/-put! interm v))
        interm))
 
+    ;; since this is a throwaway promise, put a final catch around it
+    ;; so that it can't crash the VM
     (prpr/catch-always
+
         #_{:clj-kondo/ignore [:loop-without-recur]}
         (pr/loop []
 
-          (pr/chain
+          (->
 
            ;; get a vector of chunk-or-values from sources
            (->> consumers
                 (map pt/-take-chunk!)
                 (pr/all))
 
-           ;; output the biggest possible chunk of zipped values
-           (fn [chunk-or-vals]
-             ;; (info "chunk-or-vals" chunk-or-vals)
+           (prpr/handle-always
+            ;; output the biggest possible chunk of zipped values
+            (fn [chunk-or-vals err]
+              ;; (info "chunk-or-vals" chunk-or-vals err)
 
-             (let [;; has any source ended ?
-                   end? (some #(= ::stream/end %) chunk-or-vals)
+              (if (some? err)
 
-                   ;; were there any errors ?
-                   errors? (some types/stream-error? chunk-or-vals)
+                (pr/chain
+                 (transport/error! out err)
+                 (fn [_] (close-all))
+                 (fn [_] false))
 
-                   ;; did all the sources supply chunks ?
-                   all-chunks? (every? types/stream-chunk? chunk-or-vals)
+                (let [;; has any source ended ?
+                      end? (some #(= ::stream/end %) chunk-or-vals)
 
-                   ;; the largest possible output chunk size is the
-                   ;; size of the smallest source chunk
-                   output-chunk-size (if all-chunks?
-                                       (->> chunk-or-vals
-                                            (filter types/stream-chunk?)
-                                            (map pt/-chunk-values)
-                                            (map count)
-                                            (apply min))
-                                       1)]
+                      ;; were there any errors ?
+                      errors? (some types/stream-error? chunk-or-vals)
 
-               ;; (prn "zip" {:end? end?
-               ;;             :errors? errors?
-               ;;             :all-chunks? all-chunks?
-               ;;             :output-chunk-size output-chunk-size})
+                      ;; did all the sources supply chunks ?
+                      all-chunks? (every? types/stream-chunk? chunk-or-vals)
 
-               (cond
+                      ;; the largest possible output chunk size is the
+                      ;; size of the smallest source chunk
+                      output-chunk-size (if all-chunks?
+                                          (->> chunk-or-vals
+                                               (filter types/stream-chunk?)
+                                               (map pt/-chunk-values)
+                                               (map count)
+                                               (apply min))
+                                          1)]
 
-                 ;; one or more inputs has errored - error and close the output
-                 errors?
-                 (let [first-err (->> chunk-or-vals (filter types/stream-error?) first)]
-                   (pr/chain
-                    (transport/error! out first-err)
-                    (fn [_] (close-all))
-                    (fn [_] false)))
+                  ;; (prn "zip" {:end? end?
+                  ;;             :errors? errors?
+                  ;;             :all-chunks? all-chunks?
+                  ;;             :output-chunk-size output-chunk-size})
 
-                 ;; one or more inputs has ended - close the output normally
-                 end?
-                 (pr/chain
-                  (close-all)
-                  (fn [_] false))
+                  (cond
 
-                 ;; all the inputs are chunks - so output a new chunk of
-                 ;; zipped values with size of the smallest input chunks,
-                 ;; and push the remainders of the chunks back on to the
-                 ;; consumers
-                 all-chunks?
-                 (let [vs-rems (for [corv chunk-or-vals]
-                                 (let [vals (pt/-chunk-values corv)]
-                                   [(subvec vals 0 output-chunk-size)
-                                    (when (> (count vals) output-chunk-size)
-                                      (types/stream-chunk
-                                       (subvec vals output-chunk-size)))]))
-                       vs (map first vs-rems)
-                       rems (map second vs-rems)
+                    ;; one or more inputs has errored - error and close the output
+                    errors?
+                    (let [first-err (->> chunk-or-vals (filter types/stream-error?) first)]
+                      (pr/chain
+                       (transport/error! out first-err)
+                       (fn [_] (close-all))
+                       (fn [_] false)))
 
-                       zipped-vs (apply map vector vs)
-                       zipped-vs-chunk (types/stream-chunk
-                                        zipped-vs)]
+                    ;; one or more inputs has ended - close the output normally
+                    end?
+                    (pr/chain
+                     (close-all)
+                     (fn [_] false))
 
-                   (doseq [[consumer rem] (map vector consumers rems)]
-                     (when (some? rem)
-                       (pt/-pushback-chunk! consumer rem)))
+                    ;; all the inputs are chunks - so output a new chunk of
+                    ;; zipped values with size of the smallest input chunks,
+                    ;; and push the remainders of the chunks back on to the
+                    ;; consumers
+                    all-chunks?
+                    (let [vs-rems (for [corv chunk-or-vals]
+                                    (let [vals (pt/-chunk-values corv)]
+                                      [(subvec vals 0 output-chunk-size)
+                                       (when (> (count vals) output-chunk-size)
+                                         (types/stream-chunk
+                                          (subvec vals output-chunk-size)))]))
+                          vs (map first vs-rems)
+                          rems (map second vs-rems)
 
-                   (pt/-put! out zipped-vs-chunk))
+                          zipped-vs (apply map vector vs)
+                          zipped-vs-chunk (types/stream-chunk
+                                           zipped-vs)]
 
-                 ;; at least one plain val, so no chunks on
-                 ;; output - take one value from each input and
-                 ;; push any chunk remainders back onto the
-                 ;; consumers
-                 :else
-                 (let [v-rems (for [corv chunk-or-vals]
-                                (if (types/stream-chunk? corv)
-                                  (let [cvs (pt/-chunk-values corv)
-                                        ;; use subvec rather than
-                                        ;; descructuring to get remaining
-                                        ;; values, or we get a seq
-                                        [fv rvs] [(first cvs)
-                                                  (subvec cvs 1)]]
-                                    [fv (types/stream-chunk rvs)])
-                                  [corv nil]))
-                       vs (map first v-rems)
-                       rems (map second v-rems)
-                       zipped-vs (vec vs)]
+                      (doseq [[consumer rem] (map vector consumers rems)]
+                        (when (some? rem)
+                          (pt/-pushback-chunk! consumer rem)))
 
-                   (doseq [[consumer rem] (map vector consumers rems)]
-                     (when (some? rem)
-                       (pt/-pushback-chunk! consumer rem)))
+                      (pt/-put! out zipped-vs-chunk))
 
-                   (pt/-put! out zipped-vs)))))
+                    ;; at least one plain val, so no chunks on
+                    ;; output - take one value from each input and
+                    ;; push any chunk remainders back onto the
+                    ;; consumers
+                    :else
+                    (let [v-rems (for [corv chunk-or-vals]
+                                   (if (types/stream-chunk? corv)
+                                     (let [cvs (pt/-chunk-values corv)
+                                           ;; use subvec rather than
+                                           ;; descructuring to get remaining
+                                           ;; values, or we get a seq
+                                           [fv rvs] [(first cvs)
+                                                     (subvec cvs 1)]]
+                                       [fv (types/stream-chunk rvs)])
+                                     [corv nil]))
+                          vs (map first v-rems)
+                          rems (map second v-rems)
+                          zipped-vs (vec vs)]
 
-           ;; recur if there is more to come
-           (fn [result]
-             (when result
-               (pr/recur)))))
+                      (doseq [[consumer rem] (map vector consumers rems)]
+                        (when (some? rem)
+                          (pt/-pushback-chunk! consumer rem)))
+
+                      (pt/-put! out zipped-vs)))))))
+
+           (prpr/handle-always
+
+            ;; recur if there is more to come
+            (fn [result err]
+              (if (some? err)
+
+                (pr/chain
+                 (transport/error! out err)
+                 (fn [_] (close-all))
+                 (fn [_] false))
+
+                (when result
+                  (pr/recur)))))))
+
 
         ;; catchall cleanup
         (fn [e]

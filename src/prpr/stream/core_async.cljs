@@ -86,15 +86,7 @@
 
          dr (pr/chain r (fn [v]
                           (cond
-                            (= ::timeout v)
-                            (if (some? timeout-val)
-                              timeout-val
-                              (throw
-                               (err/ex-info
-                                ::timeout
-                                {:prpr.stream.take!/default-val default-val
-                                 :prpr.stream.take!/timeout timeout
-                                 :prpr.stream.take!/timeout-val timeout-val})))
+                            (= ::timeout v) timeout-val
 
                             (some? v) v
 

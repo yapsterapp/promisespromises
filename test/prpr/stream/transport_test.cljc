@@ -132,19 +132,13 @@
     (pr/let [s (sut/stream)
              r (sut/take! s ::closed 1 ::timeout)]
       (is (= ::timeout r))))
-  (testing "throws an exception on a timeout with no timeout-val"
+  (testing "returns nil value on timeout with no timeout-val"
     (pr/let [s (sut/stream)
              [k r] (prpr/merge-always
                     (sut/take! s ::closed 1 nil))]
 
-      (let [{dv :prpr.stream.take!/default-val
-             timeout :prpr.stream.take!/timeout
-             tv :prpr.stream.take!/timeout-val} (ex-data r)]
-
-        (is (= ::prpr/error k))
-        (is (= ::closed dv))
-        (is (= 1 timeout))
-        (is (nil? tv))))))
+      (is (= ::prpr/ok k))
+      (is (= nil r)))))
 
 (deftest safe-connect-via-fn-test
   (testing "applies f, puts the result on the sink, returs true"

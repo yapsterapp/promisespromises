@@ -1,40 +1,12 @@
 (ns prpr.stream.transport-test
   (:require
+   [prpr.test :refer [deftest testing is]]
    [promesa.core :as pr]
    [prpr.promise :as prpr]
-   [prpr.test :refer [deftest testing is]]
+   [prpr.stream.test :as st]
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [prpr.stream.transport :as sut]))
-
-(defn stream-of
-  "returns a stream of the individual values
-   (*not* chunked)"
-  [vs]
-  (let [s (sut/stream)]
-    (sut/put-all-and-close! s vs)
-    s))
-
-(defn safe-low-take!
-  "take! from a stream impl without any unwrapping
-   Promise<[::ok <val>]> | Promise<[::error <err>]>"
-  [s & args]
-  (prpr/handle-always
-   (apply pt/-take! s args)
-   (fn [v e]
-     (if (some? e)
-       [::error e]
-       [::ok v]))))
-
-(defn safe-low-consume
-  "keep safe-low-take! ing until ::closed"
-  [s]
-  #_{:clj-kondo/ignore [:loop-without-recur]}
-  (pr/loop [r []]
-    (pr/let [[_t v :as t-v] (safe-low-take! s ::closed)]
-      (if (= ::closed v)
-        (conj r t-v)
-        (pr/recur (conj r t-v))))))
 
 (deftest stream-test
   (testing "returns an object which tests stream?"
@@ -387,17 +359,17 @@
         (is (true? psr)))))
 
   (testing "does not silently unwrap promises on stream"
-    (let [s (stream-of [0 (pr/resolved 1) 2])
+    (let [s (st/stream-of [0 (pr/resolved 1) 2])
           t (sut/stream)
           _ (sut/connect-via s #(sut/put! t %) t)]
 
       (pr/let [[[k0 r0]
                 [k1 r1]
                 [k2 r2]
-                [k3 r3]] (safe-low-consume t)
+                [k3 r3]] (st/safe-low-consume t)
 
                r1' (pt/-unwrap-value r1)]
-        (is (= ::ok k0 k1 k2 k3))
+        (is (= ::st/ok k0 k1 k2 k3))
 
         (is (= 0 r0))
 
@@ -408,4 +380,4 @@
         (is (= 1 r1'))
 
         (is (= 2 r2))
-        (is (= ::closed r3))))))
+        (is (= ::st/closed r3))))))

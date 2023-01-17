@@ -2,6 +2,7 @@
   (:require
    [malli.experimental :as mx]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.error :as err]
    [prpr.a-frame.schema :as schema]
    [prpr.a-frame.registry :as registry]
@@ -62,7 +63,7 @@
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [results-effects [[] effects]]
     (let [[results [first-map-fx & rest-map-fx]] results-effects]
-      (pr/handle
+      (prpr/handle-always
        (do-map-of-effects context first-map-fx)
        (fn [r err]
          (cond

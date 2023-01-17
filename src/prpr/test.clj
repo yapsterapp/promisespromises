@@ -88,7 +88,7 @@
         (record-test-binding-frame
          (println "   " ~(str nm))
          @(body#)
-         (println "   " ~(str nm) ":done")
+         ;; (println "   " ~(str nm) ":done")
          )))))
 
 (defmacro deftest*

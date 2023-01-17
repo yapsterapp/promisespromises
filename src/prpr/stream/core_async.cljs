@@ -6,6 +6,7 @@
    [prpr.stream.protocols :as pt]
    [prpr.stream.types :as types]
    [promesa.core :as pr]
+   [prpr.promise :as prpr]
    [prpr.error :as err]))
 
 (deftype StreamFactory []
@@ -124,7 +125,7 @@
 
          (-> (pt/-take! src ::closed)
 
-             (pr/handle
+             (prpr/handle-always
               (fn [v err]
                 ;; (prn "async-connect-via: value" v err)
 
@@ -145,7 +146,7 @@
                   (callback v))))
 
 
-             (pr/handle
+             (prpr/handle-always
               (fn [result err]
                 ;; (prn "async-connect-via: result" result err)
 

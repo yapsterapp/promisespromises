@@ -1,5 +1,6 @@
 (ns prpr.a-frame.router
   (:require
+   [malli.core :as m]
    [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.error :as err]
@@ -102,7 +103,11 @@
 (mx/defn dispatch-n
   "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
   [router :- schema/Router
-   events-or-extended-events :- schema/EventsOrExtendedEvents]
+   events-or-extended-events ;; :- schema/EventsOrExtendedEvents
+   ]
+
+  ;; this schema breaks the fn annotation for some reason, so do a manual check
+  (m/coerce schema/EventsOrExtendedEvents events-or-extended-events)
 
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [evoces events-or-extended-events]
@@ -257,9 +262,14 @@
   [{app schema/a-frame-app-ctx
     :as router} :- schema/Router
 
-   events-or-extended-events :- schema/EventsOrExtendedEvents]
+   events-or-extended-events ;; :- schema/EventsOrExtendedEvents
+   ]
 
-  (let [extended-events (map events/coerce-extended-event
+  (let [;; the schema breaks the fn annotation for some reason, so
+        ;; do a manual check
+        _ (m/coerce schema/EventsOrExtendedEvents events-or-extended-events)
+
+        extended-events (map events/coerce-extended-event
                                 events-or-extended-events)]
     ;; create a temp event-stream, with same buffer-size
     ;; and executor as the original

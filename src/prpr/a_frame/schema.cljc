@@ -52,7 +52,7 @@
 ;;   [Event])
 
 (def Events
-  [:* Event])
+ [:+ Event])
 
 ;; (s/defschema InitialCoeffects
 ;;   {s/Keyword s/Any})
@@ -88,7 +88,7 @@
 ;;   [EventOrExtendedEvent])
 
 (def EventsOrExtendedEvents
-  [:* EventOrExtendedEvent])
+  [:+ EventOrExtendedEvent])
 
 ;; (s/defschema Coeffects
 ;;   {a-frame-coeffect-event Event

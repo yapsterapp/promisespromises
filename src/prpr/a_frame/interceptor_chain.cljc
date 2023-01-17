@@ -4,6 +4,7 @@
    [malli.experimental :as mx]
    [promesa.core :as pr]
    [prpr.promise :as prpr]
+   [prpr.error :as err]
    [taoensso.timbre :refer [warn error]]
    [prpr.a-frame.schema :as af.schema]
    [prpr.a-frame.registry :as registry]
@@ -125,7 +126,7 @@
   [context]
   (apply dissoc context opaque-context-keys))
 
-(defn pr-loop-context
+(defn pr-loop-context*
   "Helper fn to repeat execution of `step-fn` against `context` inside a promise
   loop.
 
@@ -139,12 +140,20 @@
 
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [context context]
-    (pr/chain
+    (prpr/handle-always
      (step-fn context)
-     (fn [[t c]]
-       (if (= ::break t)
-         c
-         (pr/recur c))))))
+     (fn [[t c] e]
+       (cond
+         (some? e) (err/wrap-uncaught e)
+
+         (= ::break t) c
+
+         :else (pr/recur c))))))
+
+(defn pr-loop-context
+  [context step-fn]
+  (pr/let [r (pr-loop-context* context step-fn)]
+    (err/unwrap r)))
 
 (mx/defn assoc-opaque-keys
   "add the opaque keys to the interceptor context

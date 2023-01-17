@@ -1,10 +1,12 @@
 (ns prpr.test
   (:require
    [clojure.test]
-   [prpr.util.macro]
    [promesa.core]
    [taoensso.timbre]
-   [prpr.test.reduce]))
+   [prpr.test.reduce]
+   [prpr.util.macro]
+   [prpr.promise]
+   [prpr.promise :as prpr]))
 
 ;; lord help me
 
@@ -54,11 +56,10 @@
 
    test-async *serially* evaluates the forms, and any which yield
    fn or Sequence<fn> will be immediately called, also serially"
-  [& forms]
+  [nm & forms]
   (let [;; wrap each form into a 0-args fn
         fs (for [form forms]
-             `(fn []
-                ~form))]
+             `(fn [] ~form))]
 
     `(prpr.util.macro/if-cljs
 
@@ -66,21 +67,29 @@
        done#
 
        (promesa.core/handle
-        (promesa.core/let [r# (prpr.test.reduce/reduce-pr-fns
-                               [~@fs])])
+        (do
+          (println "   " ~(str nm))
+          (promesa.core/let [r# (prpr.test.reduce/reduce-pr-fns
+                                 ~(str nm)
+                                 [~@fs])]))
         (fn [succ# e#]
           (when (some? e#)
             (cljs.test/report {:type :error
                                :message (str e#)
                                :error e#}))
+          ;; (println "   " ~(str nm) ":done")
           (done#))))
 
       (let [body# (fn []
                     (with-test-binding-frame
                       (prpr.test.reduce/reduce-pr-fns
+                       ~(str nm)
                        [~@fs])))]
         (record-test-binding-frame
-         @(body#))))))
+         (println "   " ~(str nm))
+         @(body#)
+         (println "   " ~(str nm) ":done")
+         )))))
 
 (defmacro deftest*
   [nm & body]
@@ -100,11 +109,9 @@
 
    NOTE: use the same name as clojure.test/deftest because CIDER
    recognizes it and uses it to find tests"
-  [name & body]
-  `(prpr.test/deftest* ~name
-     (println "   " ~(str name))
-     (prpr.test/test-async
-      ~@body)))
+  [nm & body]
+  `(prpr.test/deftest* ~nm
+     (prpr.test/test-async ~(str nm) ~@body)))
 
 (defmacro tlet
   "a let which turns its body forms into a vector of 0-args fns,
@@ -141,7 +148,7 @@
             ;; capture the result in an atom
             (let [r# (atom nil)]
               (cljs.test/testing
-                  (reset! r# (prpr.test.reduce/reduce-pr-fns [~@fs])))
+                  (reset! r# (prpr.test.reduce/reduce-pr-fns ~s [~@fs])))
               @r#))
 
           (with-test-binding-frame
@@ -152,7 +159,7 @@
             ;; capture the result in an atom
               (let [r# (atom nil)]
                 (clojure.test/testing
-                    (reset! r# (prpr.test.reduce/reduce-pr-fns [~@fs])))
+                    (reset! r# (prpr.test.reduce/reduce-pr-fns ~s [~@fs])))
                 @r#))))))))
 
 (defmacro with-log-level
@@ -171,7 +178,7 @@
 
          ;; put a fn which can't fail at the head, so that
          ;; we only need the promise-based finally
-         (prpr.test.reduce/reduce-pr-fns (into [(constantly true)]
+         (prpr.test.reduce/reduce-pr-fns ~(str log-level) (into [(constantly true)]
                                                [~@fs]))
 
          (fn [_# _#]
@@ -180,7 +187,15 @@
 (defn with-log-level-fixture
   [level]
   (fn [f]
-    (with-log-level level (f))))
+    (let [cl (or (:level taoensso.timbre/*config*) :info)]
+      ;; (println "with-log-level-fixture" cl "->" level)
+      (taoensso.timbre/set-level! level)
+
+      (try
+        (f)
+        (finally
+          ;; (println "with-log-level-fixture:done" level "->" cl)
+          (taoensso.timbre/set-level! cl))))))
 
 (def compose-fixtures
   clojure.test/compose-fixtures)

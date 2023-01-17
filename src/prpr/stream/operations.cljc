@@ -453,7 +453,7 @@
     (if (reduced? acc)
       (deref acc)
 
-      (pr/handle
+      (prpr/handle-always
 
        ;; do a low-level take, so StreamErrors do not get unwrapped/thrown
        (pt/-take! s ::none)

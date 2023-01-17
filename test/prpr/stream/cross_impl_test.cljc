@@ -9,6 +9,7 @@
    [promesa.core :as pr]
    [prpr.promise :as prpr]
 
+   [prpr.stream.test :as stream.test]
    [prpr.stream.operations :as stream.ops]
    [prpr.stream.transport :as stream.transport]
    [prpr.stream.types :as stream.types]
@@ -24,24 +25,6 @@
    )
   #?(:clj (:import
            [linked.map LinkedMap])))
-
-(defn stream-of
-  "returns a stream of the individual values
-   (*not* chunked)"
-  [vs]
-  (let [s (stream.transport/stream)]
-    (stream.transport/put-all-and-close! s vs)
-    s))
-
-(defn consume
-  [s]
-  (pr/loop [rs []]
-    (pr/chain
-     (stream.transport/take! s ::drained)
-     (fn [v]
-       (if (= ::drained v)
-         rs
-         (pr/recur (conj rs v)))))))
 
 (deftest stream-finished?-test
   (testing "not finished when partition-buffer is empty"
@@ -66,7 +49,7 @@
                 ;; given the data, puts 2 partitions in each chunk
                 ::stream.cross/target-chunk-size 6})
 
-          a (->> (stream-of [0 0 0 1 1 1 2 2 2])
+          a (->> (stream.test/stream-of [0 0 0 1 1 1 2 2 2])
                  (sut/partition-stream cfg :a))]
 
       (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)
@@ -86,7 +69,7 @@
                 ::stream.cross/keys [[:a identity]]
                 ::stream.cross/target-chunk-size 6})
 
-          a (->> (stream-of [0 0 0 2 2 2 4 4 4 5 5 5])
+          a (->> (stream.test/stream-of [0 0 0 2 2 2 4 4 4 5 5 5])
                  (stream/map (fn [v] (if (odd? v)
                                       (throw (ex-info "boo" {:v v}))
                                       v)))
@@ -105,7 +88,7 @@
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
                 ::stream.cross/target-chunk-size 6})
-          a (->> (stream-of [])
+          a (->> (stream.test/stream-of [])
                  (sut/partition-stream cfg :a))]
 
       (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)]
@@ -117,7 +100,7 @@
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
                   ::stream.cross/target-chunk-size 6})
-            a (->> (stream-of [1 1 1 0 0 0])
+            a (->> (stream.test/stream-of [1 1 1 0 0 0])
                    (sut/partition-stream cfg :a))]
 
         (-> (prpr/merge-always (sut/buffer-chunk! [] cfg :a a))
@@ -129,7 +112,7 @@
                  {::stream.cross/op ::stream.cross.op/sorted-merge
                   ::stream.cross/keys [[:a identity]]
                   ::stream.cross/target-chunk-size 6})
-            a (->> (stream-of [0 0 0])
+            a (->> (stream.test/stream-of [0 0 0])
                    (sut/partition-stream cfg :a))]
 
         (-> (prpr/merge-always (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
@@ -149,7 +132,7 @@
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
                 ::stream.cross/target-chunk-size 6})
-          a (->> (stream-of [0 0 0])
+          a (->> (stream.test/stream-of [0 0 0])
                  (sut/partition-stream cfg :a))]
 
       (-> (prpr/merge-always (sut/buffer-chunk! [[1 '(1 1 1)]] cfg :a a))
@@ -173,8 +156,8 @@
                 ::stream.cross/keys [[:a identity] [:b identity]]
                 ::stream.cross/target-chunk-size 6})
           id-streams (->> (linked/map
-                           :b (stream-of [1 1 1])
-                           :a (stream-of [0 0 0]))
+                           :b (stream.test/stream-of [1 1 1])
+                           :a (stream.test/stream-of [0 0 0]))
                           (sut/partition-streams cfg))]
 
       (pr/let [pbs (sut/init-partition-buffers! cfg id-streams)]
@@ -206,10 +189,10 @@
                 ::stream.cross/keys [[:a identity] [:b identity] [:c identity]]
                 ::stream.cross/target-chunk-size 6})
           id-streams (->> (linked/map
-                           :d (stream-of [])
-                           :c (stream-of [])
-                           :b (stream-of [12 12 12])
-                           :a (stream-of [1 1 1]))
+                           :d (stream.test/stream-of [])
+                           :c (stream.test/stream-of [])
+                           :b (stream.test/stream-of [12 12 12])
+                           :a (stream.test/stream-of [1 1 1]))
                           (sut/partition-streams cfg))]
 
       (pr/let [pbs (sut/fill-partition-buffers!
@@ -388,8 +371,8 @@
 
 (deftest partition-streams-test
   (testing "partitions and chunks streams and correctly orders the id-streams map"
-    (let [s (stream-of [0 1 2 3])
-          t (stream-of [100 101 102 103 104])
+    (let [s (stream.test/stream-of [0 1 2 3])
+          t (stream.test/stream-of [100 101 102 103 104])
           {r-s :s
            r-t :t
            :as psts} (sut/partition-streams
@@ -404,8 +387,8 @@
       (is (linked-map? psts))
       (is (= [:s :t] (keys psts)))
 
-      (pr/let [s-vs (consume r-s)
-               t-vs (consume r-t)]
+      (pr/let [s-vs (stream.test/consume r-s)
+               t-vs (stream.test/consume r-t)]
 
         (is (= [(stream.types/stream-chunk [[0] [1]])
                 (stream.types/stream-chunk [[2] [3]])]
@@ -434,9 +417,9 @@
 
 (deftest cross-test
   (testing "inner-join"
-    (let [a (stream-of
+    (let [a (stream.test/stream-of
              [{:id 0 :a "a00"} {:id 0 :a "a01"} {:id 2 :a "a20"}])
-          b (stream-of
+          b (stream.test/stream-of
              [{:id 0 :b "b00"} {:id 1 :b "b10"} {:id 3 :b "b30"}])
 
           o-s (sut/cross
@@ -455,8 +438,8 @@
                ovs)))))
 
   (testing "difference"
-    (let [a (stream-of [0 1 2 3 4 5 6])
-          b (stream-of [1 3 5])
+    (let [a (stream.test/stream-of [0 1 2 3 4 5 6])
+          b (stream.test/stream-of [1 3 5])
 
           o-s (sut/cross
                {::stream.cross/keys [[:a identity] [:b identity]]

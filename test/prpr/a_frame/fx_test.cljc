@@ -22,9 +22,9 @@
           _ (sut/reg-fx ::reg-fx-test (fn [app data]
                                         (reset! a {:app app
                                                    :data data})))
-          h (registry/get-handler schema/a-frame-kind-fx ::reg-fx-test)]
+          h (registry/get-handler schema/a-frame-kind-fx ::reg-fx-test)
 
-      (h {schema/a-frame-app-ctx ::app} ::data)
+          _ (h {schema/a-frame-app-ctx ::app} ::data)]
 
       (is (= {:app ::app
               :data ::data}

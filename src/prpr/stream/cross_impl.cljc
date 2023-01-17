@@ -396,9 +396,15 @@
   (let [cb (stream.chunk/stream-chunk-builder)
         out (stream.transport/stream)]
 
-    (prpr/catch-always
+    (->
 
-        (pr/let [id-partition-buffers (init-partition-buffers! cross-spec id-streams)]
+     (init-partition-buffers! cross-spec id-streams)
+
+     (prpr/handle-always
+      (fn [id-partition-buffers err]
+
+        (if (some? err)
+          (err/wrap-uncaught err)
 
           #_{:clj-kondo/ignore [:loop-without-recur]}
           (pr/loop [id-partition-buffers id-partition-buffers]
@@ -406,7 +412,7 @@
             (cond
 
               (cross-input-errored? id-partition-buffers)
-              (throw
+              (err/wrap-uncaught
                (first-cross-input-error id-partition-buffers))
 
               ;; finish up - output any in-progress chunk, and close the output
@@ -420,43 +426,69 @@
               ;; fetch more input, generate more output, and send a chunk
               ;; to the output stream when filled
               :else
-              (pr/let [id-partition-buffers (fill-partition-buffers!
-                                             id-partition-buffers
-                                             cross-spec
-                                             id-streams)
+              (prpr/handle-always
+               (fill-partition-buffers!
+                id-partition-buffers
+                cross-spec
+                id-streams)
+               (fn [id-partition-buffers err]
 
-                       _ (prn "id-partition-buffers" id-partition-buffers)
+                 (if (some? err)
+                   (err/wrap-uncaught err)
 
-                       [selected-id-partitions
-                        id-partition-buffers] (next-selections
-                                               cross-spec
-                                               id-partition-buffers)
+                   (let [;;_ (prn "id-partition-buffers" id-partition-buffers)
 
-                       _ (prn "selected-id-partitions" selected-id-partitions)
-                       _ (prn "next-id-partition-buffers" id-partition-buffers)
+                         [selected-id-partitions
+                          id-partition-buffers] (next-selections
+                                                 cross-spec
+                                                 id-partition-buffers)
 
-                       output-records (generate-output
-                                       cross-spec
-                                       selected-id-partitions)
+                         ;;_ (prn "selected-id-partitions" selected-id-partitions)
+                         ;;_ (prn "next-id-partition-buffers" id-partition-buffers)
 
-                       _ (prn "output-records" output-records)
+                         output-records (generate-output
+                                         cross-spec
+                                         selected-id-partitions)
 
-                       _ (do
-                           (when-not (stream.pt/-building-chunk? cb)
-                             (stream.pt/-start-chunk cb))
-                           (stream.pt/-add-all-to-chunk cb output-records))
+                         ;;_ (prn "output-records" output-records)
 
-                       _put-ok? (when (chunk-full? cb cross-spec)
-                                  (stream.transport/put! out (stream.pt/-finish-chunk cb)))]
+                         _ (do
+                             (when-not (stream.pt/-building-chunk? cb)
+                               (stream.pt/-start-chunk cb))
+                             (stream.pt/-add-all-to-chunk cb output-records))
 
+                         output-chunk (when (chunk-full? cb cross-spec)
+                                        (stream.pt/-finish-chunk cb))]
 
-                (pr/recur id-partition-buffers)))))
+                     (pr/let [put-ok? (when (some? output-chunk)
+                                        (stream.transport/put!
+                                         out
+                                         output-chunk))]
 
-        (fn [err]
-          (doseq [[_id stream] id-streams]
-            (stream.transport/close! stream))
+                       ;; TODO something awry here - dealing with the
+                       ;; put=false case causes test failures
+                       (if true ; put-ok?
+                         (pr/recur id-partition-buffers)
 
-          (stream.transport/error! out err)))
+                         (err/wrap-uncaught
+                          (err/ex-info
+                           ::cross*-downstream-closed
+                           {:cross-spec cross-spec
+                            :output-chunk output-chunk}))
+                         )))))))))))
+
+     (prpr/handle-always
+
+       (fn [r err]
+
+         (when-let [err (or err
+                            (and (err/uncaught-wrapper? r)
+                                 (err/unwrap-value r)))]
+
+           (doseq [[_id stream] id-streams]
+             (stream.transport/close! stream))
+
+           (stream.transport/error! out err)))))
 
     out))
 

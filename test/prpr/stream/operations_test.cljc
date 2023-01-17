@@ -507,13 +507,21 @@
     )
 
   (testing "when receiving a nil wrapper sends nil to the mapping fn"
-    (let [a (stream-of [0 (types/stream-nil)])
-          t (sut/map #(some-> %1 inc) a )]
+    (let [vals (atom #{0 nil 2})
+          a (stream-of [0 (types/stream-nil) 2])
+          t (sut/map
+             (fn [v]
+               (swap! vals disj v)
+               (or v ::nil))
+             a)]
 
-      (pr/let [[a b] (safe-low-consume t)]
-        (is (= [[::ok 1]
-                [::ok (types/stream-nil)]]
-               [a b])))))
+      (pr/let [[a b c] (safe-low-consume t)]
+        (is (= [[::ok 0]
+                [::ok ::nil]
+                [::ok 2]]
+               [a b c]))
+
+        (is (empty? @vals)))))
 
   #?(:cljs
      (testing "when mapping-fn returns a nil value, wraps it for the output"

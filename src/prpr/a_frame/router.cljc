@@ -100,8 +100,7 @@
 
   (stream/put! event-s (events/coerce-extended-event event-or-extended-event)))
 
-(mx/defn dispatch-n
-  "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
+(mx/defn dispatch-n*
   [router :- schema/Router
    events-or-extended-events ;; :- schema/EventsOrExtendedEvents
    ]
@@ -112,12 +111,20 @@
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [evoces events-or-extended-events]
     (let [[evoce & rest-evoces] evoces]
-      (pr/chain
+      (prpr/handle-always
        (dispatch router evoce)
-       (fn [_]
-         (if (not-empty rest-evoces)
-           (pr/recur rest-evoces)
-           true))))))
+       (fn [_ e]
+         (cond
+           (some? e) (err/wrap-uncaught e)
+           (not-empty rest-evoces) (pr/recur rest-evoces)
+           :else true))))))
+
+(defn dispatch-n
+  "dispatch a seq of Events or ExtendedEvents in a backpressure sensitive way"
+  [router
+   events-or-extended-events]
+  (pr/let [r (dispatch-n* router events-or-extended-events)]
+    (err/unwrap r)))
 
 (mx/defn handle-event
   [{app schema/a-frame-app-ctx

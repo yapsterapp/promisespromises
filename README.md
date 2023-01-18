@@ -1,6 +1,6 @@
 # promisespromises
 
-[run tests](https://github.com/yapsterapp/promisespromises/actions/workflows/clojure.yml/badge.svg)
+[![Build Status](https://github.com/yapsterapp/promisespromises/actions/workflows/clojure.yml/badge.svg)](https://github.com/yapsterapp/promisespromises/actions)
 [![Clojars Project](https://img.shields.io/clojars/v/com.github.yapsterapp/promisespromises.svg?include_prereleases)](https://clojars.org/com.github.yapsterapp/promisespromises)
 [![cljdoc badge](https://cljdoc.org/badge/com.github.yapsterapp/promisespromises)](https://cljdoc.org/d/com.github.yapsterapp/promisespromises)
 

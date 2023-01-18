@@ -1,17 +1,17 @@
 # promisespromises
 
 1. prpr.streams : A streams API, exposing a
-[Manifold](https://github.com/clj-commons/manifold)-like promises + streams
+Manifold-like promises + streams
 abstraction developed for working with cold event sources
 2. prpr.a-frame : : A port of the [re-frame](https://github.com/day8/re-frame)
 event and effect handling machinery to the async domain
 
 ## prpr.streams
 
-Implements a [Manifold](https://github.com/clj-commons/manifold)-like
+Implements a [Manifold-like](https://github.com/yapsterapp/promisespromises/blob/trunk/src/prpr/stream.cljc)
 asynchronous streams API. The fundamental backpressure-sensitive
-Promise + Stream model is the same as Manifold, and the `prpr.stream`
-API follows the Manifold streams API closely
+Promise + Stream model is the same as Manifold, and the API follows the 
+[Manifold streams API](https://github.com/clj-commons/manifold) closely
 
 ``` clojure
 (require '[prpr.stream :as s])

@@ -1,5 +1,7 @@
 # promisespromises
 
+![run tests](https://github.com/yapsterapp/promisespromises/actions/workflows/clojure.yml/badge.svg)
+
 TODO - much documentation expansion
 
 1. **prpr.streams** : A streams API, exposing a Clojure and ClojureScript

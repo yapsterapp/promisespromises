@@ -1,7 +1,7 @@
 # promisespromises
 
 ![run tests](https://github.com/yapsterapp/promisespromises/actions/workflows/clojure.yml/badge.svg)
-[![cljdoc badge](https://cljdoc.org/badge/yapsterapp/promisespromises)](https://cljdoc.org/d/yapsterapp/promisespromises)
+[![cljdoc badge](https://cljdoc.org/badge/com.github.yapsterapp/promisespromises)](https://cljdoc.org/d/com.github.yapsterapp/promisespromises)
 
 TODO - much documentation expansion
 

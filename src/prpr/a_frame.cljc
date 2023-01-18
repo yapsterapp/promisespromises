@@ -26,7 +26,7 @@
    a fn to dispose the router
 
   returns [router dispose-fn]"
-  ([app] (create-a-frame-router app {}))
+  ([app] (create-router-dispose-fn app {}))
   ([app opts]
    (let [router (router/create-router app opts)]
 

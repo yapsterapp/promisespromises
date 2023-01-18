@@ -2,9 +2,9 @@
 
 TODO - much documentation expansion
 
-1. prpr.streams : A streams API, exposing a Clojure and ClojureScript
+1. **prpr.streams** : A streams API, exposing a Clojure and ClojureScript
 compatible Manifold-like promises + streams abstraction
-2. prpr.a-frame : A port of the [re-frame](https://github.com/day8/re-frame)
+2. **prpr.a-frame** : A port of the [re-frame](https://github.com/day8/re-frame)
 event and effect handling machinery to the async domain, offering a 
 straightforward separation of pure and effectful code for both 
 Clojure and ClojureScript

@@ -1,5 +1,7 @@
 # promisespromises
 
+TODO - much documentation expansion
+
 1. prpr.streams : A streams API, exposing a
 Manifold-like promises + streams
 abstraction developed for working with cold event sources
@@ -58,8 +60,10 @@ program. A-frame was originally developed for an event-driven game engine, but
 it has been found more generally useful and has been used for
 implementing APIs
 
-* cofx and fx handlers are async functions, returning a Promise of their result
-* event handlers are pure
+* cofx handlers are async functions, returning a Promise of updated coeffects
+* fx handlers are async functions, returning a Promise of an ignored result
+* event handlers are pure, returning a single`{<effect-key> <effect-data>}` map,
+or a list of such maps (which will be processed strictly serially)
 * based around a pure-data driven async interceptor-chain
 [`prpr.a-frame.interceptor-chain`](https://github.com/yapsterapp/promisespromises/blob/trunk/src/prpr/a_frame/interceptor_chain.cljc)
 and implemented on top of promesa and

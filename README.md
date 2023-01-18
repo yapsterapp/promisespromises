@@ -2,11 +2,12 @@
 
 TODO - much documentation expansion
 
-1. prpr.streams : A streams API, exposing a
-Manifold-like promises + streams
-abstraction developed for working with cold event sources
-2. prpr.a-frame : : A port of the [re-frame](https://github.com/day8/re-frame)
-event and effect handling machinery to the async domain
+1. prpr.streams : A streams API, exposing a Clojure and ClojureScript
+compatible Manifold-like promises + streams abstraction
+2. prpr.a-frame : A port of the [re-frame](https://github.com/day8/re-frame)
+event and effect handling machinery to the async domain, offering a 
+straightforward separation of pure and effectful code for both 
+Clojure and ClojureScript
 
 ## prpr.streams
 
@@ -55,10 +56,10 @@ A-frame is a port of the non-view parts of
 [re-frame](https://github.com/day8/re-frame) - event-handling, cofx and
 fx - to the async domain. cofx and fx handlers are async functions, while event
 handlers remain pure functions. This
-makes it straightforward to rigidly separate pure and impure elements of a
-program. A-frame was originally developed for an event-driven game engine, but
-it has been found more generally useful and has been used for
-implementing APIs
+makes it straightforward to cleanly separate pure and impure elements of a
+program. A-frame was originally developed for a back-end event-driven 
+game engine, but it has been found more generally useful and has been 
+successfully used for implementing APIs and is perhaps useful client-side too
 
 * cofx handlers are async functions, returning a Promise of updated coeffects
 * fx handlers are async functions, returning a Promise of an ignored result

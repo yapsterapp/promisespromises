@@ -16,10 +16,16 @@
 ;; app-context will also be provided to event/fx/cofx handlers
 ;; so they can do complex stuff
 
-(defn create-a-frame-router
-  "deferst factory function for an a-frame app
+(defn create-router
+  "create an a-frame router"
+  ([app] (create-router app {}))
+  ([app opts] (router/create-router app opts)))
 
-  returns [a-frame-state close-fn]"
+(defn create-router-dispose-fn
+  "factory function for an a-frame router and
+   a fn to dispose the router
+
+  returns [router dispose-fn]"
   ([app] (create-a-frame-router app {}))
   ([app opts]
    (let [router (router/create-router app opts)]

@@ -88,6 +88,7 @@
      (stream.transport/take! stream stream-finished-drained-marker)
 
      (fn [v err]
+       ;; (prn "BUFFER-CHUNK!" v err)
        (cond
 
          (some? err)
@@ -138,6 +139,9 @@
                ;; chunk
                chunk-starts-after-previous-end?
                (or (nil? last-current-partition-key)
+                   ;; thank to transform impl we can randomly get content
+                   ;; after an error on a stream
+                   (stream-finished-markers last-current-partition-key)
                    (<= (key-comparator-fn last-current-partition-key
                                           first-new-partition-key)
                        0))]
@@ -158,7 +162,11 @@
                       ::stream.cross/chunk-data-sorted? chunk-data-sorted?
                       ::stream.cross/chunk-starts-after-previous-end? chunk-starts-after-previous-end?})))
 
-           (into partition-buffer new-key-partitions))
+           ;; if we've already got a finished marker, then never add anything
+           ;; to the buffer
+           (if (stream-finished-markers last-current-partition-key)
+             partition-buffer
+             (into partition-buffer new-key-partitions)))
 
          :else
          (throw

@@ -64,6 +64,24 @@
                 [::sut/drained]] pb3)))))
 
   (testing "deals with stream error"
+
+    (let [cfg (sut/configure-cross-op
+               {::stream.cross/op ::stream.cross.op/sorted-merge
+                ::stream.cross/keys [[:a identity]]
+                ::stream.cross/target-chunk-size 6})
+
+          a (->> (stream.test/stream-of [1 1 1])
+                 (stream/map (fn [v] (if (odd? v)
+                                      (throw (ex-info "boo" {:v v}))
+                                      v)))
+                 (sut/partition-stream cfg :a))]
+
+      (pr/let [[[k1 v1]] (sut/buffer-chunk! [] cfg :a a)
+               exd (ex-data v1)]
+
+        (is (= ::sut/errored k1))
+        (is (= {:v 1} exd))))
+
     (let [cfg (sut/configure-cross-op
                {::stream.cross/op ::stream.cross.op/sorted-merge
                 ::stream.cross/keys [[:a identity]]
@@ -76,12 +94,15 @@
                  (sut/partition-stream cfg :a))]
 
       (pr/let [pb1 (sut/buffer-chunk! [] cfg :a a)
-               [_ _ [k v]:as pb2] (sut/buffer-chunk! pb1 cfg :a a)]
+               [_ _ [k v]:as pb2] (sut/buffer-chunk! pb1 cfg :a a)
+               [fk fv] (->> pb2
+                            (filter
+                             (fn [[k _v]] (sut/stream-finished-markers k)))
+                            first)
+               exd (ex-data fv)]
 
-        (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] pb1))
-        (is (= [[0 '(0 0 0)] [2 '(2 2 2)]] (take 2 pb2)))
-        (is (= ::sut/errored k))
-        (is (= {:v 5} (ex-data v))))))
+        (is (= ::sut/errored fk))
+        (is (= {:v 5} (ex-data fv))))))
 
   (testing "deals with empty stream"
     (let [cfg (sut/configure-cross-op
@@ -146,7 +167,6 @@
                     :as exd} (ex-data v)]
                (is (= ::sut/stream-not-sorted error-type))
                (is (false? chunk-starts-after-previous-end?))))))))
-
   )
 
 (deftest init-partition-buffers!-test

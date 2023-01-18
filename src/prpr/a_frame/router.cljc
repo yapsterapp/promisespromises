@@ -244,7 +244,7 @@
     :as router} :- schema/Router
    event-or-extended-event :- schema/EventOrExtendedEvent]
 
-  (prn "DISPACTCH-SYNC:start" event-or-extended-event)
+  ;; (prn "DISPACTCH-SYNC:start" event-or-extended-event)
 
   ;; create a temp event-stream, with same buffer-size
   ;; and executor as the original

@@ -184,7 +184,12 @@
    buffering. an alternative might be to not use the core.async/manifold native
    transforms, but i've also never used exceptions for control flow, so i can't
    see this being a problem atm, so i'm sticking with the native transforms for
-   now"
+   now
+
+   NOTE2 - maybe errors can be flowed downstream by immediately wrapping them
+   and sending them downstream, with the 2-arity, followed by calling the
+   transducer finalizer 1-arity to close the downstream
+   "
   ([xform s]
    (transform xform 1 s))
   ([xform buffer-size s]

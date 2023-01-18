@@ -2,6 +2,7 @@
 
 ![run tests](https://github.com/yapsterapp/promisespromises/actions/workflows/clojure.yml/badge.svg)
 [![cljdoc badge](https://cljdoc.org/badge/com.github.yapsterapp/promisespromises)](https://cljdoc.org/d/com.github.yapsterapp/promisespromises)
+[![Clojars Project](https://img.shields.io/clojars/v/com.github.yapsterapp/promisespromises.svg?include_prereleases)]
 
 TODO - much documentation expansion
 

@@ -29,12 +29,6 @@
 ;;    the API is a manifold-like streams and promises API, but it uses
 ;;    promesa for the promises, (instead of manifold's deferreds) - so
 ;;    we get the same API across clj+cljs
-;;
-;; there are currently some API differences between clj + cljs
-;;
-;; - put!/take! timeouts
-;;   - in manifold, timeouts cancel the operation. in core.async they
-;;     don't
 
 (defn put-all!
   "puts all values onto a stream - first flattens any chunks from

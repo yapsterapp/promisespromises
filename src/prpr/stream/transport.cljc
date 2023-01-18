@@ -48,11 +48,7 @@
    Promise<true|false> which eventually resolves to:
     - true when the value was accepted onto the stream
     - false if the stream was closed
-    - timeout-val if the put! timed out
-
-    note that timeout behaviour may vary by platform.
-    on manifold, timed out put!s do not make it to the
-    stream, whereas on core.async they may"
+    - timeout-val if the put! timed out"
   ([sink val]
    (pt/-put!
     sink
@@ -71,7 +67,7 @@
   and then closes it. consuming fns will throw an error
   when they encounter it, so errors are always propagated
 
-  it would of course be nicer if the underlying stream/channel had
+  it would be nicer if the underlying stream/channel had
   an error state, but this is the best to be done without
   wrapping the underlying stream/channel"
   [sink err]
@@ -123,10 +119,6 @@
    - timeout-val if no value becomes available in timeout ms
    - an error if the stream errored (i.e. an error occurred
      during some upstream operation)
-
-   note that timeout behaviour may vary by platform. on
-   manifold, timed out take!s do not eventually take anything
-   from the stream, whereas on core.async they may
 
    NOTE take! API would ideally not return chunks, but it curently does...
    don't currently have a good way of using a consumer/ChunkConsumer

@@ -1,4 +1,4 @@
-(defproject yapsterapp/promisespromises "3.0.0-SNAPSHOT"
+(defproject com.github.yapsterapp/promisespromises "3.0.0-SNAPSHOT"
   :description "a lib for working with promises and streams"
   :url "https://github.com/yapsterapp/promisespromises"
   :license {:name "Eclipse Public License"

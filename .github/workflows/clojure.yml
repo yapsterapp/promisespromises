@@ -41,7 +41,7 @@ jobs:
         restore-keys: cljdeps-
 
     - name: Build and Run Clojure tests
-      run: clj -T:build ci
+      run: clojure -T:build ci
 
     - name: Run ClojureScript tests
       run: ./scripts/shadow-run-tests

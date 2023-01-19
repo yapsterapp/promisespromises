@@ -27,7 +27,7 @@
 #?(:clj
    (defn print-data-path
      [dp ^java.io.Writer w]
-     (.write w "#ctx/path ")
+     (.write w "#prpr3.ctx/path ")
      (print-method (-path dp) w)))
 
 #?(:clj
@@ -48,4 +48,4 @@
    (extend-protocol IPrintWithWriter
      DataPath
      (-pr-writer [dp writer _]
-       (write-all writer "#ctx/path " (-path dp) ""))))
+       (write-all writer "#prpr3.ctx/path " (-path dp) ""))))

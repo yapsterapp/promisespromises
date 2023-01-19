@@ -87,8 +87,8 @@
                     ::app
                     ::a-frame
                     [(sut/inject-cofx static-cofx-key)
-                     (sut/inject-cofx resolved-cofx-key {:a #cofx/path [::inject-cofx-1-arg-resolver-static]
-                                                         :b #cofx/event-path [1]})]
+                     (sut/inject-cofx resolved-cofx-key {:a #prpr3.cofx/path [::inject-cofx-1-arg-resolver-static]
+                                                         :b #prpr3.cofx/event-path [1]})]
                     init-int-ctx)]
 
       (is (= (assoc

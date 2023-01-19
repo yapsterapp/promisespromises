@@ -101,7 +101,7 @@ resulting from the event have been processed
 
 (af/reg-event-fx
   ::get-foo
-  [(af/inject-cofx ::load-foo {:id #cofx/path [:params :query :id]})]
+  [(af/inject-cofx ::load-foo {:id #prpr3.cofx/path [:params :query :id]})]
   (fn [{foo ::foo
         :as coeffects} event]
     [{:api/response {:foo foo}}]))

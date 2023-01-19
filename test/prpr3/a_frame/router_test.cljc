@@ -1,22 +1,22 @@
-(ns prpr.a-frame.router-test
+(ns prpr3.a-frame.router-test
   (:require
-   [prpr.test
+   [prpr3.test
     :refer [deftest tlet testing is use-fixtures compose-fixtures
             with-log-level-fixture with-log-level]]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.test.malli :as test.malli]
-   [prpr.error :as err]
-   [prpr.stream :as stream]
-   [prpr.stream.transport :as stream.impl]
-   [prpr.a-frame.schema :as schema]
-   [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.registry.test :as registry.test]
-   [prpr.a-frame.interceptor-chain :as interceptor-chain]
-   [prpr.a-frame.std-interceptors :as std-interceptors]
-   [prpr.a-frame.events :as events]
-   [prpr.a-frame.fx :as fx]
-   [prpr.a-frame.router :as sut]
+   [prpr3.promise :as prpr]
+   [prpr3.test.malli :as test.malli]
+   [prpr3.error :as err]
+   [prpr3.stream :as stream]
+   [prpr3.stream.transport :as stream.impl]
+   [prpr3.a-frame.schema :as schema]
+   [prpr3.a-frame.registry :as registry]
+   [prpr3.a-frame.registry.test :as registry.test]
+   [prpr3.a-frame.interceptor-chain :as interceptor-chain]
+   [prpr3.a-frame.std-interceptors :as std-interceptors]
+   [prpr3.a-frame.events :as events]
+   [prpr3.a-frame.fx :as fx]
+   [prpr3.a-frame.router :as sut]
    [taoensso.timbre :refer [error]]))
 
 (def error-val (atom nil))

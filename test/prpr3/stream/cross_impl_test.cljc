@@ -1,26 +1,26 @@
-(ns prpr.stream.cross-impl-test
+(ns prpr3.stream.cross-impl-test
   (:require
-   [prpr.test :refer [deftest testing is with-log-level]]
+   [prpr3.test :refer [deftest testing is with-log-level]]
    [clojure.math.combinatorics :as combo]
    [linked.core :as linked]
    #?(:cljs [linked.map :refer [LinkedMap]])
    [taoensso.timbre :as log :refer [info warn error]]
 
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
+   [prpr3.promise :as prpr]
 
-   [prpr.stream.test :as stream.test]
-   [prpr.stream.operations :as stream.ops]
-   [prpr.stream.transport :as stream.transport]
-   [prpr.stream.types :as stream.types]
-   [prpr.stream.chunk :as stream.chunk]
-   [prpr.stream.protocols :as stream.pt]
-   [prpr.stream :as stream]
+   [prpr3.stream.test :as stream.test]
+   [prpr3.stream.operations :as stream.ops]
+   [prpr3.stream.transport :as stream.transport]
+   [prpr3.stream.types :as stream.types]
+   [prpr3.stream.chunk :as stream.chunk]
+   [prpr3.stream.protocols :as stream.pt]
+   [prpr3.stream :as stream]
 
-   [prpr.stream.cross-impl :as sut]
+   [prpr3.stream.cross-impl :as sut]
 
-   [prpr.stream.cross :as-alias stream.cross]
-   [prpr.stream.cross.op :as-alias stream.cross.op]
+   [prpr3.stream.cross :as-alias stream.cross]
+   [prpr3.stream.cross.op :as-alias stream.cross.op]
 
    )
   #?(:clj (:import

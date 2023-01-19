@@ -1,11 +1,11 @@
-(ns prpr.stream.chunk
+(ns prpr3.stream.chunk
   (:require
    #?(:clj [clojure.core :refer [print-method]])
    [promesa.core :as pr]
-   [prpr.error :as err]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as transport]
-   [prpr.stream.types :as types]))
+   [prpr3.error :as err]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.transport :as transport]
+   [prpr3.stream.types :as types]))
 
 (def default-chunk-size 1000)
 
@@ -61,7 +61,7 @@
 
 #?(:clj
    (defmethod print-method StreamChunkBuilder [x writer]
-     (.write writer "#prpr.stream.ChunkBuilder<")
+     (.write writer "#prpr3.stream.ChunkBuilder<")
      (print-method (pt/-chunk-state x) writer)
      (.write writer ">")))
 

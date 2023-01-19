@@ -1,7 +1,7 @@
-(ns prpr.a-frame.schema
+(ns prpr3.a-frame.schema
   (:require
    [malli.util :as mu]
-   [prpr.stream :as stream]))
+   [prpr3.stream :as stream]))
 
 (def a-frame-state :a-frame/state)
 (def a-frame-state-handlers-a :a-frame.state/handlers-a)
@@ -109,7 +109,7 @@
 ;;    - event-schema : a more restrictive schema for the event
 ;;    - expected-coeffects-schema : a map schema for exepcted coeffects"
 ;;   ([strict? event-schema expected-coeffects-schema]
-;;    (prpr.s/merge-map-schemas
+;;    (prpr3.s/merge-map-schemas
 ;;     (if (some? event-schema)
 ;;      {a-frame-coeffect-event event-schema}
 ;;      {a-frame-coeffect-event Event})

@@ -1,11 +1,11 @@
-(ns prpr.a-frame.cofx
+(ns prpr3.a-frame.cofx
   (:require
    [promesa.core :as pr]
-   [prpr.error :as err]
-   [prpr.a-frame.schema :as schema]
-   [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.cofx.data.tag-readers]
-   [prpr.a-frame.interceptor-chain :as interceptor-chain]
+   [prpr3.error :as err]
+   [prpr3.a-frame.schema :as schema]
+   [prpr3.a-frame.registry :as registry]
+   [prpr3.a-frame.cofx.data.tag-readers]
+   [prpr3.a-frame.interceptor-chain :as interceptor-chain]
    [taoensso.timbre :refer [info warn]]))
 
 (defn reg-cofx

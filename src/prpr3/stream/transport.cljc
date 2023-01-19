@@ -1,4 +1,4 @@
-(ns prpr.stream.transport
+(ns prpr3.stream.transport
   "low-level transport - covers put!ing onto and
    take!ing from a stream, error propagation,
    special value wrapping/unwrapping and
@@ -6,11 +6,11 @@
   (:require
    [promesa.core :as pr]
    [taoensso.timbre :refer [warn]]
-   [prpr.promise :as prpr]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.types :as types]
-   #?(:clj [prpr.stream.manifold :as stream.manifold]
-      :cljs [prpr.stream.core-async :as stream.async]))
+   [prpr3.promise :as prpr]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.types :as types]
+   #?(:clj [prpr3.stream.manifold :as stream.manifold]
+      :cljs [prpr3.stream.core-async :as stream.async]))
   (:refer-clojure
    :exclude [map filter mapcat reductions reduce concat]))
 

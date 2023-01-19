@@ -1,5 +1,5 @@
-(ns prpr.util.macro
-  #?(:cljs (:require-macros [prpr.util.macro])))
+(ns prpr3.util.macro
+  #?(:cljs (:require-macros [prpr3.util.macro])))
 
 ;; from https://github.com/plumatic/schema/blob/master/src/clj/schema/macros.clj
 

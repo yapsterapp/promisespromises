@@ -1,12 +1,12 @@
-(ns prpr.stream.transport-test
+(ns prpr3.stream.transport-test
   (:require
-   [prpr.test :refer [deftest testing is]]
+   [prpr3.test :refer [deftest testing is]]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.stream.test :as st]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.types :as types]
-   [prpr.stream.transport :as sut]))
+   [prpr3.promise :as prpr]
+   [prpr3.stream.test :as st]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.types :as types]
+   [prpr3.stream.transport :as sut]))
 
 (deftest stream-test
   (testing "returns an object which tests stream?"

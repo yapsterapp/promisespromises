@@ -7,14 +7,14 @@
 
 TODO - much documentation expansion
 
-1. **prpr.streams** : A streams API, exposing a Clojure and ClojureScript
+1. **prpr3.streams** : A streams API, exposing a Clojure and ClojureScript
 compatible Manifold-like promises + streams abstraction
-2. **prpr.a-frame** : A port of the [re-frame](https://github.com/day8/re-frame)
+2. **prpr3.a-frame** : A port of the [re-frame](https://github.com/day8/re-frame)
 event and effect handling machinery to the async domain, offering a 
 straightforward separation of pure and effectful code for both 
 Clojure and ClojureScript
 
-## prpr.streams
+## prpr3.streams
 
 Implements a [Manifold-like](https://github.com/yapsterapp/promisespromises/blob/trunk/src/prpr/stream.cljc)
 asynchronous streams API. The fundamental backpressure-sensitive
@@ -22,7 +22,7 @@ Promise + Stream model is the same as Manifold, and the API follows the
 [Manifold streams API](https://github.com/clj-commons/manifold) closely
 
 ``` clojure
-(require '[prpr.stream :as s])
+(require '[prpr3.stream :as s])
 (def s (s/stream))
 (s/put-all-and-close! s [0 1 2 3 4])
 (def r (->> s (s/map inc) (s/reduce ::add +)))
@@ -36,12 +36,12 @@ It does a few things which vanilla Manifold doesn't:
 * **chunking** - streams can be (mostly) transparently chunked for
 improved performance (through fewer callbacks)
 * **uniform clj and cljs API** - you can use the same streams API everywhere!
-* **stream-joins** - `prpr.stream/cross` joins streams sorted in a key - it
+* **stream-joins** - `prpr3.stream/cross` joins streams sorted in a key - it
 has various styles of join - inner, outer, left-n, merge, intersect, union -
 and can be used for a sensible resource-constrained approach to in-memory joins
 with databases such as cassandra
 
-`prpr.stream` has been found particularly suitable for working with cold
+`prpr3.stream` has been found particularly suitable for working with cold
 streams - but it's built on top of Manifold Stream (clj) and core.async chan
 (cljs) and you can fallback to those APIs when necessary.
 
@@ -55,7 +55,7 @@ and core.async (on cljs) as a backpressure-enabled error-free transport
   papered over to present the uniform API
 
 
-## prpr.a-frame
+## prpr3.a-frame
 
 A-frame is a port of the non-view parts of
 [re-frame](https://github.com/day8/re-frame) - event-handling, cofx and
@@ -71,22 +71,22 @@ successfully used for implementing APIs and is perhaps useful client-side too
 * event handlers are pure, returning a single`{<effect-key> <effect-data>}` map,
 or a list of such maps (which will be processed strictly serially)
 * based around a pure-data driven async interceptor-chain
-[`prpr.a-frame.interceptor-chain`](https://github.com/yapsterapp/promisespromises/blob/trunk/src/prpr/a_frame/interceptor_chain.cljc)
+[`prpr3.a-frame.interceptor-chain`](https://github.com/yapsterapp/promisespromises/blob/trunk/src/prpr/a_frame/interceptor_chain.cljc)
 and implemented on top of promesa and
-prpr.streams. Being pure-data driven leads to some nice
+prpr3.streams. Being pure-data driven leads to some nice
 properties
   * interceptor contexts are fully de/serializable
   * errors can include a 'resume-context' allowing for:
     * automatic retry
     * logging of the resume-context, allowing retry in a REPL
 * unlike re-frame, where `dispatch-sync` is uncommon,
-`prpr.a-frame/dispatch-sync` has been perhaps the most used type of dispatch
+`prpr3.a-frame/dispatch-sync` has been perhaps the most used type of dispatch
 with a-frame. `dispatch-sync` is actually an async fn, but it does not resolve
 the result promise until all effects (including transitive dispatches)
 resulting from the event have been processed
 
 ``` clojure
-(require '[prpr.a-frame :as af])
+(require '[prpr3.a-frame :as af])
 
 (af/reg-cofx
   ::load-foo

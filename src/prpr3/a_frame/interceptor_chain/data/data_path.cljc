@@ -1,7 +1,7 @@
-(ns prpr.a-frame.interceptor-chain.data.data-path
+(ns prpr3.a-frame.interceptor-chain.data.data-path
   (:require
    #?(:clj [clojure.pprint :as pprint])
-   [prpr.a-frame.interceptor-chain.data.protocols :as p]
+   [prpr3.a-frame.interceptor-chain.data.protocols :as p]
    [taoensso.timbre :refer [info warn]]))
 
 ;; this protocol is for the cljs IPrintWithWriter

@@ -1,12 +1,12 @@
-(ns prpr.a-frame.cofx-test
+(ns prpr3.a-frame.cofx-test
   (:require
    [promesa.core :as pr]
-   [prpr.test :refer [deftest is testing use-fixtures]]
-   [prpr.a-frame.schema :as schema]
-   [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.registry.test :as registry.test]
-   [prpr.a-frame.interceptor-chain :as interceptor-chain]
-   [prpr.a-frame.cofx :as sut]))
+   [prpr3.test :refer [deftest is testing use-fixtures]]
+   [prpr3.a-frame.schema :as schema]
+   [prpr3.a-frame.registry :as registry]
+   [prpr3.a-frame.registry.test :as registry.test]
+   [prpr3.a-frame.interceptor-chain :as interceptor-chain]
+   [prpr3.a-frame.cofx :as sut]))
 
 (use-fixtures :each registry.test/reset-registry)
 

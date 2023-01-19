@@ -1,4 +1,4 @@
-(ns prpr.a-frame.registry)
+(ns prpr3.a-frame.registry)
 
 ;; registry is for things defined at compile-time and
 ;; named globally

@@ -1,15 +1,15 @@
-(ns prpr.a-frame.interceptor-chain
+(ns prpr3.a-frame.interceptor-chain
   (:require
    [malli.util :as mu]
    [malli.experimental :as mx]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.error :as err]
+   [prpr3.promise :as prpr]
+   [prpr3.error :as err]
    [taoensso.timbre :refer [warn error]]
-   [prpr.a-frame.schema :as af.schema]
-   [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.interceptor-chain.data :as data]
-   [prpr.a-frame.interceptor-chain.data.tag-readers]))
+   [prpr3.a-frame.schema :as af.schema]
+   [prpr3.a-frame.registry :as registry]
+   [prpr3.a-frame.interceptor-chain.data :as data]
+   [prpr3.a-frame.interceptor-chain.data.tag-readers]))
 
 ;; a slightly more data-driven interceptor chain for a-frame
 ;;
@@ -23,7 +23,7 @@
 ;;
 ;; this makes sense for a-frame, which already maintains a registry of different
 ;; kinds of handlers. it doesn't necessarily make sense for a general purpose
-;; interceptor chain, which remains at prpr.interceptor-chain
+;; interceptor chain, which remains at prpr3.interceptor-chain
 
 (def Interceptor
   "An Interceptor, all methods are optional but should be implemented as

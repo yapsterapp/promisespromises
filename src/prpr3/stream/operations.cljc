@@ -1,14 +1,14 @@
-(ns prpr.stream.operations
+(ns prpr3.stream.operations
   (:refer-clojure :exclude [concat count filter map mapcat reduce reductions])
   (:require
    [clojure.core :as clj]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as transport]
-   [prpr.stream.types :as types]
-   [prpr.stream.chunk :as chunk]
-   [prpr.stream.zip-impl :as zip-impl]))
+   [prpr3.promise :as prpr]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.transport :as transport]
+   [prpr3.stream.types :as types]
+   [prpr3.stream.chunk :as chunk]
+   [prpr3.stream.zip-impl :as zip-impl]))
 
 ;; a clj+cljs cross-platform streams lib, in the style of manifold
 ;;

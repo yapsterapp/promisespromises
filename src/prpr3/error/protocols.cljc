@@ -1,4 +1,4 @@
-(ns prpr.error.protocols)
+(ns prpr3.error.protocols)
 
 (defprotocol IErrorWrapper
   (-unwrap [_] "unwrap and maybe throw")

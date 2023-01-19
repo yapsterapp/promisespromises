@@ -1,8 +1,8 @@
-(ns prpr.stream.manifold
+(ns prpr3.stream.manifold
   (:require
    [manifold.deferred :as m.deferred]
    [manifold.stream :as m.stream]
-   [prpr.stream.protocols :as p]
+   [prpr3.stream.protocols :as p]
    [promesa.core :as promise]
    [promesa.protocols :as promise.p])
   (:import
@@ -35,17 +35,17 @@
 
 (def default-connect-via-opts
   {;; standard manifold default
-   :prpr.stream/downstream? true
+   :prpr3.stream/downstream? true
    ;; *not* the standard manifold default - but we
    ;; can easily implement this behaviour for core.async too
    ;; so going with it for cross-platform consistency
-   :prpr.stream/upstream? true})
+   :prpr3.stream/upstream? true})
 
 (defn manifold-connect-via-opts
-  [{downstream? :prpr.stream/downstream?
-    upstream? :prpr.stream/upstream?
-    timeout :prpr.stream/timeout
-    description :prpr.stream/description}]
+  [{downstream? :prpr3.stream/downstream?
+    upstream? :prpr3.stream/upstream?
+    timeout :prpr3.stream/timeout
+    description :prpr3.stream/description}]
   (cond-> {}
     (some? downstream?) (assoc :downstream? downstream?)
     (some? upstream?) (assoc :upstream? upstream?)

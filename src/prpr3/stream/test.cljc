@@ -1,9 +1,9 @@
-(ns prpr.stream.test
+(ns prpr3.stream.test
   (:require
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.transport :as stream.transport]
+   [prpr3.promise :as prpr]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.transport :as stream.transport]
    ))
 
 (defn stream-of

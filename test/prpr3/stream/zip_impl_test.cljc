@@ -1,11 +1,11 @@
-(ns prpr.stream.zip-impl-test
+(ns prpr3.stream.zip-impl-test
   (:require
    [promesa.core :as pr]
-   [prpr.test :refer [deftest testing is]]
-   [prpr.stream.protocols :as pt]
-   [prpr.stream.types :as types]
-   [prpr.stream.transport :as transport]
-   [prpr.stream.zip-impl :as sut]))
+   [prpr3.test :refer [deftest testing is]]
+   [prpr3.stream.protocols :as pt]
+   [prpr3.stream.types :as types]
+   [prpr3.stream.transport :as transport]
+   [prpr3.stream.zip-impl :as sut]))
 
 (deftest chunk-zip-test
   (testing "zips plain value streams"

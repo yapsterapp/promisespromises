@@ -1,8 +1,8 @@
-(ns prpr.test.reduce
+(ns prpr3.test.reduce
   (:require
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.error :as err]))
+   [prpr3.promise :as prpr]
+   [prpr3.error :as err]))
 
 (def max-depth 20)
 

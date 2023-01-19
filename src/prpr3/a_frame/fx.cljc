@@ -1,14 +1,14 @@
-(ns prpr.a-frame.fx
+(ns prpr3.a-frame.fx
   (:require
    [malli.experimental :as mx]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.error :as err]
-   [prpr.a-frame.schema :as schema]
-   [prpr.a-frame.registry :as registry]
-   [prpr.a-frame.events :as events]
-   [prpr.a-frame.router :as router]
-   [prpr.a-frame.interceptor-chain :as interceptor-chain]
+   [prpr3.promise :as prpr]
+   [prpr3.error :as err]
+   [prpr3.a-frame.schema :as schema]
+   [prpr3.a-frame.registry :as registry]
+   [prpr3.a-frame.events :as events]
+   [prpr3.a-frame.router :as router]
+   [prpr3.a-frame.interceptor-chain :as interceptor-chain]
    [taoensso.timbre :refer [warn]]))
 
 (defn reg-fx

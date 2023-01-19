@@ -1,4 +1,4 @@
-(ns prpr.test.malli
+(ns prpr3.test.malli
   (:require
    #?(:clj [malli.instrument :as mi])
    ))

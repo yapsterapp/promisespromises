@@ -1,6 +1,6 @@
-(ns prpr.a-frame.registry.test
+(ns prpr3.a-frame.registry.test
   (:require
-   [prpr.a-frame.registry :as registry]))
+   [prpr3.a-frame.registry :as registry]))
 
 #?(:cljs
    (def snapshot-a (atom nil)))

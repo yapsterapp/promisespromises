@@ -1,4 +1,4 @@
-(ns prpr.stream.protocols)
+(ns prpr3.stream.protocols)
 
 ;; cross-platform interface to build a stream
 (defprotocol IStreamFactory
@@ -67,7 +67,7 @@
     "peek a single chunk or value")
   (-take-chunk! [_]
     "take chunks or plain values from a stream paying attention to errors
-   - returns Promise<chunk | value | error | :prpr.stream/end>")
+   - returns Promise<chunk | value | error | :prpr3.stream/end>")
   (-pushback-chunk! [_ chunk-or-val]
     "push a chunk or values back onto the logical stream (into the buffer)"))
 
@@ -76,4 +76,4 @@
     "peek a single value")
   (-take-value! [_]
     "take single values from a stream paying attention to chunks and errors
-     - returns Promise<value | error | :prpr.stream/end>"))
+     - returns Promise<value | error | :prpr3.stream/end>"))

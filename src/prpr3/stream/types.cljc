@@ -1,8 +1,8 @@
-(ns prpr.stream.types
+(ns prpr3.stream.types
   (:require
    #?(:cljs [cljs.core :refer [IEquiv]])
    [promesa.core :as pr]
-   [prpr.stream.protocols :as pt]))
+   [prpr3.stream.protocols :as pt]))
 
 (extend-protocol pt/IStreamValue
   #?(:clj Object :cljs default)

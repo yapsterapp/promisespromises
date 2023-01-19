@@ -1,9 +1,9 @@
-(ns prpr.promise.retry-test
+(ns prpr3.promise.retry-test
   (:require
-   [prpr.test :refer [deftest testing is with-log-level]]
+   [prpr3.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]
-   [prpr.promise :as prpr]
-   [prpr.promise.retry :as sut]))
+   [prpr3.promise :as prpr]
+   [prpr3.promise.retry :as sut]))
 
 (deftest retry-n-test
   (with-log-level :info

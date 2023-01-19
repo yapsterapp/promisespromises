@@ -1,8 +1,8 @@
-(ns prpr.a-frame.interceptor-chain.data-test
+(ns prpr3.a-frame.interceptor-chain.data-test
   (:require
-   [prpr.test :refer [deftest testing is]]
-   [prpr.a-frame.interceptor-chain.data.data-path :refer [->DataPath]]
-   [prpr.a-frame.interceptor-chain.data :as sut]))
+   [prpr3.test :refer [deftest testing is]]
+   [prpr3.a-frame.interceptor-chain.data.data-path :refer [->DataPath]]
+   [prpr3.a-frame.interceptor-chain.data :as sut]))
 
 
 (deftest resolve-data-test

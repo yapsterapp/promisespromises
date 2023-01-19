@@ -1,9 +1,9 @@
-(ns prpr.error
+(ns prpr3.error
   (:refer-clojure :exclude [ex-info])
   (:require
    [clojure.core :as clj]
    #?(:clj [clojure.pprint :as pprint])
-   [prpr.error.protocols :as pt]))
+   [prpr3.error.protocols :as pt]))
 
 (defn ex-info
   ([type]

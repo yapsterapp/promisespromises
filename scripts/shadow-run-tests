@@ -5,4 +5,4 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $DIR/..
 npm ci
 
-npx shadow-cljs release node-test ; node -r source-map-support/register target/node-test/node-tests.js
+clojure -A:shadow-cljs -A:test release node-test ; node -r source-map-support/register target/node-test/node-tests.js

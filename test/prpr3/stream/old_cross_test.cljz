@@ -1,0 +1,800 @@
+(ns prpr3.stream.old-cross-test
+  (:require
+   [prpr3.test :refer [deftest testing is with-log-level]]))
+
+(defn random-sorted-vec
+  "returns a sorted vector of random integers"
+  [{min-vec-sz :min-vec-sz
+    max-vec-sz :max-vec-sz
+    min-el-val :min-el-val
+    el-val-range :el-val-range
+    :or {min-vec-sz 0
+         el-val-range Integer/MAX_VALUE}}]
+  (assert max-vec-sz)
+  (let [sz (rand-int (- (inc max-vec-sz) min-vec-sz))
+        sz (+ min-vec-sz sz)
+
+        min-el-val (or min-el-val
+                       (rand-int (- Integer/MAX_VALUE el-val-range)))]
+    (->> (range 0 sz)
+         (map (fn [_] (+ min-el-val (rand-int el-val-range))))
+         (sort)
+         (vec))))
+
+(defn random-sorted-vecs
+  [{vec-cnt :vec-cnt
+    min-el-val :min-el-val
+    el-val-range :el-val-range
+    :or {el-val-range Integer/MAX_VALUE}
+    :as args}]
+  (assert vec-cnt)
+  (let [min-el-val (or min-el-val
+                       (rand-int (- Integer/MAX_VALUE el-val-range)))]
+    (vec
+     (repeatedly vec-cnt #(random-sorted-vec
+                           (-> args
+                               (dissoc :vec-cnt)
+                               (assoc :min-el-val min-el-val)))))))
+
+(defn random-keyed-vecs
+  "returns a linked/map of random vectors keyed by
+   keywords formed from a 0-based index"
+  [{min-vec-cnt :min-vec-cnt
+    max-vec-cnt :max-vec-cnt
+    :or {min-vec-cnt 1}
+    :as args}]
+  (assert max-vec-cnt)
+  (let [cnt (rand-int (- (inc max-vec-cnt) min-vec-cnt))
+        cnt (+ min-vec-cnt cnt)
+        vs (random-sorted-vecs (-> args
+                                   (dissoc :min-vec-cnt :max-vec-cnt)
+                                   (assoc :vec-cnt cnt)))]
+    (->>
+     vs
+     (map-indexed
+      (fn [i v]
+        [(keyword (str i)) v]))
+     (into (linked/map)))))
+
+(defn random-keyed-vecs-seq
+  [{seq-cnt :seq-cnt
+    :as args}]
+  (assert seq-cnt)
+  (repeatedly seq-cnt #(random-keyed-vecs (-> args
+                                              (dissoc :seq-cnt)))))
+
+(defn random-keys
+  "return a non-empty set containing a random selection of keys from a
+   non-empty map of stream buffers with
+   sequential 0-based int-keyword stream keys"
+  [kvs]
+  (let [cnt (count kvs)]
+    (assert (> cnt 0))
+    (->> (rand-int cnt)
+         inc
+         (range 0)
+         (map (fn [_] (rand-int cnt)))
+         (distinct)
+         (map (comp keyword str))
+         (set))))
+
+(defn vecs->streams
+  [vs]
+  (mapv s/->source vs))
+
+(defn keyed-vecs->streams
+  [kvs]
+  (->> kvs
+       (map (fn [[k v]] [k (s/->source v)]))
+       (into (linked/map))))
+
+(defn keyed-vecs->sorted-streams
+  ([key-fn kvs]
+   (->> kvs
+        (map (fn [[k v]] [k (sut/sorted-stream
+                             key-fn
+                             (s/->source v))]))
+        (into (linked/map)))))
+
+(deftest min-key-val-test
+  (is (= 1 (sut/min-key-val compare [3 2 1])))
+  (is (= 3 (sut/min-key-val (comp - compare) [3 2 1]))))
+
+(deftest buffer-values-test
+  (testing "empty stream"
+    (let [[h n :as r] @(sut/buffer-values
+                        compare
+                        :foo
+                        (s/->source [])
+                        nil)]
+      (is (= h ::sut/drained))))
+
+  (testing "initial values"
+    (let [[h n :as r] @(sut/buffer-values
+                        compare
+                        :foo
+                        (s/->source [0 0 0 1])
+                        nil)]
+      (is (= h [0 [0 0 0]]))))
+
+  (testing "end of stream"
+    (let [[h n :as r] @(sut/buffer-values
+                        compare
+                        :foo
+                        (s/->source [])
+                        [0 [0 0 0]])]
+      (is (= r [[0 [0 0 0]]
+                ::sut/drained]))))
+
+  (testing "another value with the key then end-of-stream"
+    (let [[h n :as r] @(sut/buffer-values
+                        compare
+                        :foo
+                        (s/->source [0])
+                        [0 [0 0]])]
+      (is (= r [[0 [0 0 0]]
+                ::sut/drained]))))
+
+  (testing "another value with the key then a different key"
+    (let [[h n :as r] @(sut/buffer-values
+                        compare
+                        :foo
+                        (s/->source [0 1])
+                        [0 [0 0]])]
+      (is (= r [[0 [0 0 0]]
+                [1 [1]]]))))
+
+  (testing "values out of order throw error"
+    (let [[ek err] @(pr/catch-error
+                     (sut/buffer-values
+                      compare
+                      :foo
+                      (s/->source [0])
+                      [1 [1]]))]
+      (is (= ek ::sut/stream-not-sorted))
+      (is (= err {:stream-key :foo
+                  :this [1 [1]]
+                  :next [0 [0]]}))))
+
+  (testing "exception during key-compare reports buffers"
+    (let [[ek err] @(pr/catch-error
+                     (sut/buffer-values
+                      (fn [a b] (throw (ex-info "boo" {})))
+                      :foo
+                      (s/->source [0])
+                      [1 [1]]))]
+      (is (= ek ::sut/key-compare-error))
+      (is (= err {:stream-key :foo
+                  :this [1 [1]]
+                  :next [0 [0]]})))))
+
+(deftest init-stream-buffers-test
+  ;; max-value smaller than max-sz leads to repeated sequences
+  ;; of the same int
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                      :max-vec-cnt 20
+                                      :max-vec-sz 10
+                                      :el-val-range 3})]
+    (let [ss (keyed-vecs->streams kvs)
+          hvs @(sut/init-stream-buffers compare ss)]
+      (is (= (->> kvs (map
+                       (fn [[k vs]]
+                         (let [pvs (->> vs
+                                        (partition-by identity)
+                                        (map vec))]
+                           (if (not-empty pvs)
+                             [k [[(-> pvs first first) (first pvs)]
+                                 (if (second pvs)
+                                   ;; note only a *single* element of the
+                                   ;; next-value items is retrieved
+                                   [(-> pvs second first)
+                                    [(-> pvs second first)]]
+                                   ::sut/drained)]]
+                             [k [::sut/drained]]))))
+                  (into (linked/map)))
+             hvs)))))
+
+(deftest min-key-skey-values-test
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                      :max-vec-cnt 20
+                                      :max-vec-sz 10
+                                      :el-val-range 3})]
+    (let [kss (keyed-vecs->streams kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)]
+      (is (= (->> kvs
+                  (map (fn [[k vs]]
+                         (let [pvs (partition-by identity vs)]
+                           (when (not-empty pvs)
+                             [k (-> pvs first first) (first pvs)]))))
+                  (filter some?)
+                  (sort-by second)
+                  (partition-by second)
+                  first
+                  (map (fn [[sk vk vs]]
+                         [sk vs]))
+                  (into (linked/map)))
+             mkskvs)))))
+
+(deftest select-skey-values-test
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                      :max-vec-cnt 20
+                                      :max-vec-sz 10
+                                      :el-val-range 3})]
+    (let [kss (keyed-vecs->streams kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)]
+
+      ;; (info "mkskvs" mkskvs)
+
+      (testing "select-first"
+        (let [sel-skvs (sut/select-skey-values
+                        sut/select-first
+                        mkskvs)]
+          (is (= (->> mkskvs
+                      (take 1)
+                      (into (linked/map)))
+                 sel-skvs))))
+
+      (testing "select-all"
+        (let [sel-skvs (sut/select-skey-values
+                        sut/select-all
+                        mkskvs)]
+          (is (= mkskvs
+                 sel-skvs)))))))
+
+(deftest merge-stream-objects-test
+  ;; limit the max-vec-sz to 1 so there are no repeated
+  ;; skeys in skey-vals
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                      :max-vec-cnt 20
+                                      :max-vec-sz 1
+                                      :el-val-range 3})]
+    (let [kss (keyed-vecs->sorted-streams
+               identity
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+
+          sel-skvs (sut/select-skey-values
+                    sut/select-all
+                    mkskvs)
+
+          skey-vals (->> sel-skvs
+                         (map (fn [[sk vs]]
+                                (for [v vs]
+                                  [sk v])))
+                         (apply concat))
+
+          mos (sut/merge-stream-objects
+               0
+               (fn [o sk v] (+ o v))
+               kss
+               skey-vals)]
+      (is (=  (->> skey-vals
+                   (map second)
+                   (reduce + 0))
+             mos)))))
+
+(deftest head-values-cartesian-product-merge-test
+  (testing "trivial cartesian product"
+    (is (= @(sut/head-values-cartesian-product-merge
+             []
+             conj
+             identity
+             identity
+             {}
+             {})
+           [])))
+  (testing "non-trivial cartesian products"
+    (doseq [;; ensure no empty streams with :min-vec-sz
+            ;; also be careful - it will generate
+            ;; ~ :max-vec-sz ^ max-vec-cnt
+            ;; records
+            kvs (random-keyed-vecs-seq {:seq-cnt 1000
+                                        :max-vec-cnt 5
+                                        :min-vec-sz 1
+                                        :max-vec-sz 10
+                                        :el-val-range 3})]
+      (let [kss (keyed-vecs->streams kvs)
+            hvs @(sut/init-stream-buffers compare kss)
+
+            mkskvs (sut/min-key-skey-values
+                    compare
+                    kss
+                    hvs)
+
+            kvcp @(sut/head-values-cartesian-product-merge
+                   []
+                   conj
+                   identity
+                   identity
+                   kss
+                   mkskvs)]
+        ;; (info "mkskvs" mkskvs)
+        ;; (info "kvcp" (vec kvcp))
+
+        (is (= (->> mkskvs
+                    (map (fn [[sk hvals]]
+                           (for [v hvals]
+                             [sk v])))
+                    (apply combo/cartesian-product)
+                    (map #(sut/merge-stream-objects [] conj kss %)))
+               kvcp)))))
+
+  (testing "finish-merge finishes merges and product-sort-fn sorts the cartesian product output"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o vals (apply merge)))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
+      (is (=
+           [{:foo 1, :bar 1, :baz 1}
+            {:foo 1, :bar 1, :baz 2}
+            {:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp))))
+
+  (testing "finish-merge returning a Deferred result"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o vals (apply merge) d/success-deferred))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
+      (is (=
+           [{:foo 1, :bar 1, :baz 1}
+            {:foo 1, :bar 1, :baz 2}
+            {:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp))))
+
+  (testing "finish-merge-fn can remove values"
+    (let [s1 [{:foo 1 :bar 1} {:foo 1 :bar 2}]
+          s2 [{:foo 1 :baz 2} {:foo 1 :baz 1}]
+          kvs {:s1 s1 :s2 s2}
+          kss (keyed-vecs->sorted-streams
+               :foo
+               kvs)
+          hvs @(sut/init-stream-buffers compare kss)
+          mkskvs (sut/min-key-skey-values
+                  compare
+                  kss
+                  hvs)
+          kvcp @(sut/head-values-cartesian-product-merge
+                 {}
+                 assoc
+                 (fn [o] (->> o
+                              vals
+                              (apply merge)
+                              ((fn [m]
+                                 (when (even? (:bar m))
+                                   m)))))
+                 (partial sort-by (juxt :bar :baz))
+                 kss
+                 mkskvs)]
+      (is (=
+           [{:foo 1, :bar 2, :baz 1}
+            {:foo 1, :bar 2, :baz 2}]
+           kvcp)))))
+
+(deftest next-output-values-test
+  (testing "next-output-values"
+    (doseq [kvs (concat
+                 ;; always try degenerate all-empty-streams cases
+                 [{:0 []}]
+                 [{:0 [] :1 []}]
+                 (random-keyed-vecs-seq {:seq-cnt 1000
+                                         :max-vec-cnt 20
+                                         :max-vec-sz 100
+                                         :el-val-range 5})
+                 )]
+      (let [kss (keyed-vecs->sorted-streams
+                 identity
+                 ;; (fn [o [sk v]] (conj o [sk v]))
+                 kvs)
+
+            skey-streambufs @(sut/init-stream-buffers compare kss)
+
+            all-drained? (->> skey-streambufs
+                              (filter (fn [[sk [hv]]]
+                                        (not= ::sut/drained hv)))
+                              (count)
+                              (= 0))
+
+            ;; _ (warn "skey-streambufs" skey-streambufs)
+
+            [output-values
+             next-skey-head-values] @(sut/next-output-values
+                                      {:key-compare-fn compare
+                                       :selector-fn sut/select-first
+                                       :finish-merge-fn nil
+                                       :product-sort-fn nil
+                                       :init-output-value {}
+                                       :skey-streams kss
+                                       :skey-streambufs skey-streambufs})]
+        ;; (warn "kvs" kvs)
+        (if all-drained?
+          (do
+            (is (= ::sut/drained output-values))
+            (is (= nil next-skey-head-values)))
+          (do
+            (let [expected-result (->> kvs
+                                       (filter #(not-empty (second %)))
+                                       (sort-by (comp first second))
+                                       (take 1)
+                                       (map (fn [[k vs]] (->> vs
+                                                              (partition-by identity)
+                                                              first
+                                                              (map (fn [v] {k v})))))
+                                       (apply concat))]
+              (when (not= expected-result output-values)
+                (warn "bad-kvs" kvs)
+                (warn "bad-skey-streambufs" skey-streambufs)
+                (warn "bad-expected-result" expected-result)
+                (warn "bad-output-values" (vec output-values)))
+              (is (= expected-result
+                     output-values))))))))
+
+  (testing "throws if selector-fn doesn't select at least one value"
+    (let [s0 (s/->source [1 2 3])
+          s1 (s/->source [1 2 3])
+          kss {:0 s0 :1 s1}
+          [ek err] @(pr/catch-error
+                     (sut/next-output-values
+                      {:key-compare-fn compare
+                       :selector-fn (fn [& args] nil)
+                       :finish-merge-fn nil
+                       :product-sort-fn nil
+                       :init-output-value {}
+                       :skey-streams kss
+                       :skey-streambufs {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}}))]
+      (is (= ::sut/selector-fn-failed ek))))
+
+  (testing "throws if selector-fn chooses a wrong value"
+    (let [s0 (s/->source [1 2 3])
+          s1 (s/->source [1 2 3])
+          kss {:0 s0 :1 s1}
+          [ek error] @(pr/catch-error
+                       (sut/next-output-values
+                        {:key-compare-fn compare
+                         :selector-fn (fn [& args] [::blah])
+                         :finish-merge-fn  nil
+                         :product-sort-fn nil
+                         :init-output-value {}
+                         :skey-streams kss
+                         :skey-streambufs {:0 [[1 [1]] ::sut/drained] :1 [[1 [1]] ::sut/drained]}}))]
+      (is (= ::sut/selector-fn-failed ek))))
+  )
+
+(deftest cross-streams-test
+  (testing "streams get crossed"
+    (doseq [kvs (concat
+                 ;; always try degenerate all-empty-streams cases
+                 [{:0 []}]
+                 [{:0 [] :1 []}]
+                 ;; combinatorics can generate massive data
+                 ;; :max-vec-size ^ :max-vec-cnt
+                 (random-keyed-vecs-seq {:seq-cnt 1000
+                                         :max-vec-cnt 3
+                                         :max-vec-sz 100
+                                         :el-val-range 10}))]
+      ;; (warn "vs" kvs)
+      (let [kss (keyed-vecs->streams kvs)
+            os @(sut/cross-streams
+                 {:id ::cross-streams-test-streams-get-crossed
+                  :key-compare-fn compare
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
+            ovs @(s/reduce conj [] os)]
+        (is (= (->> kvs
+                    (mapcat (fn [[k vs]] (for [v vs] [k v])))
+                    (sort-by second)
+                    (map (fn [[k v]] {k v})))
+               ovs))))
+    )
+
+  (with-log-level :error
+    (testing "errors during setup close the sources and propagate"
+      (let [s0 (s/stream)
+            s1 (s/stream)
+            _ (doseq [v [1 2 3]] (s/put! s0 v))
+            _ (doseq [v [1 2 3]] (s/put! s1 v))
+            kss {:0 s0 :1 s1}
+            os-d (sut/cross-streams
+                  {:id ::cross-streams-test-errors-during-setup
+                   :key-compare-fn (fn [& args] (throw (ex-info "boo" {})))
+                   :selector-fn sut/select-first
+                   :init-output-value nil
+                   :skey-streams kss})
+
+            _ (is (not (s/drained? @os-d)))
+            v @(s/take! @os-d)]
+        (is (pr.st/stream-error? v))
+        (let [[k v] (some-> v :error ex-data pr/decode-error-value)]
+          (is (= ::sut/cross-streams-error k)))
+        (is (s/closed? s0))
+        (is (s/closed? s0)))))
+
+  (with-log-level :error
+    (testing "errors after setup close the sources and the output and propagate"
+      (let [s0 (s/stream)
+            s1 (s/stream)
+            _ (doseq [vs [1 2 3]] (s/put! s0 vs))
+            _ (doseq [vs [1 2 3]] (s/put! s1 vs))
+            kss {:0 s0 :1 s1}
+            os @(sut/cross-streams
+                 {:id ::cross-streams-test-errors-after-setup
+                  :key-compare-fn (let [n (atom 0)]
+                                    (fn [& args]
+                                      ;; 4 is slightly flakey... the key-comparator
+                                      ;; now gets called during buffering...
+                                      (if (> (swap! n inc) 4)
+                                        (throw (ex-info "hoo" {}))
+                                        (apply compare args))))
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
+            [v1 v2 :as ovs] @(s/reduce conj [] os)]
+
+        (is (s/closed? s0))
+        (is (s/closed? s1))
+        (is (s/drained? os))
+        (is (= 2 (count ovs)))
+        (is (= {:0 1} v1))
+        (is (pr.st/stream-error? v2))
+        (let [[k v] (some-> v2 :error ex-data pr/decode-error-value)]
+          (is (= ::sut/cross-streams-error k))))))
+
+  (log/with-config {} ;; disable logging completely to prevent exception being printed
+    (testing "errors on derived streams don't cause hangs"
+      ;; like they used to during participant-stream processing
+      (let [s0 (s/stream)
+            s1 (s/stream)
+            kss {:0 s0 :1 s1}
+            _ (doseq [[k s] kss]
+                (doseq [v [1 2 3]]
+                  (s/put! s v))
+                (s/close! s))
+
+            cs @(sut/cross-streams
+                 {:id ::cross-streams-test-errors-on-derived-streams
+                  :key-compare-fn clojure.core/compare
+                  :selector-fn sut/select-first
+                  :init-output-value {}
+                  :skey-streams kss})
+
+            ms (s/map (fn [k-v]
+                        (let [[k v] (first k-v)]
+                          (if (< v 2)
+                            (inc v)
+                            (throw (ex-info "woo" {})))))
+                      cs)
+            ovs @(s/reduce conj [] ms)]
+
+        (is (s/closed? s0))
+        (is (s/closed? s1))
+        (is (s/drained? ms))
+        (is (s/drained? cs)) ;; this is reasonable
+
+        (is (= [2 2] ovs)))))
+
+  )
+
+(deftest sort-merge-streams-test
+  (doseq [kvs (random-keyed-vecs-seq {:seq-cnt 1
+                                      :max-vec-cnt 20
+                                      :max-vec-sz 100
+                                      :el-val-range 5})]
+    (let [kss (keyed-vecs->streams kvs)
+          os @(sut/sort-merge-streams
+               {:id ::sort-merge-streams-test
+                :skey-streams kss})
+          ovs @(s/reduce conj [] os)]
+      (is (= (->> kvs
+                  vals
+                  (apply concat)
+                  sort)
+             ovs)))))
+
+(deftest full-outer-join-records-test
+  (testing "with a single key-fn"
+    (let [s0 (s/->source [{:foo 1 :bar 10} {:foo 3 :bar 30} {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100} {:foo 2 :baz 200} {:foo 3 :baz 300}])
+          kss {:0 s0 :1 s1}
+
+          os @(sut/full-outer-join-streams
+               {:id ::full-outer-join-records-test-single-key-fn
+                :default-key-fn :foo
+                :skey-streams kss})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+              {:1 {:foo 2 :baz 200}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+              {:0 {:foo 4 :bar 40}}]
+             ovs))))
+
+  (testing "1-many joins"
+    (let [s0 (s/->source [{:foo 1 :bar 10}
+                          {:foo 3 :bar 30}
+                          {:foo 3 :bar 40}
+                          {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100}
+                          {:foo 1 :baz 200}
+                          {:foo 2 :baz 200}
+                          {:foo 3 :baz 300}])
+          kss {:0 s0 :1 s1}
+
+          os @(sut/full-outer-join-streams
+               {:id ::full-outer-join-records-test-1-many-joins
+                :default-key-fn :foo
+                :skey-streams kss})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+              {:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 200}}
+              {:1 {:foo 2 :baz 200}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+              {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 300}}
+              {:0 {:foo 4 :bar 40}}]
+             ovs))))
+
+  (testing "many-many joins"
+    (with-log-level :error
+      (let [s0 (s/->source [{:foo 1 :bar 10}
+                            {:foo 3 :bar 30}
+                            {:foo 3 :bar 40}
+                            {:foo 4 :bar 40}])
+            s1 (s/->source [{:foo 1 :baz 100}
+                            {:foo 3 :baz 300}
+                            {:foo 3 :baz 400}])
+            kss {:0 s0 :1 s1}
+
+            os @(sut/full-outer-join-streams
+                 {:id ::full-outer-join-records-test-many-many-joins
+                  :default-key-fn :foo
+                  :skey-streams kss})
+            ovs @(s/reduce conj [] os)]
+
+        (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 4 :bar 40}}]
+               ovs)))))
+
+  (testing "with passed ISortedStreams with custom key-fns"
+    (let [s0 (s/->source [{:foo 1 :bar 10} {:foo 3 :bar 30} {:foo 4 :bar 40}])
+          s1 (s/->source [{:foofoo 1 :baz 100}
+                          {:foofoo 2 :baz 200}
+                          {:foofoo 3 :baz 300}])
+          ss1 (sut/sorted-stream :foofoo s1)
+          kss {:0 s0 :1 ss1}
+
+          os @(sut/full-outer-join-streams
+               {:id ::full-outer-join-records-test-custom-key-fns
+                :default-key-fn :foo
+                :skey-streams kss})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foofoo 1 :baz 100}}
+              {:1 {:foofoo 2 :baz 200}}
+              {:0 {:foo 3 :bar 30} :1 {:foofoo 3 :baz 300}}
+              {:0 {:foo 4 :bar 40}}]
+             ovs)))))
+
+(deftest n-left-join-test
+  (testing "1-1 1-left join"
+    (let [s0 (s/->source [{:foo 1 :bar 10}
+                          {:foo 3 :bar 30}
+                          {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100}
+                          {:foo 2 :baz 200}
+                          {:foo 3 :baz 300}])
+
+          kss [[:0 s0][:1 s1]]
+
+          os @(sut/n-left-join-streams
+               {:id ::n-left-join-test-1-1-1-left-join
+                :default-key-fn :foo
+                :skey-streams kss
+                :n 1})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+              {:0 {:foo 4 :bar 40}}]
+             ovs))))
+
+  (testing "1-1 2-left join"
+    (let [s0 (s/->source [{:foo 1 :bar 10}
+                          {:foo 3 :bar 30}
+                          {:foo 4 :bar 40}])
+          s1 (s/->source [{:foo 1 :baz 100}
+                          {:foo 2 :baz 200}
+                          {:foo 3 :baz 300}])
+          s2 (s/->source [{:foo 1 :baz 1000}
+                          {:foo 2 :baz 2000}
+                          {:foo 4 :bar 40}
+                          {:foo 5 :baz 5000}])
+
+          kss [[:0 s0][:1 s1][:2 s2]]
+
+          os @(sut/n-left-join-streams
+               {:id ::n-left-join-test-1-1-2-left-join
+                :default-key-fn :foo
+                :skey-streams kss
+                :n 2})
+          ovs @(s/reduce conj [] os)]
+
+      (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100} :2 {:foo 1 :baz 1000}}
+              {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}]
+             ovs))))
+
+  (testing "many-many joins"
+    (with-log-level :warn
+      (let [s0 (s/->source [{:foo 1 :bar 10}
+                            {:foo 3 :bar 30}
+                            {:foo 3 :bar 40}
+                            {:foo 4 :bar 40}])
+            s1 (s/->source [{:foo 1 :baz 100}
+                            {:foo 3 :baz 300}
+                            {:foo 3 :baz 400}
+                            {:foo 5 :baz 500}])
+            kss [[:0 s0][:1 s1]]
+
+            os @(sut/n-left-join-streams
+                 {:id ::n-left-join-test-many-many-joins
+                  :default-key-fn :foo
+                  :skey-streams kss
+                  :n 1})
+            ovs @(s/reduce conj [] os)]
+
+        (is (= [{:0 {:foo 1 :bar 10} :1 {:foo 1 :baz 100}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 30} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 300}}
+                {:0 {:foo 3 :bar 40} :1 {:foo 3 :baz 400}}
+                {:0 {:foo 4 :bar 40}}]
+               ovs)))))
+  )

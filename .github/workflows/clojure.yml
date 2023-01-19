@@ -14,6 +14,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build and Run Clojure tests
-      run: clojure -T:build ci
+      run: clj -T:build ci
     - name: Run ClojureScript tests
       run: ./scripts/shadow-run-tests

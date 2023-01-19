@@ -13,9 +13,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Install dependencies
-      run: lein deps
-    - name: Run Clojure tests
-      run: lein test
+    - name: Build and Run Clojure tests
+      run: clojure -T:build ci
     - name: Run ClojureScript tests
       run: ./scripts/shadow-run-tests

@@ -2,22 +2,27 @@
 {:deps {:aliases [:shadow-cljs]}
 
  :builds
- {:node-test {:target    :node-test
-              :output-to "target/node-test/node-tests.js"
-              :ns-regexp ".*-test"
-              :autorun   false
-              :devtools {:preloads []}
-              :compiler-options {:optimizations :simple
-                                 :source-map true}
-              :closure-defines {}}
+ {:node-test-simple {:target    :node-test
+                     :output-to "target/node-test-simple/node-tests.js"
+                     :ns-regexp ".*-test"
+                     :autorun   false
+                     :devtools {:preloads []}
+                     :compiler-options {:optimizations :simple
+                                        :source-map true}
+                     :closure-defines {}}
+
+  :node-test-advanced {:target    :node-test
+                       :output-to "target/node-test-advanced/node-tests.js"
+                       :ns-regexp ".*-test"
+                       :autorun   false
+                       :devtools {:preloads []}
+                       :compiler-options {:optimizations :advanced
+                                          :source-map true}
+                       :closure-defines {}}
 
   :node-test-autorun {:target    :node-test
                       :output-to "target/node-test-autorun/node-tests.js"
                       :ns-regexp ".*-test"
                       :autorun   true
                       :compiler-options {}
-                      :closure-defines {}}
-
-  :node-lib {:target :node-library
-             :output-to "target/node-lib/node-lib.js"
-             :exports {:stream prpr3.stream/stream}}}}
+                      :closure-defines {}}}}

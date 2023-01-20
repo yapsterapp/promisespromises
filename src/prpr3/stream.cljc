@@ -1,11 +1,15 @@
 (ns prpr3.stream
+  "asynchronous stream operations"
   (:refer-clojure :exclude [concat count filter map mapcat reduce reductions])
   (:require
    [prpr3.stream.transport :as transport]
    [prpr3.stream.operations :as operations]
    [prpr3.stream.cross-impl :as cross-impl]))
 
-(def stream transport/stream)
+(def stream
+  "create a stream [[prpr3.stream.transport/stream]]"
+  transport/stream)
+
 (def stream? transport/stream?)
 (def put! transport/put!)
 (def error! transport/error!)

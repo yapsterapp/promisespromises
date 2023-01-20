@@ -1,4 +1,5 @@
 (ns prpr3.stream.test
+  "fns supporting stream unit tests"
   (:require
    [promesa.core :as pr]
    [prpr3.promise :as prpr]

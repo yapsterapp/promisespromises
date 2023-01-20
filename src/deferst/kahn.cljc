@@ -5,7 +5,7 @@
 ;; the terms of this license.
 ;; You must not remove this notice, or any other, from this software.
 
-(ns deferst.kahn
+(ns ^:no-doc deferst.kahn
   (:require
    [clojure.set
     :refer [difference union intersection]]))

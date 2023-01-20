@@ -1,8 +1,9 @@
 (ns prpr3.stream.transport
-  "low-level transport - covers put!ing onto and
+  "low-level stream transport operations -
+   covering creating streams, put!ing onto and
    take!ing from a stream, error propagation,
    special value wrapping/unwrapping and
-   stream connection"
+   stream connections"
   (:require
    [promesa.core :as pr]
    [taoensso.timbre :refer [warn]]
@@ -19,6 +20,10 @@
      :cljs stream.async/stream-factory))
 
 (defn stream
+  "create a stream
+
+   - `buffer` : optional buffer size. default `0`
+   - `xform` : optional transducer applied to values put on the stream"
   ([]
    (pt/-stream stream-factory))
   ([buffer]
@@ -30,25 +35,35 @@
       (pt/-stream stream-factory buffer xform executor))))
 
 (defn stream?
+  "test if `v` is a stream. returns `true|false`"
   [v]
   (pt/-stream? v))
 
 (defn close!
+  "close a stream"
   [s]
   (pt/-close! s))
 
 (defn closed?
-  "not in the public API, because it's so often a race condition,
-   but may be sometimes useful for inspection"
+  "test if a stream is closed. returns `true|false`
+
+   not in the public API, because it's often a race condition,
+   but may be sometimes useful for inspection (e.g. in tests)"
   [s]
   (pt/-closed? s))
 
 (defn put!
-  "put a value onto a stream with backpressure - returns
-   Promise<true|false> which eventually resolves to:
-    - true when the value was accepted onto the stream
-    - false if the stream was closed
-    - timeout-val if the put! timed out"
+  "put a value onto stream with backpressure
+
+   - `sink` - a stream
+   - `val` - the value
+   - `timeout` - optional timeout in ms
+   - `timeout` - optional value to return in case of timeout. default `nil`
+
+   returns `Promise<true|false>` which eventually resolves to:
+    - `true` when the value was accepted onto the stream
+    - `false` if the stream was closed
+    - `timeout-val` if the `put!` timed out"
   ([sink val]
    (pt/-put!
     sink
@@ -69,7 +84,10 @@
 
   it would be nicer if the underlying stream/channel had
   an error state, but this is the best to be done without
-  wrapping the underlying stream/channel"
+  wrapping the underlying stream/channel
+
+  - `sink` - a stream
+  - `err` - the error value"
   [sink err]
   (let [wrapped-err (types/stream-error err)]
     (->
@@ -84,9 +102,12 @@
         false)))))
 
 (defn put-all!
-  "put all values onto a stream with backpressure
-   returns Promise<true|false> yielding true if all
-   values were accepted onto the stream, false otherwise"
+  "put all values individually onto a stream with backpressure
+   returns `Promise<true|false>` yielding `true` if all
+   values were accepted onto the stream, `false` otherwise
+
+   - `sink` - a stream
+   - `vals` - a sequence of values"
   [sink vals]
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [vals vals]
@@ -102,6 +123,13 @@
            false))))))
 
 (defn put-all-and-close!
+  "a convenience fn to `put-all!` values onto a stream and
+   then close the stream. returns `Promise<true|false>`
+
+   - `sink` - a stream
+   - `vals` - a sequence of values
+
+  "
   [sink vals]
   (pr/handle
    (put-all! sink vals)
@@ -112,17 +140,23 @@
        s))))
 
 (defn take!
-  "take a value from a stream - returns Promise<value|error>
-   which evantually resolves to:
+  "take a value from a stream.
+
+   - `source` - a stream
+   - `default-val` - optional value to return if the stream closes
+   - `timeout` - optional timeout in ms
+   - `timeout-val` - optional value to return if the stream times out
+
+   returns `Promise<value|error>` which evantually resolves to:
    - a value when one becomes available
-   - nil or default-val if the stream closes
-   - timeout-val if no value becomes available in timeout ms
+   - `nil` or `default-val` if the stream closes
+   - `timeout-val` if no value becomes available in `timeout` ms
    - an error if the stream errored (i.e. an error occurred
      during some upstream operation)
 
-   NOTE take! API would ideally not return chunks, but it curently does...
-   don't currently have a good way of using a consumer/ChunkConsumer
-   in the public API, since i don't really want to wrap the underlying stream
+   NOTE `take!` would ideally not return chunks, but it curently does...
+   there is not currently a good way of using a consumer/ChunkConsumer
+   in the public API, since i don't want to wrap the underlying stream
    or channel in something else"
   ([source]
    (pr/chain
@@ -138,6 +172,7 @@
     pt/-unwrap-value)))
 
 (defn unwrap-platform-error
+  "unwrap a platform error to get at the cause"
   [x]
   (if (satisfies? pt/IPlatformErrorWrapper x)
     (pt/-unwrap-platform-error x)
@@ -170,13 +205,24 @@
          success)))))
 
 (defn connect-via
-  "feed all messages from src into callback on the
+  "feed all messages from stream `source` into the callback `f` on the
    understanding that they will eventually propagate into
-   dst
+   stream `sink`
 
-   the return value of callback should be a boolean or
-   promise yielding a boolean. when false the downstream sink
-   is assumed to be closed and the connection is severed"
+   the return value of `f` should be a `boolean|Promise<boolean>`.
+   when false the downstream `sink`
+   is assumed to be closed and the connection is severed
+
+   | key                           | description |
+   | ------------------------------|-------------|
+   | `source`                      | source stream
+   | `sink`                        | destination stream
+   | `f`                           | 1-arity callback returning `boolean|Promise<boolean>`
+   | `opts`                        | map of connection options - will be passed to Manifold on clj, but non-default options may misbehave on cljs
+   |   `:prpr3.stream/downstream?` | whether the source closing will close the sink, defaults to `true`
+   |   `:prpr3.stream/upstream?`   | whether the sink closing will close the source, even if there are other sinks downstream of the source, defaults to `true`
+   |   `:prpr3.stream/timeout`     | timeout in ms before the connection is severed. defaults to `nil`
+   |   `:prpr3.stream/description` | description of the connection. useful for introspection"
   ([source f sink]
    (pt/-connect-via
     source

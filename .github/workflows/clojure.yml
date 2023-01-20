@@ -43,5 +43,8 @@ jobs:
     - name: Build and Run Clojure tests
       run: clojure -T:build ci
 
-    - name: Run ClojureScript tests
-      run: ./scripts/shadow-run-tests
+    - name: Run ClojureScript simple-compilation tests
+      run: ./scripts/shadow-run-tests-simple
+
+    - name: Run ClojureScript advanced-compilation tests
+      run: ./scripts/shadow-run-tests-advanced

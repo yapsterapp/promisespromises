@@ -112,22 +112,47 @@
       (is (= ::prpr/ok k))
       (is (= nil r)))))
 
+(defn chain-and-close!
+  "chain execution of the 0-args fns in fs, then close! s
+
+   using this fn because promesa-csp doesn't appear to immediately
+   queue puts - so puts followed by close! need to be sequenced"
+  [s fs]
+  (pr/loop [rs-fs [[] fs]]
+    (let [[rs [ff & rfs]] rs-fs]
+      ;; (prn "chain-and-close!" rs (count fs))
+      (if (nil? ff)
+        (do
+          (sut/close! s)
+          rs)
+        (pr/chain
+         (ff)
+         (fn [ffr]
+           ;; (prn "chain-and-close!:CALLED" (conj rs ffr) (count rfs))
+           (pr/recur [(conj rs ffr) rfs])))))))
+
 (deftest safe-connect-via-fn-test
   (testing "applies f, puts the result on the sink, returs true"
-    (let [t (sut/stream)
+    (let [t (sut/stream 2)
           f (sut/safe-connect-via-fn
              #(sut/put! t (inc %))
              t)
-          frp1 (f 0)
-          frp2 (f 1)]
-      (pr/let [_ (sut/close! t)
-               t1 (sut/take! t ::closed)
-               t2 (sut/take! t ::closed)
-               t3 (sut/take! t ::closed)
-               fr1 frp1
-               fr2 frp2]
-        (is (identical? true fr1))
-        (is (identical? true fr2))
+
+          rs-p (chain-and-close!
+                t
+                [(fn [] (f 0))
+                 (fn [] (f 1))])
+
+          t1-p (sut/take! t ::closed)
+          t2-p (sut/take! t ::closed)
+          t3-p (sut/take! t ::closed)]
+
+      (pr/let [rs rs-p
+
+               t1 t1-p
+               t2 t2-p
+               t3 t3-p]
+        (is (= [true true] rs))
         (is (= 1 t1))
         (is (= 2 t2))
         (is (= ::closed t3)))))
@@ -136,12 +161,18 @@
           f (sut/safe-connect-via-fn
              #(sut/put! t (inc %))
              t)
-          frp0 (f (reify pt/IStreamValue
-                    (-unwrap-value [_] 0)))]
-      (pr/let [_ (sut/close! t)
-               t0 (sut/take! t ::closed)
-               t1 (sut/take! t ::closed)
-               fr0 frp0]
+          frs-p (chain-and-close!
+                 t
+                 [(fn []
+                    (f (reify pt/IStreamValue
+                         (-unwrap-value [_] 0))))])
+
+          t0-p (sut/take! t ::closed)
+          t1-p (sut/take! t ::closed)]
+      (pr/let [[fr0] frs-p
+
+               t0 t0-p
+               t1 t1-p]
         (is (identical? true fr0))
         (is (= 1 t0 ))
         (is (= ::closed t1)))))
@@ -152,11 +183,14 @@
           f (sut/safe-connect-via-fn
              (fn [_] (sut/put! t nil))
              t)
-          frp0 (f 0)]
-      (pr/let [_ (sut/close! t)
-               t0 (sut/take! t ::closed)
-               t1 (sut/take! t ::closed)
-               fr0 frp0]
+          frs-p (chain-and-close!
+                 t
+                 [(fn [] (f 0))])
+          t0-p (sut/take! t ::closed)
+          t1-p (sut/take! t ::closed)]
+      (pr/let [[fr0] frs-p
+               t0 t0-p
+               t1 t1-p]
         (is (identical? true fr0))
         (is (= nil t0 ))
         (is (= ::closed t1)))))
@@ -165,16 +199,22 @@
           f (sut/safe-connect-via-fn
              (fn [_] (throw (ex-info "boo" {})))
              t)
-          frp0 (f 0)]
-      (pr/let [[k0 v0] (-> (sut/take! t ::closed)
-                         (pr/chain (fn [v] [::ok v]))
-                         (pr/catch (fn [err] [::error err])))
-               t1 (sut/take! t ::closed)
-               fr0 frp0]
+          frs-p (chain-and-close!
+                 t
+                 [(fn [] (f 0))])
+          kv-p (-> (sut/take! t ::closed)
+                   (pr/chain (fn [v] [::ok v]))
+                   (pr/catch (fn [err] [::error err])))
+          t1-p (sut/take! t ::closed)]
+
+      (pr/let [[fr0] frs-p
+               [k0 v0] kv-p
+               t1 t1-p]
         (is (identical? false fr0))
         (is (= ::error k0))
         (is (= "boo" (ex-message v0)))
-        (is (= ::closed t1))))))
+        (is (= ::closed t1)))))
+  )
 
 (defn capture-error
   [p]

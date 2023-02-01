@@ -16,9 +16,9 @@
     s))
 
 (defn consume
-  "consume a stream to a vector. an error
+  "consume a stream to a `Promise<vector>.` any error
    will be added to the end of the vector
-   as [::error <error>]"
+   as `[::error <error>]`"
   [s]
   (pr/loop [rs []]
     (prpr/handle-always
@@ -33,8 +33,8 @@
          (pr/recur (conj rs v)))))))
 
 (defn safe-take!
-  "transport/take! (with unwrapping) from a stream returning
-   Promise<[::ok <val>]> | Promise<[::error <err>]>"
+  "`transport/take!` (with unwrapping) from a stream returning
+   `Promise<[::ok <val>|[::error <err>]]>`"
   [s & args]
   (prpr/handle-always
    (apply stream.transport/take! s args)
@@ -44,8 +44,8 @@
        [::ok v]))))
 
 (defn safe-consume
-  "keep safe-take! ing until ::closed, returning
-   a vector of safe-take!s"
+  "keep `safe-take!`ing until `::closed`, returning
+   a `vector` of `safe-take!s`"
   [s]
   #_{:clj-kondo/ignore [:loop-without-recur]}
   (pr/loop [r []]

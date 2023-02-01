@@ -10,16 +10,18 @@
    [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]
    [java.util.concurrent ExecutionException CompletionException]))
 
+(defn manifold-stream
+  ([] (m.stream/stream))
+  ([buffer] (m.stream/stream buffer))
+  ([buffer xform] (m.stream/stream buffer xform))
+  ([buffer xform executor] (m.stream/stream buffer xform executor)))
+
 (deftype StreamFactory []
   p/IStreamFactory
-  (-stream [_]
-    (m.stream/stream))
-  (-stream [_ buffer]
-    (m.stream/stream buffer))
-  (-stream [_ buffer xform]
-    (m.stream/stream buffer xform))
-  (-stream [_ buffer xform executor]
-    (m.stream/stream buffer xform executor)))
+  (-stream [_] (manifold-stream))
+  (-stream [_ buffer] (manifold-stream buffer))
+  (-stream [_ buffer xform] (manifold-stream buffer xform))
+  (-stream [_ buffer xform executor] (manifold-stream buffer xform executor)))
 
 (def stream-factory (->StreamFactory))
 

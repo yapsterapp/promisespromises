@@ -1,59 +1,51 @@
-(ns prpr3.stream.core-async
+(ns prpr3.stream.promesa-csp
   (:require
-   [clojure.core.async :as async]
-   [cljs.core.async.impl.channels :refer [ManyToManyChannel]]
-   [cljs.core.async.impl.protocols :as impl.proto]
+   [promesa.exec.csp :as sp]
+   #?(:cljs [promesa.exec.csp.channel :refer [Channel]])
    [prpr3.stream.protocols :as pt]
    [prpr3.stream.types :as types]
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.error :as err]))
+   [prpr3.promise :as prpr])
+  (:import
+   #?(:clj [promesa.exec.csp.channel Channel])))
 
-(defn async-stream
-  ([] (async/chan))
-  ([buffer] (async/chan buffer))
-  ([buffer xform] (async/chan buffer xform)))
+(defn promesa-csp-stream
+  ([] (sp/chan))
+  ([buffer] (sp/chan buffer))
+  ([buffer xform] (sp/chan buffer xform)))
 
 (deftype StreamFactory []
   pt/IStreamFactory
-  (-stream [_] (async-stream))
-  (-stream [_ buffer] (async-stream buffer))
-  (-stream [_ buffer xform] (async-stream buffer xform)))
+  (-stream [_] (promesa-csp-stream))
+  (-stream [_ buffer] (promesa-csp-stream buffer))
+  (-stream [_ buffer xform] (promesa-csp-stream buffer xform)))
 
 (def stream-factory (->StreamFactory))
 
 (extend-protocol pt/IMaybeStream
-  ManyToManyChannel
+  Channel
   (-stream? [_] true)
 
-  default
+  #?(:clj Object :cljs default)
   (-stream? [_] false))
 
-(defn async-put!
+(defn promesa-csp-put!
   ([sink val]
-   ;; (prn "async-put!" val)
-   (let [r (pr/deferred)]
-     ;; (prn "async-put!" val)
-     (async/put! sink val #(pr/resolve! r %))
-     r))
+   (sp/put sink val))
 
   ([sink val timeout timeout-val]
-   ;; (prn "async-put!" sink val timeout timeout-val)
-   (let [timeout-ch (async/timeout timeout)
+   ;; (prn "promesa-csp-put!" sink val timeout timeout-val)
+   (let [timeout-ch (sp/timeout-chan timeout)]
 
-         alt-ch (async/go
-                  (async/alt!
-                    [[sink val]] true
-                    timeout-ch timeout-val
-                    :priority true))
+     (pr/let [[v ch] (sp/alts
+                      [[sink val]
+                       timeout-ch]
+                      :priority true)]
+       (if (= ch timeout-ch)
+         timeout-val
+         v)))))
 
-         r (pr/deferred)]
-
-     (async/take! alt-ch #(pr/resolve! r %))
-
-     r)))
-
-(defn async-error!
+(defn promesa-csp-error!
   "this is also implemented in impl.. but circular deps..."
   [sink err]
   (pr/chain
@@ -65,46 +57,31 @@
      ;; in connect fns
      false)))
 
-(defn async-take!
+(defn promesa-csp-take!
   ([source]
-   (let [r (pr/deferred)]
-     (async/take! source #(pr/resolve! r %))
-     r))
+   (sp/take source))
+
   ([source default-val]
-   (let [r (pr/deferred)
-         dr (pr/chain r (fn [v] (if (some? v) v default-val)))]
-     (async/take! source #(pr/resolve! r %))
-     dr))
+   (pr/let [v (sp/take source)]
+     (if (some? v) v default-val)))
 
   ([source default-val timeout timeout-val]
-   (let [timeout-ch (async/timeout timeout)
+   (let [timeout-ch (sp/timeout-chan timeout)]
 
-         alt-ch (async/go
-                  (async/alt!
-                    source ([v] v)
-                    timeout-ch ::timeout
-                    :priority true))
+     (pr/let [[v ch] (sp/alts
+                      [source
+                       timeout-ch]
+                      :priority true)]
+       (cond
+         (= ch timeout-ch) timeout-val
+         (nil? v) default-val
+         :else v)))))
 
-         r (pr/deferred)
-
-         dr (pr/chain r (fn [v]
-                          (cond
-                            (= ::timeout v) timeout-val
-
-                            (some? v) v
-
-                            :else
-                            default-val)))]
-
-     (async/take! alt-ch #(pr/resolve! r %))
-
-     dr)))
-
-(defn async-close!
+(defn promesa-csp-close!
   [ch]
-  (async/close! ch))
+  (sp/close! ch))
 
-(defn async-connect-via
+(defn promesa-csp-connect-via
   "feed all messages from src into callback on the
    understanding that they will eventually propagate into
    dst
@@ -113,7 +90,7 @@
    either true or false. when false the downstream sink
    is assumed to be closed and the connection is severed"
   ([src callback dst]
-   (async-connect-via src callback dst nil))
+   (promesa-csp-connect-via src callback dst nil))
   ([src
     callback
     dst
@@ -123,17 +100,17 @@
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
    (pr/loop []
-     ;; (prn "async-connect-via: pre-take!")
+     ;; (prn "promesa-csp-connect-via: pre-take!")
 
          (-> (pt/-take! src ::closed)
 
              (prpr/handle-always
               (fn [v err]
-                ;; (prn "async-connect-via: value" v err)
+                ;; (prn "promesa-csp-connect-via: value" v err)
 
                 (cond
                   (some? err)
-                  (async-error! dst err)
+                  (promesa-csp-error! dst err)
 
                   (= ::closed v)
                   ;; src has closed
@@ -150,18 +127,18 @@
 
              (prpr/handle-always
               (fn [result err]
-                ;; (prn "async-connect-via: result" result err)
+                ;; (prn "promesa-csp-connect-via: result" result err)
 
                 (cond
                   (some? err)
                   (do
                     (pt/-close! src)
-                    (async-error! dst err))
+                    (promesa-csp-error! dst err))
 
                   (true? result)
                   #_{:clj-kondo/ignore [:redundant-do]}
                   (do
-                    ;; (prn "async-connect-via: recur")
+                    ;; (prn "promesa-csp-connect-via: recur")
                     #_{:clj-kondo/ignore [:recur-argument-count]}
                     (pr/recur))
 
@@ -178,19 +155,19 @@
                     ;; connection is broken
 
                     (when-not (false? close-src?)
-                      (async-close! src))
+                      (promesa-csp-close! src))
 
                     (if (= ::closed result)
                       true
                       false)))))))))
 
-(defn async-wrap-value
+(defn promesa-csp-wrap-value
   "nils can't be put directly on core.async chans,
    so to present a very similar API on both clj+cljs we
    wrap nils for core.async
 
    promises can be put on a core.async chan, but cause
-   problems with async-take! because auto-unwrapping
+   problems with promesa-csp-take! because auto-unwrapping
    causes Promise<nil> from the stream to be
    indistinguishable from a closed channel - so wrapping
    promises sidesteps this"
@@ -200,11 +177,11 @@
     (pr/promise? v) (types/stream-promise v)
     :else v))
 
-(defn async-buffer
+(defn promesa-csp-buffer
   ([ch n]
-   (async/pipe
+   (sp/pipe
     ch
-    (async/chan n))))
+    (sp/chan n))))
 
 (def default-connect-via-opts
   {;; standard manifold default
@@ -215,29 +192,29 @@
    :prpr3.stream/upstream? true})
 
 (extend-protocol pt/IStream
-  ManyToManyChannel
+  Channel
   (-closed? [s]
-    (impl.proto/closed? s))
+    (sp/closed? s))
 
   (-put!
-    ([sink val] (async-put! sink val))
-    ([sink val timeout timeout-val] (async-put! sink val timeout timeout-val)))
+    ([sink val] (promesa-csp-put! sink val))
+    ([sink val timeout timeout-val] (promesa-csp-put! sink val timeout timeout-val)))
 
   (-take!
-    ([source] (async-take! source))
-    ([source default-val] (async-take! source default-val))
+    ([source] (promesa-csp-take! source))
+    ([source default-val] (promesa-csp-take! source default-val))
     ([source default-val timeout timeout-val]
-     (async-take! source default-val timeout timeout-val)))
+     (promesa-csp-take! source default-val timeout timeout-val)))
 
-  (-close! [this] (async-close! this))
+  (-close! [this] (promesa-csp-close! this))
 
   (-connect-via
-    ([source f sink] (async-connect-via source f sink default-connect-via-opts))
-    ([source f sink opts] (async-connect-via
+    ([source f sink] (promesa-csp-connect-via source f sink default-connect-via-opts))
+    ([source f sink opts] (promesa-csp-connect-via
                            source
                            f
                            sink
                            (merge default-connect-via-opts opts))))
 
-  (-wrap-value [_s v] (async-wrap-value v))
-  (-buffer [s n] (async-buffer s n)))
+  (-wrap-value [_s v] (promesa-csp-wrap-value v))
+  (-buffer [s n] (promesa-csp-buffer s n)))

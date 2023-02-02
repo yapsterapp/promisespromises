@@ -12,13 +12,17 @@
 (defn promesa-csp-stream
   ([] (sp/chan))
   ([buffer] (sp/chan buffer))
-  ([buffer xform] (sp/chan buffer xform)))
+  ([buffer xform] (sp/chan buffer xform))
+  #?(:clj ([buffer xform _executor] (sp/chan buffer xform))))
 
 (deftype StreamFactory []
   pt/IStreamFactory
   (-stream [_] (promesa-csp-stream))
   (-stream [_ buffer] (promesa-csp-stream buffer))
-  (-stream [_ buffer xform] (promesa-csp-stream buffer xform)))
+  (-stream [_ buffer xform] (promesa-csp-stream buffer xform))
+  #?(:clj
+     (-stream [_ buffer xform executor]
+              (promesa-csp-stream buffer xform executor))))
 
 (def stream-factory (->StreamFactory))
 

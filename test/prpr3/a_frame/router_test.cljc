@@ -96,7 +96,10 @@
   (let [{event-s schema/a-frame-router-event-stream
          :as router} (sut/create-router
                       test-app-ctx
-                      {schema/a-frame-router-buffer-size 0})
+                      ;; 0 buffer-size is causing hangs on
+                      ;; promesa-csp but not manifold/core.async...
+                      ;; not sure why
+                      {schema/a-frame-router-buffer-size 10})
         dn-pr (sut/dispatch-n router [[::foo]
                                       [::bar]
                                       {schema/a-frame-event [::baz]

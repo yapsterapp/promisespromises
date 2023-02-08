@@ -9,15 +9,19 @@
    [prpr3.promise :as prpr]
    [prpr3.stream.protocols :as pt]
    [prpr3.stream.types :as types]
-   #?(:clj ;; [prpr3.stream.manifold :as stream.manifold]
-       [prpr3.stream.promesa-csp :as stream.promesa-csp]
-      :cljs [prpr3.stream.core-async :as stream.async]))
+   #?(:clj [prpr3.stream.manifold :as stream.manifold]
+      :cljs [prpr3.stream.core-async :as stream.async])
+   [prpr3.stream.promesa-csp :as stream.promesa-csp])
   (:refer-clojure
    :exclude [map filter mapcat reductions reduce concat]))
 
 (def stream-factory
-  #?(:clj stream.promesa-csp/stream-factory ;; stream.manifold/stream-factory
-     :cljs stream.async/stream-factory))
+  #?(:clj stream.promesa-csp/stream-factory
+     ;; :clj stream.manifold/stream-factory
+
+     :cljs stream.promesa-csp/stream-factory
+     ;; :cljs stream.async/stream-factory
+     ))
 
 (defn stream
   ([]

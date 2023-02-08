@@ -314,9 +314,9 @@
                  vs)))))
     (testing "transforms a stream of mixed plain values and chunks"
       (let [s (st/stream-of [(types/stream-chunk [0])
-                          0
-                          (types/stream-chunk [1 1 2])
-                          2])
+                             0
+                             (types/stream-chunk [1 1 2])
+                             2])
             t (sut/transform (partition-by identity) s)]
         (pr/let [vs (st/safe-consume t)]
           (is (= [[::st/ok [0 0]]

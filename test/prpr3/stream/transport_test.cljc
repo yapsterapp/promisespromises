@@ -6,7 +6,33 @@
    [prpr3.stream.test :as st]
    [prpr3.stream.protocols :as pt]
    [prpr3.stream.types :as types]
-   [prpr3.stream.transport :as sut]))
+   [prpr3.stream.transport :as sut]
+
+   #?(:clj [prpr3.stream.manifold :as stream.manifold]
+      :cljs [prpr3.stream.core-async :as stream.async])
+   [prpr3.stream.promesa-csp :as stream.promesa-csp]))
+
+(def stream-factories
+  #?(:clj [stream.promesa-csp/stream-factory stream.manifold/stream-factory]
+     :cljs [stream.promesa-csp/stream-factory stream.async/stream-factory]))
+
+(defmacro with-stream-factories
+  [& forms]
+  (let [ffs (for [form forms] `(fn [] ~form))
+        cf @prpr3.stream.transport/stream-factory
+        all-fs (apply
+                concat
+                (for [sf stream-factories]
+                  (concat
+                   [`(fn []
+                       (println "with-stream-factory:" ~sf)
+                       (reset! prpr3.stream.transport/stream-factory ~sf))]
+                   ffs
+                   [`(fn [] (reset! prpr3.stream.transport/stream-factory ~cf))])))]
+
+    `(prpr3.test.reduce/reduce-pr-fns
+      "with-stream-factories"
+      [~@all-fs])))
 
 (deftest stream-test
   (testing "returns an object which tests stream?"
@@ -27,8 +53,8 @@
           prp (pt/-put! s ::foo)]
       (pr/let [r (pt/-take! s)
                pr prp]
-              (is (= ::foo r))
-              (is (identical? true pr)))))
+        (is (= ::foo r))
+        (is (identical? true pr)))))
   (testing "returns false when the stream is closed"
     (pr/let [s (sut/stream)
              _ (sut/close! s)
@@ -267,12 +293,12 @@
                   r))
 
           _cvrp (sut/connect-via
-                s
-                (fn [v]
-                  (if (odd? v)
-                    (sut/put! t (inc v))
-                    false))
-                t)]
+                 s
+                 (fn [v]
+                   (if (odd? v)
+                     (sut/put! t (inc v))
+                     false))
+                 t)]
 
       (pr/let [t0 (sut/take! t)
                t1 (sut/take! t)
@@ -314,12 +340,12 @@
                   r))
 
           _cvrp (sut/connect-via
-                s
-                (fn [v]
-                  (if (odd? v)
-                    (sut/put! t (inc v))
-                    (throw (ex-info "even!" {:v v}))))
-                t)]
+                 s
+                 (fn [v]
+                   (if (odd? v)
+                     (sut/put! t (inc v))
+                     (throw (ex-info "even!" {:v v}))))
+                 t)]
 
       (pr/let [t0 (sut/take! t)
                t1 (sut/take! t)
@@ -352,12 +378,12 @@
                   r))
 
           _cvrp (sut/connect-via
-                s
-                (fn [v]
-                  (if (odd? v)
-                    (sut/put! t (inc v))
-                    (pr/rejected (ex-info "even!" {:v v}))))
-                t)]
+                 s
+                 (fn [v]
+                   (if (odd? v)
+                     (sut/put! t (inc v))
+                     (pr/rejected (ex-info "even!" {:v v}))))
+                 t)]
 
       (pr/let [t0 (sut/take! t)
                t1 (sut/take! t)

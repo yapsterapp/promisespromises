@@ -15,24 +15,23 @@
   (:refer-clojure
    :exclude [map filter mapcat reductions reduce concat]))
 
-(def stream-factory
-  #?(:clj stream.promesa-csp/stream-factory
-     ;; :clj stream.manifold/stream-factory
+(defn default-stream-factory
+  []
+  stream.promesa-csp/stream-factory)
 
-     :cljs stream.promesa-csp/stream-factory
-     ;; :cljs stream.async/stream-factory
-     ))
+(def stream-factory
+  (atom (default-stream-factory)))
 
 (defn stream
   ([]
-   (pt/-stream stream-factory))
+   (pt/-stream @stream-factory))
   ([buffer]
-   (pt/-stream stream-factory buffer))
+   (pt/-stream @stream-factory buffer))
   ([buffer xform]
-   (pt/-stream stream-factory buffer xform))
+   (pt/-stream @stream-factory buffer xform))
   #?(:clj
      ([buffer xform executor]
-      (pt/-stream stream-factory buffer xform executor))))
+      (pt/-stream @stream-factory buffer xform executor))))
 
 (defn stream?
   [v]

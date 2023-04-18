@@ -100,6 +100,35 @@
 
     s'))
 
+(declare zip)
+
+(defn map
+  "(map f Stream<val>) -> Stream<(f val)>"
+  ([f s]
+   (let [s' (transport/stream)]
+
+     (transport/connect-via
+      s
+      (fn [v]
+        (cond
+          (types/stream-error? v)
+          (transport/error! s' v)
+
+          (types/stream-chunk? v)
+          (transport/put!
+           s'
+           (types/stream-chunk
+            (mapv f (pt/-chunk-values v))))
+
+          :else
+          (transport/put! s' (f v))))
+      s')
+     s'))
+
+  ([f s & rest]
+   (->> (apply zip-impl/chunk-zip s rest)
+        (map #(apply f %)))))
+
 (defn safe-chunk-xform
   "- xform : a transducer
    - out : the eventual output stream
@@ -113,50 +142,59 @@
     (let [rf (xform out-rf)]
       (fn
         ([] (try
+              (prn "safe-chunk-xform []")
               (rf)
               (catch #?(:clj Throwable :cljs :default) e
                 (transport/error! out e)
                 (throw e))))
 
-        ([rs] (try
-                (rf rs)
-                (catch #?(:clj Throwable :cljs :default) e
-                  (transport/error! out e)
-                  (throw e))))
+        ([rs]
+         (try
+           (prn "safe-chunk-xform [rs]" rs)
+           (rf rs)
+           (catch #?(:clj Throwable :cljs :default) e
+             (prn "safe-chunk-xform [rs] ERROR" (ex-message e))
+             (transport/error! out e)
+             (throw e))))
 
-        ([rs v] (cond
-                  (types/stream-error? v)
-                  (do
-                    (transport/error! out v)
-                    (throw v))
+        ([rs v]
+         (prn "->safe-chunk-xform [rs v]" rs v)
+         (cond
+           (types/stream-error? v)
+           (out-rf rs v)
 
-                  (types/stream-chunk? v)
-                  (try
-                    (let [chunk-vals (pt/-chunk-values v)
+           (types/stream-chunk? v)
+           (try
+             (let [chunk-vals (pt/-chunk-values v)
 
-                          ;; chunks cannot be empty!
-                          chunk-vals-count (clj/count chunk-vals)
+                   ;; chunks cannot be empty!
+                   chunk-vals-count (clj/count chunk-vals)
 
-                          chunk-vals-but-last (->> chunk-vals
-                                                   (take (dec chunk-vals-count)))
-                          chunk-vals-last (->> chunk-vals
-                                               (drop (dec chunk-vals-count))
-                                               first)
+                   chunk-vals-but-last (->> chunk-vals
+                                            (take (dec chunk-vals-count)))
+                   chunk-vals-last (->> chunk-vals
+                                        (drop (dec chunk-vals-count))
+                                        first)
 
-                          rs' (clojure.core/reduce rf rs chunk-vals-but-last)]
-                      (rf rs' chunk-vals-last))
+                   _ (prn "safe-chunk-xform [rs v]:but-last" chunk-vals-but-last)
+                   rs' (clojure.core/reduce rf rs chunk-vals-but-last)]
 
-                    (catch #?(:clj Throwable :cljs :default) e
-                      (transport/error! out e)
-                      (throw e)))
+               (prn "safe-chunk-xform [rs' v]->" rs' chunk-vals-last)
+               (rf rs' chunk-vals-last))
 
-                  :else
-                  (try
-                    (rf rs v)
-                    (catch #?(:clj Throwable :cljs :default) e
-                      (transport/error! out e)
-                      (throw e)))))))))
+             (catch #?(:clj Throwable :cljs :default) e
+               (prn "safe-chunk-xform [rs chunk] ERROR" (ex-message e))
+               (transport/error! out e)
+               (throw e)))
 
+           :else
+           (try
+             (prn "safe-chunk-xform [rs v]->" rs v)
+             (rf rs v)
+             (catch #?(:clj Throwable :cljs :default) e
+               (prn "safe-chunk-xform [rs v] ERROR" (ex-message e))
+               (transport/error! out e)
+               (throw e)))))))))
 
 (defn transform
   "apply transform to a stream, returning a transformed stream
@@ -189,39 +227,20 @@
   ([xform buffer-size s]
    (let [out (transport/stream)
          s' (transport/stream buffer-size (safe-chunk-xform xform out))]
+
      (transport/connect-via s #(transport/put! s' %) s')
-     (transport/connect-via s' #(transport/put! out %) out)
+
+     (transport/connect-via
+      s'
+      (fn [v]
+        (if (types/stream-error? v)
+          (transport/error! out v)
+          (transport/put! out v)))
+      out)
 
      out)))
 
-(declare zip)
 
-(defn map
-  "(map f Stream<val>) -> Stream<(f val)>"
-  ([f s]
-   (let [s' (transport/stream)]
-
-     (transport/connect-via
-      s
-      (fn [v]
-        (cond
-          (types/stream-error? v)
-          (transport/error! s' v)
-
-          (types/stream-chunk? v)
-          (transport/put!
-           s'
-           (types/stream-chunk
-            (mapv f (pt/-chunk-values v))))
-
-          :else
-          (transport/put! s' (f v))))
-      s')
-     s'))
-
-  ([f s & rest]
-   (->> (apply zip-impl/chunk-zip s rest)
-        (map #(apply f %)))))
 
 (defn mapcon
   "like map, but limits the number of concurrent unresolved

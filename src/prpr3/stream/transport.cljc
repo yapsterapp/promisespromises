@@ -10,24 +10,28 @@
    [prpr3.stream.protocols :as pt]
    [prpr3.stream.types :as types]
    #?(:clj [prpr3.stream.manifold :as stream.manifold]
-      :cljs [prpr3.stream.core-async :as stream.async]))
+      :cljs [prpr3.stream.core-async :as stream.async])
+   [prpr3.stream.promesa-csp :as stream.promesa-csp])
   (:refer-clojure
    :exclude [map filter mapcat reductions reduce concat]))
 
+(defn default-stream-factory
+  []
+  stream.promesa-csp/stream-factory)
+
 (def stream-factory
-  #?(:clj stream.manifold/stream-factory
-     :cljs stream.async/stream-factory))
+  (atom (default-stream-factory)))
 
 (defn stream
   ([]
-   (pt/-stream stream-factory))
+   (pt/-stream @stream-factory))
   ([buffer]
-   (pt/-stream stream-factory buffer))
+   (pt/-stream @stream-factory buffer))
   ([buffer xform]
-   (pt/-stream stream-factory buffer xform))
+   (pt/-stream @stream-factory buffer xform))
   #?(:clj
      ([buffer xform executor]
-      (pt/-stream stream-factory buffer xform executor))))
+      (pt/-stream @stream-factory buffer xform executor))))
 
 (defn stream?
   [v]

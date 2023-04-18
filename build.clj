@@ -5,10 +5,9 @@
             [clojure.string :as str]))
 
 (def lib 'com.github.yapsterapp/promisespromises)
+(def web-url "https://github.com/yapsterapp/promisespromises")
 (def scm-url "git@github.com/yapsterapp/promisespromises.git")
-(def version "3.0.0-alpha2-SNAPSHOT")
-#_ ; alternatively, use MAJOR.MINOR.COMMITS:
-(def version (format "3.0.%s-SNAPSHOT" (b/git-count-revs nil)))
+(def version (format "3.0.%s-alpha1" (b/git-count-revs nil)))
 
 (defn sha
   "the git sha is needed to tag a release in the pom.xml for cljdocs"
@@ -31,7 +30,7 @@
              :scm {:tag (sha nil)
                    :connection (str "scm:git:" scm-url)
                    :developerConnection (str "scm:git:" scm-url)
-                   :url scm-url})
+                   :url web-url})
       (bb/run-tests)
       (bb/clean)
       (bb/jar)))

@@ -1,6 +1,6 @@
-(ns prpr3.stream.old-cross-test
+(ns promisespromises.stream.old-cross-test
   (:require
-   [prpr3.test :refer [deftest testing is with-log-level]]))
+   [promisespromises.test :refer [deftest testing is with-log-level]]))
 
 (defn random-sorted-vec
   "returns a sorted vector of random integers"

@@ -1,9 +1,9 @@
-(ns prpr3.stream
+(ns promisespromises.stream
   (:refer-clojure :exclude [concat count filter map mapcat reduce reductions])
   (:require
-   [prpr3.stream.transport :as transport]
-   [prpr3.stream.operations :as operations]
-   [prpr3.stream.cross-impl :as cross-impl]))
+   [promisespromises.stream.transport :as transport]
+   [promisespromises.stream.operations :as operations]
+   [promisespromises.stream.cross-impl :as cross-impl]))
 
 (def stream transport/stream)
 (def stream? transport/stream?)

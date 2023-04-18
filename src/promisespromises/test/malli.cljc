@@ -1,4 +1,4 @@
-(ns prpr3.test.malli
+(ns promisespromises.test.malli
   (:require
    #?(:clj [malli.instrument :as mi])
    ))

@@ -1,4 +1,4 @@
-(ns prpr3.util.repl
+(ns promisespromises.util.repl
   (:require
    [promesa.core :as p]))
 

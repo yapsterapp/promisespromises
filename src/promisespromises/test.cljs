@@ -1,16 +1,16 @@
-(ns prpr3.test
+(ns promisespromises.test
   (:require-macros
    [cljs.test]
-   [prpr3.util.macro]
+   [promisespromises.util.macro]
    [promesa.core]
-   [prpr3.test]
-   [prpr3.test.reduce])
+   [promisespromises.test]
+   [promisespromises.test.reduce])
   (:require
    [cljs.test]
-   [prpr3.util.macro]
+   [promisespromises.util.macro]
    [promesa.core]
    [taoensso.timbre]
-   [prpr3.test.reduce]))
+   [promisespromises.test.reduce]))
 
 (defn compose-fixtures
   "deals properly with cljs async map fixtures"

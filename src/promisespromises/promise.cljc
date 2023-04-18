@@ -1,15 +1,15 @@
-(ns prpr3.promise
-  #?(:cljs (:require-macros [prpr3.promise]))
+(ns promisespromises.promise
+  #?(:cljs (:require-macros [promisespromises.promise]))
   (:require
    [promesa.core]
-   [prpr3.util.macro]))
+   [promisespromises.util.macro]))
 
 (defmacro always
   "catch any sync exception from evaluating body, and wrap
    in an errored promise - allowing a single promise-based
    control-flow in promise chains"
   [body]
-  `(prpr3.util.macro/try-catch
+  `(promisespromises.util.macro/try-catch
     ~body
     (catch e# (promesa.core/rejected e#))))
 

@@ -1,13 +1,13 @@
-(ns prpr3.stream.operations-test
+(ns promisespromises.stream.operations-test
   (:require
-   [prpr3.test :refer [deftest testing is with-log-level]]
+   [promisespromises.test :refer [deftest testing is with-log-level]]
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.stream.test :as st]
-   [prpr3.stream.protocols :as pt]
-   [prpr3.stream.types :as types]
-   [prpr3.stream.transport :as transport]
-   [prpr3.stream.operations :as sut]))
+   [promisespromises.promise :as prpr]
+   [promisespromises.stream.test :as st]
+   [promisespromises.stream.protocols :as pt]
+   [promisespromises.stream.types :as types]
+   [promisespromises.stream.transport :as transport]
+   [promisespromises.stream.operations :as sut]))
 
 (comment
   ;; these things should be tested in every stream transform

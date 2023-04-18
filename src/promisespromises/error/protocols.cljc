@@ -1,4 +1,4 @@
-(ns prpr3.error.protocols)
+(ns promisespromises.error.protocols)
 
 (defprotocol IErrorWrapper
   (-unwrap [_] "unwrap and maybe throw")

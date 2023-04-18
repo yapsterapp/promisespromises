@@ -1,8 +1,8 @@
-(ns prpr3.promise.retry
+(ns promisespromises.promise.retry
   (:require
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.error :as err]
+   [promisespromises.promise :as prpr]
+   [promisespromises.error :as err]
    [taoensso.timbre :refer [warn]]))
 
 (defn retry-n*

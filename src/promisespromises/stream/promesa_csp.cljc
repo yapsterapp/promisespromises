@@ -1,11 +1,11 @@
-(ns prpr3.stream.promesa-csp
+(ns promisespromises.stream.promesa-csp
   (:require
    [promesa.exec.csp :as sp]
    #?(:cljs [promesa.exec.csp.channel :refer [Channel]])
-   [prpr3.stream.protocols :as pt]
-   [prpr3.stream.types :as types]
+   [promisespromises.stream.protocols :as pt]
+   [promisespromises.stream.types :as types]
    [promesa.core :as pr]
-   [prpr3.promise :as prpr])
+   [promisespromises.promise :as prpr])
   (:import
    #?(:clj [promesa.exec.csp.channel Channel])))
 
@@ -98,8 +98,8 @@
   ([src
     callback
     dst
-    {close-src? :prpr3.stream/upstream?
-     close-sink? :prpr3.stream/downstream?
+    {close-src? :promisespromises.stream/upstream?
+     close-sink? :promisespromises.stream/downstream?
      :as _opts}]
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
@@ -189,11 +189,11 @@
 
 (def default-connect-via-opts
   {;; standard manifold default
-   :prpr3.stream/downstream? true
+   :promisespromises.stream/downstream? true
    ;; *not* the standard manifold default - but we
    ;; can easily implement this behaviour for core.async too
    ;; so going with it for cross-platform consistency
-   :prpr3.stream/upstream? true})
+   :promisespromises.stream/upstream? true})
 
 (extend-protocol pt/IStream
   Channel

@@ -1,16 +1,16 @@
-(ns prpr3.stream.transport-test
+(ns promisespromises.stream.transport-test
   (:require
-   [prpr3.test :refer [deftest testing is]]
+   [promisespromises.test :refer [deftest testing is]]
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.stream.test :as st]
-   [prpr3.stream.protocols :as pt]
-   [prpr3.stream.types :as types]
-   [prpr3.stream.transport :as sut]
+   [promisespromises.promise :as prpr]
+   [promisespromises.stream.test :as st]
+   [promisespromises.stream.protocols :as pt]
+   [promisespromises.stream.types :as types]
+   [promisespromises.stream.transport :as sut]
 
-   #?(:clj [prpr3.stream.manifold :as stream.manifold]
-      :cljs [prpr3.stream.core-async :as stream.async])
-   [prpr3.stream.promesa-csp :as stream.promesa-csp]))
+   #?(:clj [promisespromises.stream.manifold :as stream.manifold]
+      :cljs [promisespromises.stream.core-async :as stream.async])
+   [promisespromises.stream.promesa-csp :as stream.promesa-csp]))
 
 (def stream-factories
   #?(:clj [stream.promesa-csp/stream-factory stream.manifold/stream-factory]
@@ -19,18 +19,18 @@
 (defmacro with-stream-factories
   [& forms]
   (let [ffs (for [form forms] `(fn [] ~form))
-        cf @prpr3.stream.transport/stream-factory
+        cf @promisespromises.stream.transport/stream-factory
         all-fs (apply
                 concat
                 (for [sf stream-factories]
                   (concat
                    [`(fn []
                        (println "with-stream-factory:" ~sf)
-                       (reset! prpr3.stream.transport/stream-factory ~sf))]
+                       (reset! promisespromises.stream.transport/stream-factory ~sf))]
                    ffs
-                   [`(fn [] (reset! prpr3.stream.transport/stream-factory ~cf))])))]
+                   [`(fn [] (reset! promisespromises.stream.transport/stream-factory ~cf))])))]
 
-    `(prpr3.test.reduce/reduce-pr-fns
+    `(promisespromises.test.reduce/reduce-pr-fns
       "with-stream-factories"
       [~@all-fs])))
 

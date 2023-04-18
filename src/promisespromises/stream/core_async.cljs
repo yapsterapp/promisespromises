@@ -1,13 +1,13 @@
-(ns prpr3.stream.core-async
+(ns promisespromises.stream.core-async
   (:require
    [clojure.core.async :as async]
    [cljs.core.async.impl.channels :refer [ManyToManyChannel]]
    [cljs.core.async.impl.protocols :as impl.proto]
-   [prpr3.stream.protocols :as pt]
-   [prpr3.stream.types :as types]
+   [promisespromises.stream.protocols :as pt]
+   [promisespromises.stream.types :as types]
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.error :as err]))
+   [promisespromises.promise :as prpr]
+   [promisespromises.error :as err]))
 
 (defn async-stream
   ([] (async/chan))
@@ -117,8 +117,8 @@
   ([src
     callback
     dst
-    {close-src? :prpr3.stream/upstream?
-     close-sink? :prpr3.stream/downstream?
+    {close-src? :promisespromises.stream/upstream?
+     close-sink? :promisespromises.stream/downstream?
      :as _opts}]
 
    #_{:clj-kondo/ignore [:loop-without-recur]}
@@ -208,11 +208,11 @@
 
 (def default-connect-via-opts
   {;; standard manifold default
-   :prpr3.stream/downstream? true
+   :promisespromises.stream/downstream? true
    ;; *not* the standard manifold default - but we
    ;; can easily implement this behaviour for core.async too
    ;; so going with it for cross-platform consistency
-   :prpr3.stream/upstream? true})
+   :promisespromises.stream/upstream? true})
 
 (extend-protocol pt/IStream
   ManyToManyChannel

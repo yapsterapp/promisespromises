@@ -1,4 +1,4 @@
-(ns prpr3.stream.cross-impl
+(ns promisespromises.stream.cross-impl
   (:require
    [clojure.math.combinatorics :as combo]
    [clojure.set :as set]
@@ -8,17 +8,17 @@
    [promesa.core :as pr]
    [taoensso.timbre :refer [trace debug info warn error]]
 
-   [prpr3.promise :as prpr]
-   [prpr3.error :as err]
-   [prpr3.stream.operations :as stream.ops]
-   [prpr3.stream.protocols :as stream.pt]
-   [prpr3.stream.transport :as stream.transport]
-   [prpr3.stream.types :as stream.types]
-   [prpr3.stream.chunk :as stream.chunk]
+   [promisespromises.promise :as prpr]
+   [promisespromises.error :as err]
+   [promisespromises.stream.operations :as stream.ops]
+   [promisespromises.stream.protocols :as stream.pt]
+   [promisespromises.stream.transport :as stream.transport]
+   [promisespromises.stream.types :as stream.types]
+   [promisespromises.stream.chunk :as stream.chunk]
 
-   [prpr3.stream.cross :as-alias stream.cross]
-   [prpr3.stream.cross.op :as-alias stream.cross.op]
-   [prpr3.stream.cross.op.n-left-join :as-alias stream.cross.op.n-left-join]))
+   [promisespromises.stream.cross :as-alias stream.cross]
+   [promisespromises.stream.cross.op :as-alias stream.cross.op]
+   [promisespromises.stream.cross.op.n-left-join :as-alias stream.cross.op.n-left-join]))
 
 ;;; cross mkII
 ;;;

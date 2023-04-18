@@ -1,12 +1,12 @@
-(ns prpr3.test
+(ns promisespromises.test
   (:require
    [clojure.test]
    [promesa.core]
    [taoensso.timbre]
-   [prpr3.test.reduce]
-   [prpr3.util.macro]
-   [prpr3.promise]
-   [prpr3.promise :as prpr]))
+   [promisespromises.test.reduce]
+   [promisespromises.util.macro]
+   [promisespromises.promise]
+   [promisespromises.promise :as prpr]))
 
 ;; lord help me
 
@@ -44,7 +44,7 @@
 
 (defmacro use-fixtures
   [& body]
-  `(prpr3.util.macro/if-cljs
+  `(promisespromises.util.macro/if-cljs
     (cljs.test/use-fixtures ~@body)
     (clojure.test/use-fixtures ~@body)))
 
@@ -61,7 +61,7 @@
         fs (for [form forms]
              `(fn [] ~form))]
 
-    `(prpr3.util.macro/if-cljs
+    `(promisespromises.util.macro/if-cljs
 
       (cljs.test/async
        done#
@@ -69,7 +69,7 @@
        (promesa.core/handle
         (do
           (println "   " ~(str nm))
-          (promesa.core/let [r# (prpr3.test.reduce/reduce-pr-fns
+          (promesa.core/let [r# (promisespromises.test.reduce/reduce-pr-fns
                                  ~(str nm)
                                  [~@fs])]))
         (fn [succ# e#]
@@ -82,7 +82,7 @@
 
       (let [body# (fn []
                     (with-test-binding-frame
-                      (prpr3.test.reduce/reduce-pr-fns
+                      (promisespromises.test.reduce/reduce-pr-fns
                        ~(str nm)
                        [~@fs])))]
         (record-test-binding-frame
@@ -93,7 +93,7 @@
 
 (defmacro deftest*
   [nm & body]
-  `(prpr3.util.macro/if-cljs
+  `(promisespromises.util.macro/if-cljs
     (cljs.test/deftest ~nm ~@body)
     (clojure.test/deftest ~nm ~@body)))
 
@@ -110,8 +110,8 @@
    NOTE: use the same name as clojure.test/deftest because CIDER
    recognizes it and uses it to find tests"
   [nm & body]
-  `(prpr3.test/deftest* ~nm
-     (prpr3.test/test-async ~(str nm) ~@body)))
+  `(promisespromises.test/deftest* ~nm
+     (promisespromises.test/test-async ~(str nm) ~@body)))
 
 (defmacro tlet
   "a let which turns its body forms into a vector of 0-args fns,
@@ -126,7 +126,7 @@
 
 (defmacro is
   [& body]
-  `(prpr3.util.macro/if-cljs
+  `(promisespromises.util.macro/if-cljs
     (cljs.test/is ~@body)
     (with-test-binding-frame
       (clojure.test/is ~@body))))
@@ -140,7 +140,7 @@
           fs (for [form forms]
                `(fn [] ~form))]
       `(fn []
-         (prpr3.util.macro/if-cljs
+         (promisespromises.util.macro/if-cljs
           (do
             (println "      " ~s)
             ;; underlying testing macro loses the result, which messes up
@@ -148,7 +148,7 @@
             ;; capture the result in an atom
             (let [r# (atom nil)]
               (cljs.test/testing
-                  (reset! r# (prpr3.test.reduce/reduce-pr-fns ~s [~@fs])))
+                  (reset! r# (promisespromises.test.reduce/reduce-pr-fns ~s [~@fs])))
               @r#))
 
           (with-test-binding-frame
@@ -159,7 +159,7 @@
             ;; capture the result in an atom
               (let [r# (atom nil)]
                 (clojure.test/testing
-                    (reset! r# (prpr3.test.reduce/reduce-pr-fns ~s [~@fs])))
+                    (reset! r# (promisespromises.test.reduce/reduce-pr-fns ~s [~@fs])))
                 @r#))))))))
 
 (defmacro with-log-level
@@ -178,7 +178,7 @@
 
          ;; put a fn which can't fail at the head, so that
          ;; we only need the promise-based finally
-         (prpr3.test.reduce/reduce-pr-fns ~(str log-level) (into [(constantly true)]
+         (promisespromises.test.reduce/reduce-pr-fns ~(str log-level) (into [(constantly true)]
                                                [~@fs]))
 
          (fn [_# _#]

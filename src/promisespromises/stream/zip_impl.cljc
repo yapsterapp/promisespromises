@@ -1,21 +1,21 @@
-(ns prpr3.stream.zip-impl
+(ns promisespromises.stream.zip-impl
   "consume from multiple streams in a chunk and
    error sensitive way"
   (:require
    [promesa.core :as pr]
-   [prpr3.promise :as prpr]
-   [prpr3.error :as err]
-   [prpr3.stream.protocols :as pt]
-   [prpr3.stream.transport :as transport]
-   [prpr3.stream.types :as types]
-   [prpr3.stream :as-alias stream]))
+   [promisespromises.promise :as prpr]
+   [promisespromises.error :as err]
+   [promisespromises.stream.protocols :as pt]
+   [promisespromises.stream.transport :as transport]
+   [promisespromises.stream.types :as types]
+   [promisespromises.stream :as-alias stream]))
 
 ;; maintains some state
 ;; uses a buffer list of unconsumed values allowing
 ;; - chunk values to be added to the end of the buffer
 ;; - values to be removed from the front of the buffer
 ;; - pushback to be prepended to the front buffer
-;; - end-of-stream to be marked with :prpr3.stream/end in the buffer
+;; - end-of-stream to be marked with :promisespromises.stream/end in the buffer
 ;; - errors to be marked with a stream-error in the buffer
 
 (deftype ValueConsumer [s buf-a]

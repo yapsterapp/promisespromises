@@ -191,11 +191,11 @@
       ;; (println "with-log-level-fixture" cl "->" level)
       (taoensso.timbre/set-level! level)
 
-      (try
+      (promesa.core/finally
         (f)
-        (finally
-          ;; (println "with-log-level-fixture:done" level "->" cl)
-          (taoensso.timbre/set-level! cl))))))
+
+        ;; (println "with-log-level-fixture:done" level "->" cl)
+        (taoensso.timbre/set-level! cl)))))
 
 (def compose-fixtures
   clojure.test/compose-fixtures)

@@ -40,7 +40,7 @@
    (defn print-uncaught-error-wrapper
      [uew ^java.io.Writer w]
      (.write w "#UncaughtErrorWrapper [")
-     (print-method (pt/-unwrap uew))
+     (print-method (pt/-unwrap-value uew) w)
      (.write w "]")))
 
 #?(:clj
@@ -81,7 +81,7 @@
    (defn print-caught-error-wrapper
      [uew ^java.io.Writer w]
      (.write w "#CaughtErrorWrapper [")
-     (print-method (pt/-unwrap uew))
+     (print-method (pt/-unwrap uew) w)
      (.write w "]")))
 
 #?(:clj

@@ -7,6 +7,7 @@
    [promesa.protocols :as promise.p])
   (:import
    [manifold.stream.default Stream]
+   [manifold.stream SinkProxy SourceProxy SplicedStream BufferedStream]
    [manifold.deferred Deferred SuccessDeferred ErrorDeferred LeakAwareDeferred]
    [java.util.concurrent ExecutionException CompletionException]))
 
@@ -26,8 +27,20 @@
 (def stream-factory (->StreamFactory))
 
 (extend-protocol p/IMaybeStream
-  Object
-  (-stream? [v] (m.stream/stream? v)))
+  Stream
+  (-stream? [_v] true)
+
+  SinkProxy
+  (-stream? [_v] true)
+
+  SourceProxy
+  (-stream? [_v] true)
+
+  SplicedStream
+  (-stream? [_v] true)
+
+  BufferedStream
+  (-stream? [_v] true))
 
 (defn promise->deferred
   [v]

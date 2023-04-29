@@ -24,10 +24,7 @@
 
 (extend-protocol pt/IMaybeStream
   ManyToManyChannel
-  (-stream? [_] true)
-
-  default
-  (-stream? [_] false))
+  (-stream? [_] true))
 
 (defn async-put!
   ([sink val]

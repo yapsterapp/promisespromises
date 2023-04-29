@@ -11,6 +11,10 @@
 (defprotocol IMaybeStream
   (-stream? [this]))
 
+(extend-protocol IMaybeStream
+  #?(:clj Object :cljs default)
+  (-stream? [_] false))
+
 ;; cross-platform stream interface.
 ;; under the hood these will be regular manifold streams
 ;; or core.async chans and the full manifold/core.async

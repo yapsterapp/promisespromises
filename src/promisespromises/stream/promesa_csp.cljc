@@ -28,10 +28,7 @@
 
 (extend-protocol pt/IMaybeStream
   Channel
-  (-stream? [_] true)
-
-  #?(:clj Object :cljs default)
-  (-stream? [_] false))
+  (-stream? [_] true))
 
 (defn promesa-csp-put!
   ([sink val]
